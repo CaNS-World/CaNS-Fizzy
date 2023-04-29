@@ -60,6 +60,7 @@ program cans
                                  ng,l,dl,dli, &
                                  read_input
   use mod_sanity         , only: test_sanity_input,test_sanity_solver
+  use mod_two_fluid_common
 #if !defined(_OPENACC)
   use mod_solver         , only: solver
 #if defined(_IMPDIFF_1D)

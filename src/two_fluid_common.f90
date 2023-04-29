@@ -53,7 +53,10 @@ module mod_two_fluid_common
     end do
   end subroutine clip_field
   !
-  subroutine diff_geo_surface_youngs(n,dl,dli,dzc,dzf,dzci,dzfi,vof,lij)
+  subroutine diff_geo_surface_youngs_mthinc(n,dl,dli,dzc,dzf,dzci,dzfi,vof,lij)
+    !
+    ! see Li et al., JCP 231 2328–2358
+    !
     implicit none
     integer , parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3)           :: n
@@ -182,5 +185,5 @@ module mod_two_fluid_common
         enddo
       enddo
     end associate
-  end subroutine diff_geo_surface_youngs
+  end subroutine diff_geo_surface_youngs_mthinc
 end module mod_two_fluid_common

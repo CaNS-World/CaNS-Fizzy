@@ -6,18 +6,10 @@
 ! -
 module mod_mom
   use mpi
-  use mod_common_mpi, only: ierr
   use mod_types
   implicit none
   private
-  public momx_a,momy_a,momz_a, &
-         momx_d,momy_d,momz_d, &
-         momx_p,momy_p,momz_p, cmpt_wallshear
-#if defined(_IMPDIFF_1D)
-  public momx_d_xy,momy_d_xy,momz_d_xy, &
-         momx_d_z ,momy_d_z ,momz_d_z
-#endif
-  public mom_xyz_ad
+  public momx_a
   contains
   !
   subroutine momx_a(nx,ny,nz,dxi,dyi,dzfi,u,v,w,dudt)
@@ -43,8 +35,6 @@ module mod_mom
           uvjm  = 0.25*( u(i,j-1,k)+u(i,j,k) )*( v(i+1,j-1,k  )+v(i,j-1,k  ) )
           uwkp  = 0.25*( u(i,j,k+1)+u(i,j,k) )*( w(i+1,j  ,k  )+w(i,j  ,k  ) )
           uwkm  = 0.25*( u(i,j,k-1)+u(i,j,k) )*( w(i+1,j  ,k-1)+w(i,j  ,k-1) )
-          !
-          ! Momentum balance
           !
           dudt(i,j,k) = dudt(i,j,k) + &
                         dxi*(     -uuip + uuim ) + &
@@ -79,8 +69,6 @@ module mod_mom
           wvkp  = 0.25*( w(i  ,j,k  )+w(i  ,j+1,k  ) )*( v(i,j,k+1)+v(i,j,k) )
           wvkm  = 0.25*( w(i  ,j,k-1)+w(i  ,j+1,k-1) )*( v(i,j,k-1)+v(i,j,k) )
           !
-          ! Momentum balance
-          !
           dvdt(i,j,k) = dvdt(i,j,k) + &
                         dxi*(     -uvip + uvim ) + &
                         dyi*(     -vvjp + vvjm ) + &
@@ -114,8 +102,6 @@ module mod_mom
           wwkp  = 0.25*( w(i,j,k)+w(i,j,k+1) )*( w(i  ,j  ,k)+w(i  ,j  ,k+1) )
           wwkm  = 0.25*( w(i,j,k)+w(i,j,k-1) )*( w(i  ,j  ,k)+w(i  ,j  ,k-1) )
           !
-          ! Momentum balance
-          !
           dwdt(i,j,k) = dwdt(i,j,k) + &
                         dxi*(     -uwip + uwim ) + &
                         dyi*(     -vwjp + vwjm ) + &
@@ -125,397 +111,556 @@ module mod_mom
     end do
   end subroutine momz_a
   !
-  subroutine momx_d(nx,ny,nz,dxi,dyi,dzci,dzfi,visc,u,dudt)
+  subroutine momx_d(nx,ny,nz,dxi,dyi,dzci,dzfi,rho12,mu12,psi,u,v,w,dudt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi,dyi,visc
+    real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u
+    real(rp), intent(in), dimension(2) :: rho12,mu12
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
-    real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
+    real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm, &
+                dvdxp,dvdxm,dwdxp,dwdxm
+    real(rp) :: muxp,muxm,muyp,muym,muzp,muzm,rhop
     integer :: i,j,k
+    real(rp) :: rho1,rho2,mu1,mu2
     !
+    rho1 = rho12(1); rho2 = rho12(2)
+    mu1  = mu12(1) ; mu2  = mu12(2)
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dwdxp,dwdxm) &
+    !$acc private(muxp,muxm,muyp,muym,muzp,muzm,rhop) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,dudt,visc)
-    !$acc parallel loop collapse(3) default(present) private(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) async(1)
+    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dwdxp,dwdxm) &
+    !$OMP PRIVATE(muxp,muxm,muyp,muym,muzp,muzm,rhop) &
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,rho1,rho2,mu1,mu2,psi,u,v,w,dudt)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dudxp = (u(i+1,j,k)-u(i,j,k))*dxi
-          dudxm = (u(i,j,k)-u(i-1,j,k))*dxi
-          dudyp = (u(i,j+1,k)-u(i,j,k))*dyi
-          dudym = (u(i,j,k)-u(i,j-1,k))*dyi
-          dudzp = (u(i,j,k+1)-u(i,j,k))*dzci(k  )
-          dudzm = (u(i,j,k)-u(i,j,k-1))*dzci(k-1)
+          dudxp = (u(i+1,j  ,k  )-u(i  ,j  ,k  ))*dxi
+          dudxm = (u(i  ,j  ,k  )-u(i-1,j  ,k  ))*dxi
+          dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
+          dvdxm = (v(i+1,j-1,k  )-v(i  ,j-1,k  ))*dxi
+          dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
+          dudym = (u(i  ,j  ,k  )-u(i  ,j-1,k  ))*dyi
+          dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k  ))*dzci(k  )
+          dudzm = (u(i  ,j  ,k  )-u(i  ,j  ,k-1))*dzci(k-1)
+          dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k  ))*dxi
+          dwdxm = (w(i+1,j  ,k-1)-w(i  ,j  ,k-1))*dxi
+          !
+          muxp = mu2 + (mu1-mu2)*psi(i+1,j,k)
+          muxm = mu2 + (mu1-mu2)*psi(i  ,j,k)
+          muyp = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k))
+          muym = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k))
+          muzp = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
+          muzm = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k))
+          rhop = rho2 + (rho1-rho2)*0.5*(psi(i+1,j,k)+psi(i,j,k))
+          !
           dudt(i,j,k) = dudt(i,j,k) + &
-                        (dudxp-dudxm)*visc*dxi + &
-                        (dudyp-dudym)*visc*dyi + &
-                        (dudzp-dudzm)*visc*dzfi(k)
+                        dxi*(    (dudxp+dudxp)*muxp-(dudxm+dudxm)*muxm)/rhop + &
+                        dyi*(    (dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym)/rhop + &
+                        dzfi(k)*((dudzp+dwdxp)*muzp-(dudzm+dwdxm)*muzm)/rhop
+
         end do
       end do
     end do
   end subroutine momx_d
   !
-  subroutine momy_d(nx,ny,nz,dxi,dyi,dzci,dzfi,visc,v,dvdt)
+  subroutine momy_d(nx,ny,nz,dxi,dyi,dzci,dzfi,rho12,mu12,psi,u,v,w,dvdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi,dyi,visc
+    real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: v
+    real(rp), intent(in), dimension(2) :: rho12,mu12
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
-    real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm, &
+                dudyp,dudym,dwdyp,dwdym
+    real(rp) :: muxp,muxm,muyp,muym,muzp,muzm,rhop
     integer :: i,j,k
+    real(rp) :: rho1,rho2,mu1,mu2
     !
-    !$acc parallel loop collapse(3) default(present) private(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    mu1  = mu12(1) ; mu2  = mu12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dudyp,dudym,dwdyp,dwdym) &
+    !$acc private(muxp,muxm,muyp,muym,muzp,muzm,rhop) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,v,dvdt,visc)
+    !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dudyp,dudym,dwdyp,dwdym) &
+    !$OMP PRIVATE(muxp,muxm,muyp,muym,muzp,muzm,rhop) &
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,rho1,rho2,mu1,mu2,psi,u,v,w,dvdt)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dvdxp = (v(i+1,j,k)-v(i,j,k))*dxi
-          dvdxm = (v(i,j,k)-v(i-1,j,k))*dxi
-          dvdyp = (v(i,j+1,k)-v(i,j,k))*dyi
-          dvdym = (v(i,j,k)-v(i,j-1,k))*dyi
-          dvdzp = (v(i,j,k+1)-v(i,j,k))*dzci(k  )
-          dvdzm = (v(i,j,k)-v(i,j,k-1))*dzci(k-1)
+          dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
+          dvdxm = (v(i  ,j  ,k  )-v(i-1,j  ,k  ))*dxi
+          dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
+          dudym = (u(i-1,j+1,k  )-u(i-1,j  ,k  ))*dyi
+          dvdyp = (v(i  ,j+1,k  )-v(i  ,j  ,k  ))*dyi
+          dvdym = (v(i  ,j  ,k  )-v(i  ,j-1,k  ))*dyi
+          dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k  ))*dzci(k  )
+          dvdzm = (v(i  ,j  ,k  )-v(i  ,j  ,k-1))*dzci(k-1)
+          dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k  ))*dyi
+          dwdym = (w(i  ,j+1,k-1)-w(i  ,j  ,k-1))*dyi
+          !
+          muxp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))
+          muxm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k))
+          muyp = mu2+(mu1-mu2)*psi(i,j+1,k)
+          muym = mu2+(mu1-mu2)*psi(i,j  ,k)
+          muzp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))
+          muzm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1))
+          rhop = rho2+(rho1-rho2)*0.5*(psi(i,j+1,k)+psi(i,j,k))
+          !
           dvdt(i,j,k) = dvdt(i,j,k) + &
-                        (dvdxp-dvdxm)*visc*dxi + &
-                        (dvdyp-dvdym)*visc*dyi + &
-                        (dvdzp-dvdzm)*visc*dzfi(k)
+                        dxi*(    (dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm)/rhop + &
+                        dyi*(    (dvdyp+dvdyp)*muyp-(dvdym+dvdym)*muym)/rhop + &
+                        dzfi(k)*((dvdzp+dwdyp)*muzp-(dvdzm+dwdym)*muzm)/rhop
         end do
       end do
     end do
   end subroutine momy_d
   !
-  subroutine momz_d(nx,ny,nz,dxi,dyi,dzci,dzfi,visc,w,dwdt)
+  subroutine momz_d(nx,ny,nz,dxi,dyi,dzci,dzfi,rho12,mu12,psi,u,v,w,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi,dyi,visc
+    real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: w
+    real(rp), intent(in), dimension(2) :: rho12,mu12
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     integer :: i,j,k
-    real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
+    real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm, &
+                dudzp,dudzm,dvdzp,dvdzm
+    real(rp) :: muxp,muxm,muyp,muym,muzp,muzm,rhop
+    real(rp) :: rho1,rho2,mu1,mu2
     !
-    !$acc parallel loop collapse(3) default(present) private(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    mu1  = mu12(1) ; mu2  = mu12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm,dudzp,dudzm,dvdzp,dvdzm) &
+    !$acc private(muxp,muxm,muyp,muym,muzp,muzm,rhop) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,w,dwdt,visc)
+    !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm,dudzp,dudzm,dvdzp,dvdzm) &
+    !$OMP PRIVATE(muxp,muxm,muyp,muym,muzp,muzm,rhop) &
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,rho1,rho2,mu1,mu2,psi,u,v,w,dwdt)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dwdxp = (w(i+1,j,k)-w(i,j,k))*dxi
-          dwdxm = (w(i,j,k)-w(i-1,j,k))*dxi
-          dwdyp = (w(i,j+1,k)-w(i,j,k))*dyi
-          dwdym = (w(i,j,k)-w(i,j-1,k))*dyi
-          dwdzp = (w(i,j,k+1)-w(i,j,k))*dzfi(k+1)
-          dwdzm = (w(i,j,k)-w(i,j,k-1))*dzfi(k  )
+          dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k))*dxi
+          dwdxm = (w(i  ,j  ,k  )-w(i-1,j  ,k))*dxi
+          dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k))*dzci(k  )
+          dudzm = (u(i-1,j  ,k+1)-u(i-1,j  ,k))*dzci(k  )
+          dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k))*dyi
+          dwdym = (w(i  ,j  ,k  )-w(i  ,j-1,k))*dyi
+          dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k))*dzci(k  )
+          dvdzm = (v(i  ,j-1,k+1)-v(i  ,j-1,k))*dzci(k  )
+          dwdzp = (w(i  ,j  ,k+1)-w(i  ,j,k  ))*dzfi(k+1)
+          dwdzm = (w(i  ,j  ,k  )-w(i  ,j,k-1))*dzfi(k  )
+          !
+          muxp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j ,k+1)+psi(i+1,j ,k) )
+          muxm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j ,k+1)+psi(i-1,j ,k) )
+          muyp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j+1,k+1)+psi(i ,j+1,k) )
+          muym = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j-1,k+1)+psi(i ,j-1,k) )
+          muzp = mu2+(mu1-mu2)*psi(i,j,k+1)
+          muzm = mu2+(mu1-mu2)*psi(i,j,k  )
+          rhop = rho2+(rho1-rho2)*0.5*(psi(i,j,k+1)+psi(i,j,k))
+          !
           dwdt(i,j,k) = dwdt(i,j,k) + &
-                        (dwdxp-dwdxm)*visc*dxi + &
-                        (dwdyp-dwdym)*visc*dyi + &
-                        (dwdzp-dwdzm)*visc*dzci(k)
+                        dxi*(    (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/rhop + &
+                        dyi*(    (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/rhop + &
+                        dzci(k)*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)/rhop
         end do
       end do
     end do
   end subroutine momz_d
   !
-  subroutine momx_p(nx,ny,nz,dxi,bforce,p,dudt)
+  subroutine momx_p(nx,ny,nz,dxi,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dudt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi
-    real(rp), intent(in) :: bforce
-    real(rp), dimension(0:,0:,0:), intent(in ) :: p
-    real(rp), dimension( :, :, :), intent(out) :: dudt
+    real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension( :, :, :), intent(inout) :: dudt
+    real(rp) :: rhop,dpdl
     integer :: i,j,k
+    real(rp) :: rho1,rho2
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(rhop,dpdl) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP SHARED(nx,ny,nz,dxi,bforce,p,dudt)
+    !$OMP SHARED(nx,ny,nz,dxi,bforce,gacc,rho0,rho_av,rho1,rho2,psi,p,dudt) &
+    !$OMP PRIVATE(rhop,dpdl)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dudt(i,j,k) = - dxi*( p(i+1,j,k)-p(i,j,k) ) + bforce
+          rhop = rho2+(rho1-rho2)*0.5*(psi(i+1,j,k)+psi(i,j,k))
+          dpdl = - (p(i+1,j,k)-p(i,j,k))*dxi + bforce
+          dudt(i,j,k) = dudt(i,j,k) + &
+#if defined(_CONSTANT_COEFFS_POISSON)
+                        dpdl/rho0 + (1./rhop-1./rho0)*(pp(i+1,j,k)-pp(i,j,k))*dxi + gacc
+#else                                 
+                        dpdl/rhop + gacc*(1.-rho_av/rhop)
+#endif
         end do
       end do
     end do
   end subroutine momx_p
   !
-  subroutine momy_p(nx,ny,nz,dyi,bforce,p,dvdt)
+  subroutine momy_p(nx,ny,nz,dyi,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dvdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dyi
-    real(rp), intent(in) :: bforce
-    real(rp), dimension(0:,0:,0:), intent(in ) :: p
-    real(rp), dimension( :, :, :), intent(out) :: dvdt
+    real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
+    real(rp) :: rhop,dpdl
+    real(rp) :: rho1,rho2
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(rhop,dpdl) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP SHARED(nx,ny,nz,dyi,bforce,p,dvdt)
+    !$OMP SHARED(nx,ny,nz,dyi,bforce,gacc,rho0,rho_av,rho1,rho2,psi,p,dvdt) &
+    !$OMP PRIVATE(rhop,dpdl)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dvdt(i,j,k) = - dyi*( p(i,j+1,k)-p(i,j,k) ) + bforce
+          rhop = rho2+(rho1-rho2)*0.5*(psi(i,j+1,k)+psi(i,j,k))
+          dpdl = - (p(i,j+1,k)-p(i,j,k))*dyi + bforce
+          dvdt(i,j,k) = dvdt(i,j,k) + &
+#if defined(_CONSTANT_COEFFS_POISSON)
+                        dpdl/rho0 + (1./rhop-1./rho0)*(pp(i,j+1,k)-pp(i,j,k))*dyi + gacc
+#else                                 
+                        dpdl/rhop + gacc*(1.-rho_av/rhop)
+#endif
         end do
       end do
     end do
   end subroutine momy_p
   !
-  subroutine momz_p(nx,ny,nz,dzci,bforce,p,dwdt)
+  subroutine momz_p(nx,ny,nz,dzci,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in), dimension(0:) :: dzci
-    real(rp), intent(in) :: bforce
-    real(rp), dimension(0:,0:,0:), intent(in ) :: p
-    real(rp), dimension( :, :, :), intent(out) :: dwdt
+    real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension( :, :, :), intent(inout) :: dwdt
+    real(rp) :: rhop,dpdl
     integer :: i,j,k
+    real(rp) :: rho1,rho2
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(rhop,dpdl) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP SHARED(nx,ny,nz,dzci,bforce,p,dwdt)
+    !$OMP SHARED(nx,ny,nz,dzci,bforce,gacc,rho0,rho_av,rho1,rho2,psi,p,dwdt) &
+    !$OMP PRIVATE(rhop,dpdl)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dwdt(i,j,k) = - dzci(k)*( p(i,j,k+1)-p(i,j,k) ) + bforce
+          rhop = rho2+(rho1-rho2)*0.5*(psi(i,j,k+1)+psi(i,j,k))
+          dpdl = - (p(i,j,k+1)-p(i,j,k))*dzci(k) + bforce
+          dwdt(i,j,k) = dwdt(i,j,k) + &
+#if defined(_CONSTANT_COEFFS_POISSON)
+                        dpdl/rho0 + (1./rhop-1./rho0)*(pp(i,j,k+1)-pp(i,j,k))*dzci(k) + gacc
+#else
+                        dpdl/rhop + gacc*(1.-rho_av/rhop)
+#endif
         end do
       end do
     end do
   end subroutine momz_p
   !
-#if defined(_IMPDIFF_1D)
-  subroutine momx_d_z(nx,ny,nz,dzci,dzfi,visc,u,dudt)
+  subroutine momx_sigma(nx,ny,nz,dxi,sigma,rho12,kappa,psi,dudt)
+    !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: visc
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u
+    real(rp), intent(in) :: dxi
+    real(rp), intent(in) :: sigma,rho12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dudt
-    real(rp) :: dudzp,dudzm
+    real(rp) :: rhop,kappap
     integer :: i,j,k
+    real(rp) :: rho1,rho2
     !
-    !$acc parallel loop collapse(3) default(present) private(dudzp,dudzm) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(rhop,kappap) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dudzp,dudzm) &
-    !$OMP SHARED(nx,ny,nz,dzci,dzfi,u,dudt,visc)
+    !$OMP SHARED(nx,ny,nz,dxi,sigma,rho1,rho2,psi,kappa,dudt) &
+    !$OMP PRIVATE(rhop,kappap)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dudzp = (u(i,j,k+1)-u(i,j,k))*dzci(k  )
-          dudzm = (u(i,j,k)-u(i,j,k-1))*dzci(k-1)
+          rhop   = rho2+(rho1-rho2)*0.5*(psi(i+1,j,k)+psi(i,j,k))
+          kappap = 0.5*(kappa(i+1,j,k)+kappa(i,j,k))
+          !
           dudt(i,j,k) = dudt(i,j,k) + &
-                        (dudzp-dudzm)*visc*dzfi(k)
+                        sigma*kappap*(psi(i+1,j,k)-psi(i,j,k))*dxi/rhop
         end do
       end do
     end do
-  end subroutine momx_d_z
+  end subroutine momx_sigma
   !
-  subroutine momy_d_z(nx,ny,nz,dzci,dzfi,visc,v,dvdt)
+  subroutine momy_sigma(nx,ny,nz,dyi,sigma,rho12,psi,kappa,dvdt)
+    !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: visc
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: v
+    real(rp), intent(in) :: dyi
+    real(rp), intent(in) :: sigma,rho12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
-    real(rp) :: dvdzp,dvdzm
+    real(rp) :: rhop,kappap
     integer :: i,j,k
+    real(rp) :: rho1,rho2
     !
-    !$acc parallel loop collapse(3) default(present) private(dvdzp,dvdzm) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(rhop,kappap) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dvdzp,dvdzm) &
-    !$OMP SHARED(nx,ny,nz,dzci,dzfi,v,dvdt,visc)
+    !$OMP SHARED(nx,ny,nz,dyi,sigma,rho1,rho2,psi,kappa,dvdt) &
+    !$OMP PRIVATE(rhop,kappap)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dvdzp = (v(i,j,k+1)-v(i,j,k))*dzci(k  )
-          dvdzm = (v(i,j,k)-v(i,j,k-1))*dzci(k-1)
+          rhop   = rho2+(rho1-rho2)*0.5*(psi(i,j+1,k)+psi(i,j,k))
+          kappap = 0.5*(kappa(i,j+1,k)+kappa(i,j,k))
+          !
           dvdt(i,j,k) = dvdt(i,j,k) + &
-                        (dvdzp-dvdzm)*visc*dzfi(k)
+                        sigma*kappap*(psi(i,j+1,k)-psi(i,j,k))*dyi/rhop
         end do
       end do
     end do
-  end subroutine momy_d_z
+  end subroutine momy_sigma
   !
-  subroutine momz_d_z(nx,ny,nz,dzci,dzfi,visc,w,dwdt)
+  subroutine momz_sigma(nx,ny,nz,dzci,sigma,rho12,psi,kappa,dwdt)
+    !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: visc
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: w
+    real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in) :: sigma,rho12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
+    real(rp) :: rhop,kappap
     integer :: i,j,k
-    real(rp) :: dwdzp,dwdzm
+    real(rp) :: rho1,rho2
     !
-    !$acc parallel loop collapse(3) default(present) private(dwdzp,dwdzm) async(1)
+    rho1 = rho12(1); rho2 = rho12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(rhop,kappap) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dwdzp,dwdzm) &
-    !$OMP SHARED(nx,ny,nz,dzci,dzfi,w,dwdt,visc)
+    !$OMP SHARED(nx,ny,nz,dzci,sigma,rho1,rho2,psi,kappa,dwdt) &
+    !$OMP PRIVATE(rhop,kappap)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dwdzp = (w(i,j,k+1)-w(i,j,k))*dzfi(k+1)
-          dwdzm = (w(i,j,k)-w(i,j,k-1))*dzfi(k  )
+          rhop   = rho2+(rho1-rho2)*0.5*(psi(i,j,k+1)+psi(i,j,k))
+          kappap = 0.5*(kappa(i,j,k+1)+kappa(i,j,k))
+          !
           dwdt(i,j,k) = dwdt(i,j,k) + &
-                        (dwdzp-dwdzm)*visc*dzci(k)
+                        sigma*kappap*(psi(i,j,k+1)-psi(i,j,k))*dzci(k)/rhop
         end do
       end do
     end do
-  end subroutine momz_d_z
+  end subroutine momz_sigma
   !
-  subroutine momx_d_xy(nx,ny,nz,dxi,dyi,visc,u,dudt)
+  subroutine momx_buoy(nx,ny,nz,gacc,rhobeta12,psi,s,dudt)
+    !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi,dyi,visc
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u
+    real(rp), intent(in) :: gacc,rhobeta12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dudt
-    real(rp) :: dudxp,dudxm,dudyp,dudym
+    real(rp) :: factorp
     integer :: i,j,k
+    real(rp) :: rhobeta1,rhobeta2
     !
-    !$acc parallel loop collapse(3) default(present) private(dudxp,dudxm,dudyp,dudym) async(1)
+    rhobeta1 = rhobeta12(1); rhobeta2 = rhobeta12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(factorp) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,u,dudt,visc)
+    !$OMP SHARED(nx,ny,nz,gacc,rhobeta1,rhobeta2,psi,s,dudt) &
+    !$OMP PRIVATE(factorp)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dudxp = (u(i+1,j,k)-u(i,j,k))*dxi
-          dudxm = (u(i,j,k)-u(i-1,j,k))*dxi
-          dudyp = (u(i,j+1,k)-u(i,j,k))*dyi
-          dudym = (u(i,j,k)-u(i,j-1,k))*dyi
+          factorp = rhobeta2-(rhobeta1-rhobeta2)*0.5*(psi(i+1,j,k)+psi(i,j,k))
+          !
           dudt(i,j,k) = dudt(i,j,k) + &
-                        (dudxp-dudxm)*visc*dxi + &
-                        (dudyp-dudym)*visc*dyi
+                        gacc*factorp*0.5*(s(i+1,j,k)+s(i,j,k))
         end do
       end do
     end do
-  end subroutine momx_d_xy
+  end subroutine momx_buoy
   !
-  subroutine momy_d_xy(nx,ny,nz,dxi,dyi,visc,v,dvdt)
+  subroutine momy_buoy(nx,ny,nz,gacc,rhobeta12,psi,s,dvdt)
+    !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi,dyi,visc
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: v
+    real(rp), intent(in) :: gacc,rhobeta12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
-    real(rp) :: dvdxp,dvdxm,dvdyp,dvdym
+    real(rp) :: factorp
     integer :: i,j,k
+    real(rp) :: rhobeta1,rhobeta2
     !
-    !$acc parallel loop collapse(3) default(present) private(dvdxp,dvdxm,dvdyp,dvdym) async(1)
+    rhobeta1 = rhobeta12(1); rhobeta2 = rhobeta12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(factorp) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,v,dvdt,visc)
+    !$OMP SHARED(nx,ny,nz,gacc,rhobeta1,rhobeta2,psi,s,dvdt) &
+    !$OMP PRIVATE(factorp)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dvdxp = (v(i+1,j,k)-v(i,j,k))*dxi
-          dvdxm = (v(i,j,k)-v(i-1,j,k))*dxi
-          dvdyp = (v(i,j+1,k)-v(i,j,k))*dyi
-          dvdym = (v(i,j,k)-v(i,j-1,k))*dyi
+          factorp = rhobeta2-(rhobeta1-rhobeta2)*0.5*(psi(i,j+1,k)+psi(i,j,k))
+          !
           dvdt(i,j,k) = dvdt(i,j,k) + &
-                        (dvdxp-dvdxm)*visc*dxi + &
-                        (dvdyp-dvdym)*visc*dyi
+                        gacc*factorp*0.5*(s(i,j+1,k)+s(i,j,k))
         end do
       end do
     end do
-  end subroutine momy_d_xy
+  end subroutine momy_buoy
   !
-  subroutine momz_d_xy(nx,ny,nz,dxi,dyi,visc,w,dwdt)
+  subroutine momz_buoy(nx,ny,nz,gacc,rhobeta12,psi,s,dwdt)
+    !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi,dyi,visc
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: w
+    real(rp), intent(in) :: gacc,rhobeta12(2)
+    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
+    real(rp) :: factorp
     integer :: i,j,k
-    real(rp) :: dwdxp,dwdxm,dwdyp,dwdym
+    real(rp) :: rhobeta1,rhobeta2
     !
-    !$acc parallel loop collapse(3) default(present) private(dwdxp,dwdxm,dwdyp,dwdym) async(1)
+    rhobeta1 = rhobeta12(1); rhobeta2 = rhobeta12(2)
+    !
+    !$acc parallel loop collapse(3) default(present) private(factorp) async(1)
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,w,dwdt,visc)
+    !$OMP SHARED(nx,ny,nz,gacc,rhobeta1,rhobeta2,psi,s,dwdt) &
+    !$OMP PRIVATE(factorp)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          dwdxp = (w(i+1,j,k)-w(i,j,k))*dxi
-          dwdxm = (w(i,j,k)-w(i-1,j,k))*dxi
-          dwdyp = (w(i,j+1,k)-w(i,j,k))*dyi
-          dwdym = (w(i,j,k)-w(i,j-1,k))*dyi
+          factorp = rhobeta2-(rhobeta1-rhobeta2)*0.5*(psi(i,j,k+1)+psi(i,j,k))
+          !
           dwdt(i,j,k) = dwdt(i,j,k) + &
-                        (dwdxp-dwdxm)*visc*dxi + &
-                        (dwdyp-dwdym)*visc*dyi
+                        gacc*factorp*0.5*(s(i,j,k+1)+s(i,j,k))
         end do
       end do
     end do
-  end subroutine momz_d_xy
-#endif
+  end subroutine momz_buoy
   !
-  subroutine cmpt_wallshear(n,is_bound,l,dli,dzci,dzfi,visc,u,v,w,taux,tauy,tauz)
-    use mod_param, only: cbcpre
+#if 1
+  subroutine cmpt_wallshear(n,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
+    !
+    ! n.b.: is_bound should exclude periodic BCs
+    !
     implicit none
     integer , intent(in ), dimension(3) :: n
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
     real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
-    real(rp), intent(in )                   :: visc
-    real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(in )                   :: mu12(2)
+    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
     real(rp), intent(out), dimension(3) :: taux,tauy,tauz
     real(rp) :: dudyp,dudym,dudzp,dudzm, &
                 dvdxp,dvdxm,dvdzp,dvdzm, &
-                dwdxp,dwdxm,dwdyp,dwdym
-    !
-    ! n.b.: replace scalars with reduction of tau(1:3,1:3) once the
-    !       nvfortran bug for array reductions on Pascal architectures
-    !       is solved; this subroutine is not used in production anyway
+                dwdxp,dwdxm,dwdyp,dwdym, &
+                muxp,muxm,muyp,muym,muzp,muzm
     !
     real(rp) :: tau21,tau31,tau12,tau32,tau13,tau23
     integer :: i,j,k,nx,ny,nz
-    real(rp) :: dxi,dyi,lx,ly,lz
+    real(rp) :: dxi,dyi,lx,ly,lz,mu1,mu2
     real(rp) :: tau(3,3)
+    integer :: ierr
     !
+    mu1  = mu12(1) ; mu2  = mu12(2)
     nx = n(1); ny = n(2); nz = n(3)
     dxi = dli(1); dyi = dli(2)
     lx = l(1); ly = l(2); lz = l(3)
     tau21 = 0._rp
     !$acc data copy(tau21) async(1)
-    if(is_bound(0,2).and.cbcpre(0,2)//cbcpre(1,2) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dudyp) reduction(+:tau21) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dudyp) reduction(+:tau21)
+    if(is_bound(0,2)) then
+      j = 1
+      !$acc parallel loop collapse(2) default(present) private(dvdxp,dvdxm,dudyp,dudym,muyp,muym) &
+      !$acc reduction(+:tau21) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dvdxp,dvdxm,dudyp,dudym,muyp,muym) REDUCTION(+:tau21)
       do k=1,nz
         do i=1,nx
-          dudyp = (u(i,1 ,k)-u(i,0   ,k))*dyi*visc
-          tau21 = tau21 + dudyp/(dxi*dzfi(k)*lx*lz)
+          dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
+          dvdxm = (v(i+1,j-1,k  )-v(i  ,j-1,k  ))*dxi
+          dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
+          dudym = (u(i  ,j  ,k  )-u(i  ,j-1,k  ))*dyi
+          !
+          muyp = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k))
+          muym = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k))
+          !
+          tau21 = tau21 + ((dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym)/(dxi*dzfi(k)*lx*lz)
         end do
       end do
     end if
-    if(is_bound(1,2).and.cbcpre(0,2)//cbcpre(1,2) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dudym) reduction(+:tau21) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dudym) reduction(+:tau21)
+    if(is_bound(1,2)) then
+      j = ny+1
+      !$acc parallel loop collapse(2) default(present) private(dvdxp,dvdxm,dudyp,dudym,muyp,muym) &
+      !$acc reduction(+:tau21) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dvdxp,dvdxm,dudyp,dudym,muyp,muym) REDUCTION(+:tau21)
       do k=1,nz
         do i=1,nx
-          dudym = (u(i,ny,k)-u(i,ny+1,k))*dyi*visc
-          tau21 = tau21 + dudym/(dxi*dzfi(k)*lx*lz)
+          dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
+          dvdxm = (v(i+1,j-1,k  )-v(i  ,j-1,k  ))*dxi
+          dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
+          dudym = (u(i  ,j  ,k  )-u(i  ,j-1,k  ))*dyi
+          !
+          muyp = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k))
+          muym = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k))
+          !
+          tau21 = tau21 - ((dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym)/(dxi*dzfi(k)*lx*lz)
         end do
       end do
     end if
     !$acc end data
     tau31 = 0._rp
     !$acc data copy(tau31) async(1)
-    if(is_bound(0,3).and.cbcpre(0,3)//cbcpre(1,3) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dudzp) reduction(+:tau31) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dudzp) reduction(+:tau31)
+    if(is_bound(0,3)) then
+      k = 1
+      !$acc parallel loop collapse(2) default(present) private(dudzp,dudzm,dwdxp,dwdxm,muzp,muzm) &
+      !$acc reduction(+:tau31) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dudzp,dudzm,dwdxp,dwdxm,muzp,muzm) REDUCTION(+:tau31)
       do j=1,ny
         do i=1,nx
-          dudzp = (u(i,j,1 )-u(i,j,0   ))*dzci(0)*visc
-          tau31 = tau31 + dudzp/(dxi*dyi*lx*ly)
+          dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k  ))*dzci(k  )
+          dudzm = (u(i  ,j  ,k  )-u(i  ,j  ,k-1))*dzci(k-1)
+          dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k  ))*dxi
+          dwdxm = (w(i+1,j  ,k-1)-w(i  ,j  ,k-1))*dxi
+          !
+          muzp = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
+          muzm = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k))
+          !
+          tau31 = tau31 + ((dudzp+dwdxp)*muzp-(dudzm+dwdxm)*muzm)/(dxi*dyi*lx*ly)
         end do
       end do
     end if
-    if(is_bound(1,3).and.cbcpre(0,3)//cbcpre(1,3) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dudzm) reduction(+:tau31) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dudzm) reduction(+:tau31)
+    if(is_bound(1,3)) then
+      k = nz+1
+      !$acc parallel loop collapse(2) default(present) private(dudzp,dudzm,dwdxp,dwdxm,muzp,muzm) &
+      !$acc reduction(+:tau31) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dudzp,dudzm,dwdxp,dwdxm,muzp,muzm) REDUCTION(+:tau31)
       do j=1,ny
         do i=1,nx
-          dudzm = (u(i,j,nz)-u(i,j,nz+1))*dzci(nz)*visc
-          tau31 = tau31 + dudzm/(dxi*dyi*lx*ly)
+          dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k  ))*dzci(k  )
+          dudzm = (u(i  ,j  ,k  )-u(i  ,j  ,k-1))*dzci(k-1)
+          dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k  ))*dxi
+          dwdxm = (w(i+1,j  ,k-1)-w(i  ,j  ,k-1))*dxi
+          !
+          muzp = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
+          muzm = mu2 + (mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k))
+          !
+          tau31 = tau31 - ((dudzp+dwdxp)*muzp-(dudzm+dwdxm)*muzm)/(dxi*dyi*lx*ly)
         end do
       end do
     end if
@@ -523,46 +668,82 @@ module mod_mom
     !
     tau12 = 0._rp
     !$acc data copy(tau12) async(1)
-    if(is_bound(0,1).and.cbcpre(0,1)//cbcpre(1,1) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dvdxp) reduction(+:tau12) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dvdxp) reduction(+:tau12)
+    if(is_bound(0,1)) then
+      i = 1
+      !$acc parallel loop collapse(2) default(present) private(dvdxp,dvdxm,dudyp,dudym,muxp,muxm) &
+      !$acc reduction(+:tau12) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dvdxp,dvdxm,dudyp,dudym,muxp,muxm) REDUCTION(+:tau12)
       do k=1,nz
         do j=1,ny
-          dvdxp = (v(1  ,j,k)-v(0  ,j,k))*dxi*visc
-          tau12 = tau12 + dvdxp/(dyi*dzfi(k)*ly*lz)
+          dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
+          dvdxm = (v(i  ,j  ,k  )-v(i-1,j  ,k  ))*dxi
+          dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
+          dudym = (u(i-1,j+1,k  )-u(i-1,j  ,k  ))*dyi
+          !
+          muxp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))
+          muxm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k))
+          !
+          tau12 = tau12 + ((dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm)/(dyi*dzfi(k)*ly*lz)
         end do
       end do
     end if
-    if(is_bound(1,1).and.cbcpre(0,1)//cbcpre(1,1) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dvdxm) reduction(+:tau12) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dvdxm) reduction(+:tau12)
+    if(is_bound(1,1)) then
+      i = nx+1
+      !$acc parallel loop collapse(2) default(present) private(dvdxp,dvdxm,dudyp,dudym,muxp,muxm) &
+      !$acc reduction(+:tau12) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dvdxp,dvdxm,dudyp,dudym,muxp,muxm) REDUCTION(+:tau12)
       do k=1,nz
         do j=1,ny
-          dvdxm = (v(nx,j,k)-v(nx+1,j,k))*dxi*visc
-          tau12 = tau12 + dvdxm/(dyi*dzfi(k)*ly*lz)
+          dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
+          dvdxm = (v(i  ,j  ,k  )-v(i-1,j  ,k  ))*dxi
+          dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
+          dudym = (u(i-1,j+1,k  )-u(i-1,j  ,k  ))*dyi
+          !
+          muxp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))
+          muxm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k))
+          !
+          tau12 = tau12 - ((dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm)/(dyi*dzfi(k)*ly*lz)
         end do
       end do
     end if
     !$acc end data
     tau32 = 0._rp
     !$acc data copy(tau32) async(1)
-    if(is_bound(0,3).and.cbcpre(0,3)//cbcpre(1,3) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dvdzp) reduction(+:tau32) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dvdzp) reduction(+:tau32)
+    if(is_bound(0,3)) then
+      k = 1
+      !$acc parallel loop collapse(2) default(present) private(dvdzp,dvdzm,dwdyp,dwdym,muzp,muzm) &
+      !$acc reduction(+:tau32) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dvdzp,dvdzm,dwdyp,dwdym,muzp,muzm) REDUCTION(+:tau32)
       do j=1,ny
         do i=1,nx
-          dvdzp = (v(i,j,1 )-v(i,j,0   ))*dzci(0)*visc
-          tau32 = tau32 + dvdzp/(dxi*dyi*lx*ly)
+          dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k  ))*dzci(k  )
+          dvdzm = (v(i  ,j  ,k  )-v(i  ,j  ,k-1))*dzci(k-1)
+          dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k  ))*dyi
+          dwdym = (w(i  ,j+1,k-1)-w(i  ,j  ,k-1))*dyi
+          !
+          muzp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))
+          muzm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1))
+          !
+          tau32 = tau32 + ((dvdzp+dwdyp)*muzp-(dvdzm+dwdym)*muzm)/(dxi*dyi*lx*ly)
         end do
       end do
     end if
-    if(is_bound(1,3).and.cbcpre(0,3)//cbcpre(1,3) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dvdzm) reduction(+:tau32) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dvdzm) reduction(+:tau32)
+    if(is_bound(1,3)) then
+      k = nz+1
+      !$acc parallel loop collapse(2) default(present) private(dvdzp,dvdzm,dwdyp,dwdym,muzp,muzm) &
+      !$acc reduction(+:tau32) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dvdzp,dvdzm,dwdyp,dwdym,muzp,muzm) REDUCTION(+:tau32)
       do j=1,ny
         do i=1,nx
-          dvdzm = (v(i,j,nz)-v(i,j,nz+1))*dzci(nz)*visc
-          tau32 = tau32 + dvdzm/(dxi*dyi*lx*ly)
+          dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k  ))*dzci(k  )
+          dvdzm = (v(i  ,j  ,k  )-v(i  ,j  ,k-1))*dzci(k-1)
+          dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k  ))*dyi
+          dwdym = (w(i  ,j+1,k-1)-w(i  ,j  ,k-1))*dyi
+          !
+          muzp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))
+          muzm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1))
+          !
+          tau32 = tau32 - ((dvdzp+dwdyp)*muzp-(dvdzm+dwdym)*muzm)/(dxi*dyi*lx*ly)
         end do
       end do
     end if
@@ -570,46 +751,82 @@ module mod_mom
     !
     tau13 = 0._rp
     !$acc data copy(tau13) async(1)
-    if(is_bound(0,1).and.cbcpre(0,1)//cbcpre(1,1) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dwdxp) reduction(+:tau13) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dwdxp) reduction(+:tau13)
+    if(is_bound(0,1)) then
+      i = 1
+      !$acc parallel loop collapse(2) default(present) private(dwdxp,dwdxm,dudzp,dudzm,muxp,muxm) &
+      !$acc reduction(+:tau13) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dwdxp,dwdxm,dudzp,dudzm,muxp,muxm) REDUCTION(+:tau13)
       do k=1,nz
         do j=1,ny
-          dwdxp = (w(1 ,j,k)-w(0   ,j,k))*dxi*visc
-          tau13 = tau13 + dwdxp/(dyi*dzfi(k)*ly*lz)
+          dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k))*dxi
+          dwdxm = (w(i  ,j  ,k  )-w(i-1,j  ,k))*dxi
+          dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k))*dzci(k  )
+          dudzm = (u(i-1,j  ,k+1)-u(i-1,j  ,k))*dzci(k  )
+          !
+          muxp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j ,k+1)+psi(i+1,j ,k) )
+          muxm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j ,k+1)+psi(i-1,j ,k) )
+          !
+          tau13 = tau13 + ((dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/(dyi*dzfi(k)*ly*lz)
         end do
       end do
     end if
-    if(is_bound(1,1).and.cbcpre(0,1)//cbcpre(1,1) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dwdxm) reduction(+:tau13) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dwdxm) reduction(+:tau13)
+    if(is_bound(1,1)) then
+      i = nx+1
+      !$acc parallel loop collapse(2) default(present) private(dwdxp,dwdxm,dudzp,dudzm,muxp,muxm) &
+      !$acc reduction(+:tau13) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dwdxp,dwdxm,dudzp,dudzm,muxp,muxm) REDUCTION(+:tau13)
       do k=1,nz
         do j=1,ny
-          dwdxm = (w(nx,j,k)-w(nx+1,j,k))*dxi*visc
-          tau13 = tau13 + dwdxm/(dyi*dzfi(k)*ly*lz)
+          dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k))*dxi
+          dwdxm = (w(i  ,j  ,k  )-w(i-1,j  ,k))*dxi
+          dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k))*dzci(k  )
+          dudzm = (u(i-1,j  ,k+1)-u(i-1,j  ,k))*dzci(k  )
+          !
+          muxp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j ,k+1)+psi(i+1,j ,k) )
+          muxm = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j ,k+1)+psi(i-1,j ,k) )
+          !
+          tau13 = tau13 - ((dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/(dyi*dzfi(k)*ly*lz)
         end do
       end do
     end if
     !$acc end data
     tau23 = 0._rp
     !$acc data copy(tau23) async(1)
-    if(is_bound(0,2).and.cbcpre(0,2)//cbcpre(1,2) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dwdyp) reduction(+:tau23) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dwdyp) reduction(+:tau23)
+    if(is_bound(0,2)) then
+      j = 1
+      !$acc parallel loop collapse(2) default(present) private(dwdyp,dwdym,dvdzp,dvdzm,muyp,muym) &
+      !$acc reduction(+:tau23) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dwdyp,dwdym,dvdzp,dvdzm,muyp,muym) REDUCTION(+:tau32)
       do k=1,nz
         do i=1,nx
-          dwdyp = (w(i,1,k )-w(i,0   ,k))*dyi*visc
-          tau23 = tau23 + dwdyp/(dxi*dzfi(k)*lx*lz)
+          dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k))*dyi
+          dwdym = (w(i  ,j  ,k  )-w(i  ,j-1,k))*dyi
+          dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k))*dzci(k  )
+          dvdzm = (v(i  ,j-1,k+1)-v(i  ,j-1,k))*dzci(k  )
+          !
+          muyp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j+1,k+1)+psi(i ,j+1,k) )
+          muym = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j-1,k+1)+psi(i ,j-1,k) )
+          !
+          tau23 = tau23 + ((dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/(dxi*dzfi(k)*lx*lz)
         end do
       end do
     end if
-    if(is_bound(1,2).and.cbcpre(0,2)//cbcpre(1,2) /= 'PP') then
-      !$acc parallel loop collapse(2) default(present) private(dwdym) reduction(+:tau23) async(1)
-      !$OMP PARALLEL DO DEFAULT(shared) private(dwdym) reduction(+:tau23)
+    if(is_bound(1,2)) then
+      j = ny+1
+      !$acc parallel loop collapse(2) default(present) private(dwdyp,dwdym,dvdzp,dvdzm,muyp,muym) &
+      !$acc reduction(+:tau23) async(1)
+      !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(dwdyp,dwdym,dvdzp,dvdzm,muyp,muym) REDUCTION(+:tau32)
       do k=1,nz
         do i=1,nx
-          dwdym = (w(i,ny,k)-w(i,ny+1,k))*dyi*visc
-          tau23 = tau23 + dwdym/(dxi*dzfi(k)*lx*lz)
+          dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k))*dyi
+          dwdym = (w(i  ,j  ,k  )-w(i  ,j-1,k))*dyi
+          dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k))*dzci(k  )
+          dvdzm = (v(i  ,j-1,k+1)-v(i  ,j-1,k))*dzci(k  )
+          !
+          muyp = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j+1,k+1)+psi(i ,j+1,k) )
+          muym = mu2+(mu1-mu2)*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j-1,k+1)+psi(i ,j-1,k) )
+          !
+          tau23 = tau23 - ((dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/(dxi*dzfi(k)*lx*lz)
         end do
       end do
     end if
@@ -627,223 +844,5 @@ module mod_mom
     tauy(:) = tau(:,2)
     tauz(:) = tau(:,3)
   end subroutine cmpt_wallshear
-  !
-  subroutine mom_xyz_ad(nx,ny,nz,dxi,dyi,dzci,dzfi,visc,u,v,w,dudt,dvdt,dwdt,dudtd,dvdtd,dwdtd)
-    !
-    ! lump all r.h.s. of momentum terms (excluding pressure) into a single fast kernel
-    !
-    integer , intent(in   ) :: nx,ny,nz
-    real(rp), intent(in   ) :: dxi,dyi
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in   ) :: visc
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(rp), intent(inout), dimension( :, :, :) :: dudt,dvdt,dwdt
-    real(rp), intent(inout), dimension( :, :, :), optional :: dudtd,dvdtd,dwdtd
-    integer  :: i,j,k
-    real(rp) :: u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp, &
-                v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp, &
-                w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp
-    real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm, &
-                uvip,uvim,vvjp,vvjm,wvkp,wvkm, &
-                uwip,uwim,vwjp,vwjm,wwkp,wwkm
-    real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm, &
-                dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm, &
-                dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
-    real(rp) :: dudt_s ,dvdt_s ,dwdt_s , &
-                dudtd_s,dvdtd_s,dwdtd_s, &
-                dudtd_xy_s,dudtd_z_s   , &
-                dvdtd_xy_s,dvdtd_z_s   , &
-                dwdtd_xy_s,dwdtd_z_s
-    !$acc parallel loop collapse(3) default(present) async(1) &
-    !$acc private(u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp) &
-    !$acc private(v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp) &
-    !$acc private(w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp) &
-    !$acc private(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
-    !$acc private(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
-    !$acc private(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
-    !$acc private(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
-    !$acc private(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm) &
-    !$acc private(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm) &
-    !$acc private(dudt_s ,dvdt_s ,dwdt_s ) &
-    !$acc private(dudtd_s,dvdtd_s,dwdtd_s) &
-    !$acc private(dudtd_xy_s,dudtd_z_s) &
-    !$acc private(dvdtd_xy_s,dvdtd_z_s) &
-    !$acc private(dwdtd_xy_s,dwdtd_z_s)
-    !$OMP PARALLEL DO DEFAULT(shared) &
-    !$OMP PRIVATE(u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp) &
-    !$OMP PRIVATE(v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp) &
-    !$OMP PRIVATE(w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp) &
-    !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
-    !$OMP PRIVATE(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
-    !$OMP PRIVATE(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
-    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
-    !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm) &
-    !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm) &
-    !$OMP PRIVATE(dudt_s ,dvdt_s ,dwdt_s ) &
-    !$OMP PRIVATE(dudtd_s,dvdtd_s,dwdtd_s) &
-    !$OMP PRIVATE(dudtd_xy_s,dudtd_z_s) &
-    !$OMP PRIVATE(dvdtd_xy_s,dvdtd_z_s) &
-    !$OMP PRIVATE(dwdtd_xy_s,dwdtd_z_s)
-    do k=1,nz
-      do j=1,ny
-        do i=1,nx
-          !
-          ! touch u,v,w sequentially
-          !
-          u_ccm = u(i  ,j  ,k-1)
-          u_pcm = u(i+1,j  ,k-1)
-          u_cpm = u(i  ,j+1,k-1)
-          u_cmc = u(i  ,j-1,k  )
-          u_pmc = u(i+1,j-1,k  )
-          u_mcc = u(i-1,j  ,k  )
-          u_ccc = u(i  ,j  ,k  )
-          u_pcc = u(i+1,j  ,k  )
-          u_mpc = u(i-1,j+1,k  )
-          u_cpc = u(i  ,j+1,k  )
-          u_cmp = u(i  ,j-1,k+1)
-          u_mcp = u(i-1,j  ,k+1)
-          u_ccp = u(i  ,j  ,k+1)
-          !
-          v_ccm = v(i  ,j  ,k-1)
-          v_pcm = v(i+1,j  ,k-1)
-          v_cpm = v(i  ,j+1,k-1)
-          v_cmc = v(i  ,j-1,k  )
-          v_pmc = v(i+1,j-1,k  )
-          v_mcc = v(i-1,j  ,k  )
-          v_ccc = v(i  ,j  ,k  )
-          v_pcc = v(i+1,j  ,k  )
-          v_mpc = v(i-1,j+1,k  )
-          v_cpc = v(i  ,j+1,k  )
-          v_cmp = v(i  ,j-1,k+1)
-          v_mcp = v(i-1,j  ,k+1)
-          v_ccp = v(i  ,j  ,k+1)
-          !
-          w_ccm = w(i  ,j  ,k-1)
-          w_pcm = w(i+1,j  ,k-1)
-          w_cpm = w(i  ,j+1,k-1)
-          w_cmc = w(i  ,j-1,k  )
-          w_pmc = w(i+1,j-1,k  )
-          w_mcc = w(i-1,j  ,k  )
-          w_ccc = w(i  ,j  ,k  )
-          w_pcc = w(i+1,j  ,k  )
-          w_mpc = w(i-1,j+1,k  )
-          w_cpc = w(i  ,j+1,k  )
-          w_cmp = w(i  ,j-1,k+1)
-          w_mcp = w(i-1,j  ,k+1)
-          w_ccp = w(i  ,j  ,k+1)
-          !
-          ! x diffusion
-          !
-          dudxp = (u_pcc-u_ccc)*dxi
-          dudxm = (u_ccc-u_mcc)*dxi
-          dudyp = (u_cpc-u_ccc)*dyi
-          dudym = (u_ccc-u_cmc)*dyi
-          dudzp = (u_ccp-u_ccc)*dzci(k  )
-          dudzm = (u_ccc-u_ccm)*dzci(k-1)
-          !
-          ! x advection
-          !
-          uuip  = 0.25*(u_pcc+u_ccc)*(u_pcc+u_ccc)
-          uuim  = 0.25*(u_mcc+u_ccc)*(u_mcc+u_ccc)
-          uvjp  = 0.25*(u_cpc+u_ccc)*(v_pcc+v_ccc)
-          uvjm  = 0.25*(u_cmc+u_ccc)*(v_pmc+v_cmc)
-          uwkp  = 0.25*(u_ccp+u_ccc)*(w_pcc+w_ccc)
-          uwkm  = 0.25*(u_ccm+u_ccc)*(w_pcm+w_ccm)
-          !
-          dudtd_xy_s = &
-                         visc*(dudxp-dudxm)*dxi + &
-                         visc*(dudyp-dudym)*dyi
-          dudtd_z_s  = &
-                         visc*(dudzp-dudzm)*dzfi(k)
-          dudt_s     = &
-                             -(uuip -uuim )*dxi - &
-                              (uvjp -uvjm )*dyi - &
-                              (uwkp -uwkm )*dzfi(k)
-          !
-          ! y diffusion
-          !
-          dvdxp = (v_pcc-v_ccc)*dxi
-          dvdxm = (v_ccc-v_mcc)*dxi
-          dvdyp = (v_cpc-v_ccc)*dyi
-          dvdym = (v_ccc-v_cmc)*dyi
-          dvdzp = (v_ccp-v_ccc)*dzci(k  )
-          dvdzm = (v_ccc-v_ccm)*dzci(k-1)
-          !
-          ! y advection
-          !
-          uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)
-          uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)
-          vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)
-          vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)
-          wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccp+v_ccc)
-          wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccm+v_ccc)
-          !
-          dvdtd_xy_s = &
-                         visc*(dvdxp-dvdxm)*dxi + &
-                         visc*(dvdyp-dvdym)*dyi
-          dvdtd_z_s  = &
-                         visc*(dvdzp-dvdzm)*dzfi(k)
-          dvdt_s     = &
-                             -(uvip -uvim )*dxi - &
-                              (vvjp -vvjm )*dyi - &
-                              (wvkp -wvkm )*dzfi(k)
-          !
-          ! z diffusion
-          !
-          dwdxp = (w_pcc-w_ccc)*dxi
-          dwdxm = (w_ccc-w_mcc)*dxi
-          dwdyp = (w_cpc-w_ccc)*dyi
-          dwdym = (w_ccc-w_cmc)*dyi
-          dwdzp = (w_ccp-w_ccc)*dzfi(k+1)
-          dwdzm = (w_ccc-w_ccm)*dzfi(k  )
-          !
-          ! z advection
-          !
-          uwip  = 0.25*(w_ccc+w_pcc)*(u_ccc+u_ccp)
-          uwim  = 0.25*(w_ccc+w_mcc)*(u_mcc+u_mcp)
-          vwjp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)
-          vwjm  = 0.25*(w_ccc+w_cmc)*(v_cmc+v_cmp)
-          wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)
-          wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)
-          !
-          dwdtd_xy_s =  &
-                          visc*(dwdxp-dwdxm)*dxi + &
-                          visc*(dwdyp-dwdym)*dyi
-          dwdtd_z_s =   &
-                          visc*(dwdzp-dwdzm)*dzci(k)
-          dwdt_s     =  &
-                              -(uwip -uwim )*dxi - &
-                               (vwjp -vwjm )*dyi - &
-                               (wwkp -wwkm )*dzci(k)
-#if defined(_IMPDIFF)
-#if defined(_IMPDIFF_1D)
-          dudt_s = dudt_s + dudtd_xy_s
-          dvdt_s = dvdt_s + dvdtd_xy_s
-          dwdt_s = dwdt_s + dwdtd_xy_s
-          dudtd_s = dudtd_z_s
-          dvdtd_s = dvdtd_z_s
-          dwdtd_s = dwdtd_z_s
-#else
-          dudtd_s = dudtd_xy_s + dudtd_z_s
-          dvdtd_s = dvdtd_xy_s + dvdtd_z_s
-          dwdtd_s = dwdtd_xy_s + dwdtd_z_s
 #endif
-          dudt( i,j,k) = dudt_s
-          dvdt( i,j,k) = dvdt_s
-          dwdt( i,j,k) = dwdt_s
-          dudtd(i,j,k) = dudtd_s
-          dvdtd(i,j,k) = dvdtd_s
-          dwdtd(i,j,k) = dwdtd_s
-#else
-          dudt_s = dudt_s + dudtd_xy_s + dudtd_z_s
-          dvdt_s = dvdt_s + dvdtd_xy_s + dvdtd_z_s
-          dwdt_s = dwdt_s + dwdtd_xy_s + dwdtd_z_s
-          dudt(i,j,k) = dudt_s
-          dvdt(i,j,k) = dvdt_s
-          dwdt(i,j,k) = dwdt_s
-#endif
-        end do
-      end do
-    end do
-  end subroutine mom_xyz_ad
 end module mod_mom
