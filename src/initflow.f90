@@ -18,7 +18,7 @@ module mod_initflow
     ! computes initial conditions for the velocity field
     !
     implicit none
-    character(len=3), intent(in) :: inivel
+    character(len=*), intent(in) :: inivel
     real(rp), intent(in), dimension(0:1,3,3) :: bcvel
     integer , intent(in), dimension(3) :: ng,lo
     real(rp), intent(in), dimension(3) :: l,dl
@@ -240,7 +240,7 @@ module mod_initflow
     ! computes initial conditions for the velocity field
     !
     implicit none
-    character(len=3), intent(in) :: inisca
+    character(len=*), intent(in) :: inisca
     real(rp), intent(in), dimension(0:1,3) :: bcsca
     integer , intent(in), dimension(3) :: ng,lo
     real(rp), intent(in), dimension(3) :: l,dl
