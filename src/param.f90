@@ -20,19 +20,16 @@ real(rp), parameter :: eps = 0._rp
 #endif
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
 character(len=100), parameter :: datadir = 'data/'
-real(rp), parameter, dimension(2,3) :: rkcoeff = reshape([32._rp/60._rp,  0._rp        , &
-                                                          25._rp/60._rp, -17._rp/60._rp, &
-                                                          45._rp/60._rp, -25._rp/60._rp], shape(rkcoeff))
-real(rp), parameter, dimension(3)   :: rkcoeff12 = rkcoeff(1,:)+rkcoeff(2,:)
 !
 ! variables to be determined from the input file 'dns.in'
 !
-integer , protected :: itot,jtot,ktot
-real(rp), protected :: lx,ly,lz,dx,dy,dz,dxi,dyi,dzi,gr
+integer , protected, dimension(3) :: ng
+real(rp), protected, dimension(3) :: l
+real(rp), protected :: gr
+integer , protected :: gt
 real(rp), protected :: cfl,dtmin
-real(rp), protected :: visci
 !
-character(len=100), protected :: inivel
+character(len=100), protected :: inivel,inisca
 logical, protected :: is_wallturb
 !
 integer , protected :: nstep
@@ -51,15 +48,17 @@ real(rp)        , protected, dimension(0:1,3,3) ::   bcvel
 character(len=1), protected, dimension(0:1,3)   ::  cbcpre
 real(rp)        , protected, dimension(0:1,3)   ::   bcpre
 !
-real(rp), protected, dimension(3) :: bforce
-logical , protected, dimension(3) :: is_forced
-real(rp), protected, dimension(3) :: velf
+real(rp), protected, dimension(3) :: bforce,gacc
 !
-integer , protected, dimension(3) :: ng
-real(rp), protected, dimension(3) :: l
-real(rp), protected, dimension(3) :: dl
-real(rp), protected, dimension(3) :: dli
-real(rp), protected :: visc
+real(rp), protected, dimension(3) :: dl,dli
+!
+! two-fluid input parameters
+!
+real(rp), protected, dimension(2) :: rho12,mu12
+real(rp), protected               :: sigma
+real(rp), protected, dimension(2) :: ka12,cp12,beta12
+character(len=100), protected :: inipsi
+real(rp), protected               :: rho0 ! not an input
 #if defined(_OPENACC)
 !
 ! cuDecomp input parameters
@@ -77,31 +76,35 @@ contains
   implicit none
   integer, intent(in) :: myid
   integer :: iunit,ierr
-    open(newunit=iunit,file='dns.in',status='old',action='read',iostat=ierr)
+  !
+  ! set default values for `dns` namelist
+  !
+  namelist /dns/ &
+                ng, &
+                l, &
+                gr,gt, &
+                cfl,dtmin, &
+                inivel,inisca, &
+                is_wallturb, &
+                nstep,time_max,tw_max, &
+                stop_type, &
+                restart,is_overwrite_save,nsaves_max, &
+                icheck,iout0d,iout1d,iout2d,iout3d,isave, &
+                cbcvel,cbcpre,bcvel,bcpre, &
+                bforce,gacc, &
+                dims
+  !
+  ! set default values for `twofluid` namelist
+  !
+  rho0 = 1.
+  namelist /twofluid/ &
+                  rho12,mu12,sigma, &
+                  ka12,cp12,beta12, &
+                  inipsi
+    open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
       if( ierr == 0 ) then
-        read(iunit,*,iostat=ierr) itot,jtot,ktot
-        read(iunit,*,iostat=ierr) lx,ly,lz
-        read(iunit,*,iostat=ierr) gr
-        read(iunit,*,iostat=ierr) cfl,dtmin
-        read(iunit,*,iostat=ierr) visci
-        read(iunit,*,iostat=ierr) inivel
-        read(iunit,*,iostat=ierr) is_wallturb
-        read(iunit,*,iostat=ierr) nstep, time_max,tw_max
-        read(iunit,*,iostat=ierr) stop_type(1),stop_type(2),stop_type(3)
-        read(iunit,*,iostat=ierr) restart,is_overwrite_save,nsaves_max; if( ierr /= 0 ) nsaves_max = 0 ! a good default, for backward compatibility
-        read(iunit,*,iostat=ierr) icheck,iout0d,iout1d,iout2d,iout3d,isave
-        read(iunit,*,iostat=ierr) cbcvel(0,1,1),cbcvel(1,1,1),cbcvel(0,2,1),cbcvel(1,2,1),cbcvel(0,3,1),cbcvel(1,3,1)
-        read(iunit,*,iostat=ierr) cbcvel(0,1,2),cbcvel(1,1,2),cbcvel(0,2,2),cbcvel(1,2,2),cbcvel(0,3,2),cbcvel(1,3,2)
-        read(iunit,*,iostat=ierr) cbcvel(0,1,3),cbcvel(1,1,3),cbcvel(0,2,3),cbcvel(1,2,3),cbcvel(0,3,3),cbcvel(1,3,3)
-        read(iunit,*,iostat=ierr) cbcpre(0,1  ),cbcpre(1,1  ),cbcpre(0,2  ),cbcpre(1,2  ),cbcpre(0,3  ),cbcpre(1,3  )
-        read(iunit,*,iostat=ierr)  bcvel(0,1,1), bcvel(1,1,1), bcvel(0,2,1), bcvel(1,2,1), bcvel(0,3,1), bcvel(1,3,1)
-        read(iunit,*,iostat=ierr)  bcvel(0,1,2), bcvel(1,1,2), bcvel(0,2,2), bcvel(1,2,2), bcvel(0,3,2), bcvel(1,3,2)
-        read(iunit,*,iostat=ierr)  bcvel(0,1,3), bcvel(1,1,3), bcvel(0,2,3), bcvel(1,2,3), bcvel(0,3,3), bcvel(1,3,3)
-        read(iunit,*,iostat=ierr)  bcpre(0,1  ), bcpre(1,1  ), bcpre(0,2  ), bcpre(1,2  ), bcpre(0,3  ), bcpre(1,3  )
-        read(iunit,*,iostat=ierr)  bforce(1),bforce(2),bforce(3)
-        read(iunit,*,iostat=ierr)  is_forced(1),is_forced(2),is_forced(3)
-        read(iunit,*,iostat=ierr)  velf(1),velf(2),velf(3)
-        read(iunit,*,iostat=ierr) dims(1),dims(2)
+        read(iunit,nml=dns,iostat=ierr)
+        read(iunit,nml=twofluid,iostat=ierr)
       else
         if(myid == 0) print*, 'Error reading the input file'
         if(myid == 0) print*, 'Aborting...'
@@ -109,82 +112,74 @@ contains
         error stop
       end if
     close(iunit)
-    dx = lx/(1.*itot)
-    dy = ly/(1.*jtot)
-    dz = lz/(1.*ktot)
-    dxi = dx**(-1)
-    dyi = dy**(-1)
-    dzi = dz**(-1)
-    !
-    visc = visci**(-1)
-    ng  = [itot,jtot,ktot]
-    l   = [lx,ly,lz]
-    dl  = [dx,dy,dz]
-    dli = [dxi,dyi,dzi]
+    dl(:) = l(:)/(1.*ng(:))
+    dli(:) = dl(:)**(-1)
+#if defined(_CONSTANT_COEFFS_POISSON)
+    rho0 = minval(rho12(:))
+#endif
 #if defined(_OPENACC)
-    !
-    ! read cuDecomp parameter file cudecomp.in, if it exists
-    !
-    ! defaults
-    !
-    cudecomp_is_t_comm_autotune  = .true.
-    cudecomp_is_h_comm_autotune  = .true.
-    cudecomp_is_t_enable_nccl    = .true.
-    cudecomp_is_h_enable_nccl    = .true.
-    cudecomp_is_t_enable_nvshmem = .true.
-    cudecomp_is_h_enable_nvshmem = .true.
-    inquire(file='cudecomp.in', exist = exists)
-    if(exists) then
-      open(newunit=iunit,file='cudecomp.in',status='old',action='read',iostat=ierr)
-        if( ierr == 0 ) then
-          read(iunit,*) cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem
-          read(iunit,*) cudecomp_h_comm_backend,cudecomp_is_h_enable_nccl,cudecomp_is_h_enable_nvshmem
-          if(cudecomp_t_comm_backend >= 1 .and. cudecomp_t_comm_backend <= 7) then
-            cudecomp_is_t_comm_autotune = .false. ! do not autotune if backend is prescribed
-            select case(cudecomp_t_comm_backend)
-            case(1)
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P
-            case(2)
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL
-            case(3)
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_A2A
-            case(4)
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NCCL
-            case(5)
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NCCL_PL
-            case(6)
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NVSHMEM
-            case(7)
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL
-            case default
-              cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P
-            end select
-          end if
-          if(cudecomp_h_comm_backend >= 1 .and. cudecomp_h_comm_backend <= 4) then
-            cudecomp_is_h_comm_autotune = .false. ! do not autotune if backend is prescribed
-            select case(cudecomp_h_comm_backend)
-            case(1)
-              cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_MPI
-            case(2)
-              cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_MPI_BLOCKING
-            case(3)
-              cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_NCCL
-            case(4)
-              cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_NVSHMEM
-            case(5)
-              cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING
-            case default
-              cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_MPI
-            end select
-          end if
-        else
-          if(myid == 0) print*, 'Error reading the input file'
-          if(myid == 0) print*, 'Aborting...'
-          call MPI_FINALIZE(ierr)
-          error stop
-        end if
-      close(iunit)
+  !
+  ! set default values for `cudecomp` namelist
+  !
+  cudecomp_t_comm_backend = 0 ! autotune
+  cudecomp_h_comm_backend = 0 ! autotune
+  cudecomp_is_t_comm_autotune  = .true.
+  cudecomp_is_h_comm_autotune  = .true.
+  cudecomp_is_t_enable_nccl    = .true.
+  cudecomp_is_h_enable_nccl    = .true.
+  cudecomp_is_t_enable_nvshmem = .true.
+  cudecomp_is_h_enable_nvshmem = .true.
+  namelist /cudecomp/ &
+                     cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
+                     cudecomp_h_comm_backend,cudecomp_is_h_enable_nccl,cudecomp_is_h_enable_nvshmem
+  open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
+    if( ierr == 0 ) then
+      read(iunit,nml=cudecomp,iostat=ierr)
+    else
+      if(myid == 0) print*, 'Error reading the input file'
+      if(myid == 0) print*, 'Aborting...'
+      call MPI_FINALIZE(ierr)
+      error stop
     end if
+  close(iunit)
+  if(cudecomp_t_comm_backend >= 1 .and. cudecomp_t_comm_backend <= 7) then
+    cudecomp_is_t_comm_autotune = .false. ! do not autotune if backend is prescribed
+    select case(cudecomp_t_comm_backend)
+    case(1)
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P
+    case(2)
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL
+    case(3)
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_A2A
+    case(4)
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NCCL
+    case(5)
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NCCL_PL
+    case(6)
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NVSHMEM
+    case(7)
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL
+    case default
+      cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P
+    end select
+  end if
+  if(cudecomp_h_comm_backend >= 1 .and. cudecomp_h_comm_backend <= 4) then
+    cudecomp_is_h_comm_autotune = .false. ! do not autotune if backend is prescribed
+    select case(cudecomp_h_comm_backend)
+    case(1)
+      cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_MPI
+    case(2)
+      cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_MPI_BLOCKING
+    case(3)
+      cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_NCCL
+    case(4)
+      cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_NVSHMEM
+    case(5)
+      cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING
+    case default
+      cudecomp_h_comm_backend = CUDECOMP_HALO_COMM_MPI
+    end select
+  end if
     !
     ! manually set cuDecomp out-of-place transposes by default
     !

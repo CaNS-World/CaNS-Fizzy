@@ -58,9 +58,7 @@ module mod_solver_gpu
     select case(ipencil_axis)
     case(1)
       !$acc kernels default(present) async(1)
-      !$OMP PARALLEL WORKSHARE
       px(1:n(1),1:n(2),1:n(3)) = p(1:n(1),1:n(2),1:n(3))
-      !$OMP END PARALLEL WORKSHARE
       !$acc end kernels
     case(2)
       block
@@ -69,8 +67,6 @@ module mod_solver_gpu
         ! transpose p -> py to axis-contiguous layout
         !
         !$acc parallel loop collapse(3) default(present) async(1)
-        !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(NONE) &
-        !$OMP SHARED(n,p,py)
         do k=1,n(3)
           do j=1,n(2)
             do i=1,n(1)
@@ -84,9 +80,7 @@ module mod_solver_gpu
       !$acc end host_data
     case(3)
       !$acc kernels default(present) async(1)
-      !$OMP PARALLEL WORKSHARE
       pz(1:n(1),1:n(2),1:n(3)) = p(1:n(1),1:n(2),1:n(3))
-      !$OMP END PARALLEL WORKSHARE
       !$acc end kernels
       !$acc host_data use_device(pz,py,px,work)
       istat = cudecompTransposeZtoY(ch,gd,pz,py,work,dtype_rp,stream=istream)
@@ -137,9 +131,7 @@ module mod_solver_gpu
     select case(ipencil_axis)
     case(1)
       !$acc kernels default(present) async(1)
-      !$OMP PARALLEL WORKSHARE
       p(1:n(1),1:n(2),1:n(3)) = px(1:n(1),1:n(2),1:n(3))*normfft
-      !$OMP END PARALLEL WORKSHARE
       !$acc end kernels
     case(2)
       !$acc host_data use_device(px,py,work)
@@ -151,8 +143,6 @@ module mod_solver_gpu
         ! transpose py -> p to default layout
         !
         !$acc parallel loop collapse(3) default(present) async(1)
-        !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(NONE) &
-        !$OMP SHARED(n,p,py)
         do k=1,n(3)
           do j=1,n(2)
             do i=1,n(1)
@@ -167,9 +157,7 @@ module mod_solver_gpu
       istat = cudecompTransposeYtoZ(ch,gd,py,pz,work,dtype_rp,stream=istream)
       !$acc end host_data
       !$acc kernels default(present) async(1)
-      !$OMP PARALLEL WORKSHARE
       p(1:n(1),1:n(2),1:n(3)) = pz(1:n(1),1:n(2),1:n(3))*normfft
-      !$OMP END PARALLEL WORKSHARE
       !$acc end kernels
     end select
   end subroutine solver_gpu
@@ -411,9 +399,7 @@ module mod_solver_gpu
     select case(ipencil_axis)
     case(1)
       !$acc kernels default(present) async(1)
-      !$OMP PARALLEL WORKSHARE
       px(:,:,:) = p(1:n(1),1:n(2),1:n(3))
-      !$OMP END PARALLEL WORKSHARE
       !$acc end kernels
       !$acc host_data use_device(px,py,pz,work)
       istat = cudecompTransposeXtoY(ch,gd,px,py,work,dtype_rp,stream=istream)
@@ -426,8 +412,6 @@ module mod_solver_gpu
         ! transpose p -> py to axis-contiguous layout
         !
         !$acc parallel loop collapse(3) default(present) async(1)
-        !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(NONE) &
-        !$OMP SHARED(n,p,py)
         do k=1,n(3)
           do j=1,n(2)
             do i=1,n(1)
@@ -467,9 +451,7 @@ module mod_solver_gpu
       istat = cudecompTransposeYtoX(ch,gd,py,px,work,dtype_rp,stream=istream)
       !$acc end host_data
       !$acc kernels default(present) async(1)
-      !$OMP PARALLEL WORKSHARE
       p(1:n(1),1:n(2),1:n(3)) = px(:,:,:)
-      !$OMP END PARALLEL WORKSHARE
       !$acc end kernels
     case(2)
       !$acc host_data use_device(pz,py,work)
@@ -481,8 +463,6 @@ module mod_solver_gpu
         ! transpose py -> p to default layout
         !
         !$acc parallel loop collapse(3) default(present) async(1)
-        !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(NONE) &
-        !$OMP SHARED(n,p,py)
         do k=1,n(3)
           do j=1,n(2)
             do i=1,n(1)

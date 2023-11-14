@@ -12,20 +12,21 @@ module mod_chkdt
   private
   public chkdt
   contains
-  subroutine chkdt(n,dl,dzci,dzfi,visc,u,v,w,dtmax)
+  subroutine chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax)
     !
     ! computes maximum allowed time step
+    ! see Kang et al. JCP 15, 323–360
     !
     implicit none
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dl
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in) :: visc
+    real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3)
     real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(out) :: dtmax
     real(rp) :: dxi,dyi,dzi
     real(rp) :: ux,uy,uz,vx,vy,vz,wx,wy,wz
-    real(rp) :: dtix,dtiy,dtiz,dti
+    real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dti
     integer :: i,j,k
     real(rp), save :: dlmin
     logical , save :: is_first = .true.
@@ -36,19 +37,13 @@ module mod_chkdt
     if(is_first) then ! calculate dlmin only once
       is_first = .false.
       dlmin     = minval(dl(1:2))
-#if !defined(_IMPDIFF_1D)
       dlmin     = min(dlmin,minval(1./dzfi))
-#endif
       call MPI_ALLREDUCE(MPI_IN_PLACE,dlmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
     end if
     !
     dti = 0.
     !$acc data copy(dti) async(1)
     !$acc parallel loop collapse(3) default(present) private(ux,uy,uz,vx,vy,vz,wx,wy,wz,dtix,dtiy,dtiz) reduction(max:dti) async(1)
-    !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP SHARED(n,u,v,w,dxi,dyi,dzi,dzci,dzfi) &
-    !$OMP PRIVATE(ux,uy,uz,vx,vy,vz,wx,wy,wz,dtix,dtiy,dtiz) &
-    !$OMP REDUCTION(max:dti)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -71,11 +66,16 @@ module mod_chkdt
     !$acc end data
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,dti,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
+    dtiv = maxval(mu12(:)/rho12(:))*2.*(3./dlmin**2)
+    dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
+    dtig = maxval(abs(gacc))/dlmin
+    dti = 2.*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))**(-1)
     if(dti == 0.) dti = 1.
-#if defined(_IMPDIFF) && !defined(_IMPDIFF_1D)
-    dtmax = sqrt(3.)/dti
-#else
-    dtmax = min(1.65/12./visc*dlmin**2,sqrt(3.)/dti)
+    dtmax = dti**(-1)
+#if defined(_SCALAR)
+    dti = maxval(kappa12(:)/rhocp12(:))/dlmin**2
+    if(dti == 0.) dti = 1.
+    dtmax = min(dtmax,dti**(-1))
 #endif
   end subroutine chkdt
 end module mod_chkdt

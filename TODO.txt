@@ -1,13 +1,5 @@
-  - add 1. two-fluid momentum and scalar fluxes routines
-  - add 2. Dong & Chen with incremental pressure correction with CN2
-  - add 2.1 variable time step
-  - add 3. surface tension
-  - add 3. Boussinesq term
-  - add 5. zero net acceleration
-  - add 6. possibility for variable-coefficients solver using hypre
-  - add nameoptions I/O
-  - add single field I/O
-  - add basic example files
-  - cleanup some single-phase related stuff ?
-  - VOF: add VoF fluxes allowing also for a possible (1) source term and (2) non-zero divergence of interface advection velocity
-  - VOF: add computation of the d parameter
+  - add 3. in param.f90 - have the same parameters in input.nml as in CaNS (excl flow forcing?)
+  - add 3. things would work similarly for initscal
+  - add 3. namelists I/O and add an external bubble position radius and 2D parameters 0.5 0.5 0.5 0.25 T T T for a 3D bubble at [0.5,0.5,0.5] w/ radius 0.25
+  - add 3. basic example files
+  - add 3. multiphase tests

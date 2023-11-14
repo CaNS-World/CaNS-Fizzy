@@ -16,7 +16,7 @@ module mod_load
   private
   public load,io_field
   contains
-  subroutine load(io,filename,comm,ng,nh,lo,hi,u,v,w,p,time,istep)
+  subroutine load(io,filename,comm,ng,nh,lo,hi,p,time,istep)
     !
     ! reads/writes a restart file
     !
@@ -25,7 +25,7 @@ module mod_load
     character(len=*), intent(in) :: filename
     integer         , intent(in) :: comm
     integer , intent(in), dimension(3) :: ng,nh,lo,hi
-    real(rp), intent(inout), dimension(lo(1)-nh(1):,lo(2)-nh(2):,lo(3)-nh(3):) :: u,v,w,p
+    real(rp), intent(inout), dimension(lo(1)-nh(1):,lo(2)-nh(2):,lo(3)-nh(3):) :: p
     real(rp), intent(inout) :: time
     integer , intent(inout) :: istep
     real(rp), dimension(2) :: fldinfo
@@ -41,7 +41,7 @@ module mod_load
       ! check file size first
       !
       call MPI_FILE_GET_SIZE(fh,filesize,ierr)
-      good = (product(int(ng(:),MPI_OFFSET_KIND))*4+2)*f_sizeof(1._rp)
+      good = (product(int(ng(:),MPI_OFFSET_KIND))*1+2)*f_sizeof(1._rp)
       if(filesize /= good) then
         if(myid == 0) print*, ''
         if(myid == 0) print*, '*** Simulation aborted due a checkpoint file with incorrect size ***'
@@ -54,9 +54,6 @@ module mod_load
       !
       disp = 0_MPI_OFFSET_KIND
 #if !defined(_DECOMP_X_IO)
-      call io_field(io,fh,ng,nh,lo,hi,disp,u)
-      call io_field(io,fh,ng,nh,lo,hi,disp,v)
-      call io_field(io,fh,ng,nh,lo,hi,disp,w)
       call io_field(io,fh,ng,nh,lo,hi,disp,p)
 #else
       block
@@ -78,12 +75,6 @@ module mod_load
                    tmp_y(ystart(1):yend(1),ystart(2):yend(2),ystart(3):yend(3)), &
                    tmp_z(zstart(1):zend(1),zstart(2):zend(2),zstart(3):zend(3)))
         end select
-        call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
-        call transpose_to_or_from_x(io,ipencil,nh,u,tmp_x,tmp_y,tmp_z)
-        call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
-        call transpose_to_or_from_x(io,ipencil,nh,v,tmp_x,tmp_y,tmp_z)
-        call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
-        call transpose_to_or_from_x(io,ipencil,nh,w,tmp_x,tmp_y,tmp_z)
         call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
         call transpose_to_or_from_x(io,ipencil,nh,p,tmp_x,tmp_y,tmp_z)
         deallocate(tmp_x,tmp_y,tmp_z)
@@ -107,9 +98,6 @@ module mod_load
       call MPI_FILE_SET_SIZE(fh,filesize,ierr)
       disp = 0_MPI_OFFSET_KIND
 #if !defined(_DECOMP_X_IO)
-      call io_field(io,fh,ng,nh,lo,hi,disp,u)
-      call io_field(io,fh,ng,nh,lo,hi,disp,v)
-      call io_field(io,fh,ng,nh,lo,hi,disp,w)
       call io_field(io,fh,ng,nh,lo,hi,disp,p)
 #else
       block
@@ -131,12 +119,6 @@ module mod_load
                    tmp_y(ystart(1):yend(1),ystart(2):yend(2),ystart(3):yend(3)), &
                    tmp_z(zstart(1):zend(1),zstart(2):zend(2),zstart(3):zend(3)))
         end select
-        call transpose_to_or_from_x(io,ipencil,nh,u,tmp_x,tmp_y,tmp_z)
-        call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
-        call transpose_to_or_from_x(io,ipencil,nh,v,tmp_x,tmp_y,tmp_z)
-        call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
-        call transpose_to_or_from_x(io,ipencil,nh,w,tmp_x,tmp_y,tmp_z)
-        call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
         call transpose_to_or_from_x(io,ipencil,nh,p,tmp_x,tmp_y,tmp_z)
         call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
         deallocate(tmp_x,tmp_y,tmp_z)
@@ -204,13 +186,9 @@ module mod_load
       select case(io)
       case('r')
         call transpose_x_to_y(var_x,var_y)
-        !$OMP PARALLEL WORKSHARE
         var(1:n(1),1:n(2),1:n(3)) = var_y(:,:,:)
-        !$OMP END PARALLEL WORKSHARE
       case('w')
-        !$OMP PARALLEL WORKSHARE
         var_y(:,:,:) = var(1:n(1),1:n(2),1:n(3))
-        !$OMP END PARALLEL WORKSHARE
         call transpose_y_to_x(var_y,var_x)
       end select
     case(3)
@@ -218,13 +196,9 @@ module mod_load
       case('r')
         call transpose_x_to_y(var_x,var_y)
         call transpose_y_to_z(var_y,var_z)
-        !$OMP PARALLEL WORKSHARE
         var(1:n(1),1:n(2),1:n(3)) = var_z(:,:,:)
-        !$OMP END PARALLEL WORKSHARE
       case('w')
-        !$OMP PARALLEL WORKSHARE
         var_z(:,:,:) = var(1:n(1),1:n(2),1:n(3))
-        !$OMP END PARALLEL WORKSHARE
         call transpose_z_to_y(var_z,var_y)
         call transpose_y_to_x(var_y,var_x)
       end select

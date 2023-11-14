@@ -12,7 +12,6 @@ module mod_fft
 #if defined(_OPENACC)
   use mod_utils     , only: f_sizeof
 #endif
-  !$ use omp_lib
   private
   public fftini,fftend,fft
   !@acc public signal_processing,fftf_gpu,fftb_gpu
@@ -48,13 +47,6 @@ module mod_fft
 #if defined(_OPENACC)
     integer :: istat,batch
     integer(int_ptr_kind()) :: wsize,max_wsize
-#endif
-#if defined(_SINGLE_PRECISION)
-    !$ call sfftw_init_threads(ierr)
-    !$ call sfftw_plan_with_nthreads(omp_get_max_threads())
-#else
-    !$ call dfftw_init_threads(ierr)
-    !$ call dfftw_plan_with_nthreads(omp_get_max_threads())
 #endif
 #if !defined(_OPENACC)
     nx_x = n_x(1)

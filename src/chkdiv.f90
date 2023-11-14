@@ -22,21 +22,15 @@ module mod_chkdiv
     real(rp), intent(in), dimension(lo(3)-1:) :: dzfi
     real(rp), intent(in), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: u,v,w
     real(rp), intent(out) :: divtot,divmax
-    real(rp) :: dxi,dyi,div!,dzi
+    real(rp) :: dxi,dyi,div
     integer :: i,j,k
     !
     dxi = dli(1)
     dyi = dli(2)
-    !dzi = dli(3)
     divtot = 0.
     divmax = 0.
     !$acc data copy(divtot,divmax) async(1)
     !$acc parallel loop collapse(3) default(present) private(div) reduction(+:divtot) reduction(max:divmax) async(1)
-    !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP SHARED(lo,hi,u,v,w,dxi,dyi,dzfi) &
-    !$OMP PRIVATE(div) &
-    !$OMP REDUCTION(+:divtot) &
-    !$OMP REDUCTION(max:divmax)
     do k=lo(3),hi(3)
       do j=lo(2),hi(2)
         do i=lo(1),hi(1)
@@ -45,7 +39,6 @@ module mod_chkdiv
                 (u(i,j,k)-u(i-1,j,k))*dxi
           divmax = max(divmax,abs(div))
           divtot = divtot + div
-          !if(abs(div) >= 1.e-12) print*,div,'Large divergence at grid cell: ',i,j,k,div
         end do
       end do
     end do

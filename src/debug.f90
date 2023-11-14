@@ -55,7 +55,6 @@ module mod_debug
                   (fpp(i,j,k  )-fpp(i,j,k-1))*dzci(k-1))*dzfi(k) )
             val = val*alpha
             diffmax = max(diffmax,abs(val-fp(i,j,k)))
-            !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val-fp(i,j,k),i,j,k
           end do
         end do
       end do
@@ -71,7 +70,6 @@ module mod_debug
                   (fpp(i,j,k  )-fpp(i,j,k-1))*dzfi(k ))*dzci(k) )
             val = val*alpha
             diffmax = max(diffmax,abs(val-fp(i,j,k)))
-            !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val,fp(i,j,k),i,j,k
           end do
         end do
       end do
@@ -79,6 +77,7 @@ module mod_debug
     !$acc end data
     call MPI_ALLREDUCE(MPI_IN_PLACE,diffmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
   end subroutine chk_helmholtz
+  !
   subroutine chk_poisson(lo,hi,dli,dzci,dzfi,fp,fpp,diffmax)
     !
     ! this subroutine checks if the Poisson equation is correctly solved;
@@ -107,7 +106,6 @@ module mod_debug
                ((fpp(i,j,k+1)-fpp(i,j,k  ))*dzci(k ) - &
                 (fpp(i,j,k  )-fpp(i,j,k-1))*dzci(k-1))*dzfi(k)
           diffmax = max(diffmax,abs(val-fp(i,j,k)))
-          !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val-fp(i,j,k),i,j,k
         end do
       end do
     end do

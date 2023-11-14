@@ -36,8 +36,6 @@ module mod_fillps
     !dtidzi = dti*dli(3)
     !dtidzfi(:) = dti*dzfi(:)
     !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP SHARED(n,p,u,v,w,dti,dzfi,dtidyi,dtidxi)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
