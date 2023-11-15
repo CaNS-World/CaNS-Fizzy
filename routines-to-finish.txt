@@ -29,10 +29,7 @@ src/mom.f90
 
 # NOT DONE:
 src/initflow.f90
-src/forcing.f90
 src/main.f90
-src/output.f90
-src/param.f90
 src/rk.f90
 src/sanity.f90
 src/solver_vc.f90
