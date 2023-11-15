@@ -2,4 +2,6 @@
   - add 3. things would work similarly for initscal
   - add 3. namelists I/O and add an external bubble position radius and 2D parameters 0.5 0.5 0.5 0.25 T T T for a 3D bubble at [0.5,0.5,0.5] w/ radius 0.25
   - add 3. basic example files
-  - add 3. multiphase tests
+  - add 3. momentum test - lid-driven cavity (done)
+  - add 3. multiphase tests (2D rising bubble and capillary wave)
+  - add 3. heat transfer tests (differentially heated cavity)
