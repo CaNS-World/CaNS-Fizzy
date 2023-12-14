@@ -208,6 +208,8 @@ module mod_two_fluid
       grid_vol_ratio = 1./(1.*nbox**3)
       iperiod(:) = 0
       where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
+      eps = max(dl(1),dl(2),maxval(dzf(:)))*sqrt(3._rp)/2.
+      !
       do k=lo(3),hi(3)
         z = zc(k)
         do j=lo(2),hi(2)
