@@ -47,6 +47,8 @@ character(len=1), protected, dimension(0:1,3,3) ::  cbcvel
 real(rp)        , protected, dimension(0:1,3,3) ::   bcvel
 character(len=1), protected, dimension(0:1,3)   ::  cbcpre
 real(rp)        , protected, dimension(0:1,3)   ::   bcpre
+character(len=1), protected, dimension(0:1,3)   ::  cbcpsi
+real(rp)        , protected, dimension(0:1,3)   ::   bcpsi
 character(len=1), protected, dimension(0:1,3)   ::  cbcsca
 real(rp)        , protected, dimension(0:1,3)   ::   bcsca
 !
