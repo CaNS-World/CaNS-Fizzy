@@ -85,7 +85,7 @@ contains
                   l, &
                   gtype,gr, &
                   cfl,dtmin, &
-                  inivel,inisca,inipsi, &
+                  inivel,inisca, &
                   is_wallturb, &
                   nstep,time_max,tw_max, &
                   stop_type, &
@@ -95,9 +95,9 @@ contains
                   bforce,gacc, &
                   dims
     namelist /two_fluid/ &
+                  inipsi, &
                   rho12,mu12,sigma, &
-                  ka12,cp12,beta12, &
-                  inipsi
+                  ka12,cp12,beta12
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -107,16 +107,6 @@ contains
     open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
       if( ierr == 0 ) then
         read(iunit,nml=dns,iostat=ierr)
-        read(iunit,nml=two_fluid,iostat=ierr)
-      else
-        if(myid == 0) print*, 'Error reading the input file'
-        if(myid == 0) print*, 'Aborting...'
-        call MPI_FINALIZE(ierr)
-        error stop
-      end if
-    close(iunit)
-    open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
-      if( ierr == 0 ) then
         read(iunit,nml=two_fluid,iostat=ierr)
       else
         if(myid == 0) print*, 'Error reading the input file'
