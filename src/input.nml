@@ -2,13 +2,13 @@
 ng(1:3) = 64, 64,  64
 l(1:3)  = 1., 1., 1.
 gtype = 1, gr = 0.
-cfl = 0.95, dtmin = 1.e9
+cfl = 0.95, dtmin = 1.e-4
 inivel = 'zer', inisca = 'uni'
 is_wallturb = T
-nstep = 100000, time_max = 100., tw_max = 0.1
+nstep = 11, time_max = 100., tw_max = 0.1
 stop_type(1:3) = T, F, F
 restart = F, is_overwrite_save = T, nsaves_max = 0
-icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 10000, isave = 5000
+icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 10, isave = 5000
 cbcvel(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
 cbcvel(0:1,1:3,2) = 'P','P',  'P','P',  'P','P'
 cbcvel(0:1,1:3,3) = 'P','P',  'P','P',  'P','P'
@@ -25,12 +25,12 @@ dims(1:2) = 0, 0
 \
 
 &two_fluid
-sigma        = 0.
+sigma        = 1.
 mu12(1:2)    = 100., 100.
 rho12(1:2)   = 1., 1.
-kappa12(1:2) = 1., 1.
-cp12(1:2)    = 1., 1.
-beta12(1:2)  = 1., 1.
+kappa12(1:2) = 0., 0.
+cp12(1:2)    = 0., 0.
+beta12(1:2)  = 0., 0.
 inipsi       = 'bub'
 \
 
