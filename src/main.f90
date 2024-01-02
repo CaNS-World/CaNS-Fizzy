@@ -55,15 +55,15 @@ program cans
                                  inivel,    &
                                  is_wallturb, &
                                  dims, &
-                                 gr,gt, &
+                                 gtype,gr, &
                                  bforce, &
                                  ng,l,dl,dli, &
                                  read_input, &
-                                 rho0,rho12,mu12,sigma,gacc,ka12
-#if 0
-  use mod_sanity         , only: test_sanity_input,test_sanity_solver
+                                 rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12
+#if 1
+  use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_two_fluid
+  use mod_two_fluid      , only: initvof,cmpt_norm_curv
 #if !defined(_OPENACC)
   use mod_solver         , only: solver
 #else
@@ -73,14 +73,13 @@ program cans
 #endif
   use mod_timer          , only: timer_tic,timer_toc,timer_print
   use mod_updatep        , only: updatep,extrapl_p
-  use mod_utils          , only: bulk_mean
+  use mod_utils          , only: bulk_mean,bulk_mean_12
   !@acc use mod_utils    , only: device_memory_footprint
   use mod_types
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
   real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,po,pp
-  real(rp), dimension(3) :: tauxo,tauyo,tauzo
-  real(rp), dimension(3) :: f
+  real(rp) :: rho_av
 #if !defined(_OPENACC)
   type(C_PTR), dimension(2,2) :: arrplanp
 #else
@@ -119,9 +118,13 @@ program cans
   integer :: rlen
   real(rp), dimension(2) :: tm_coeff
   !
+  ! scalar field
+  !
+  real(rp), allocatable, dimension(:,:,:) :: s
+  !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,kappa
+  real(rp), allocatable, dimension(:,:,:) :: psi,normx,normy,normz,kappa
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -144,6 +147,9 @@ program cans
            p( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            pp(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            po(0:n(1)+1,0:n(2)+1,0:n(3)+1))
+#if defined(_SCALAR)
+  allocate(s,mold=pp)
+#endif
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
   allocate(dzc( 0:n(3)+1), &
@@ -163,8 +169,7 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi  ,mold=pp)
-  allocate(kappa,mold=pp)
+  allocate(psi,normx,normy,normz,kappa,mold=pp)
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -180,7 +185,7 @@ program cans
   if(myid == 0) print*, '*** Beginning of simulation ***'
   if(myid == 0) print*, '*******************************'
   if(myid == 0) print*, ''
-  call initgrid(gt,ng(3),gr,l(3),dzc_g,dzf_g,zc_g,zf_g)
+  call initgrid(gtype,ng(3),gr,l(3),dzc_g,dzf_g,zc_g,zf_g)
   if(myid == 0) then
     inquire(iolength=rlen) 1._rp
     open(99,file=trim(datadir)//'grid.bin',access='direct',recl=4*ng(3)*rlen)
@@ -249,37 +254,42 @@ program cans
                           nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #endif
   !
+  fexts(1) = 'u'
+  fexts(2) = 'v'
+  fexts(3) = 'w'
+  fexts(4) = 'p'
+#if defined(_SCALAR)
+  fexts(5) = 's'
+#endif
   if(.not.restart) then
     istep = 0
     time = 0.
     !$acc update self(zc,dzc,dzf)
     call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,u,v,w,p)
+    po(:,:,:) = p(:,:,:)
 #if defined(_SCALAR)
-    call subroutine initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
+    call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
+    call initvof('bu3',cbcpre,lo,hi,l,dl,dzf_g,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition succesfully set ***'
   else
-    fexts(1) = 'u'
-    fexts(2) = 'v'
-    fexts(3) = 'w'
-    fexts(4) = 'p'
     call load('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
     call load('r',trim(datadir)//'fld_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
     call load('r',trim(datadir)//'fld_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
     call load('r',trim(datadir)//'fld_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
 #if defined(_SCALAR)
-    fexts(5) = '_s.bin'
     call load('r',trim(datadir)//'fld_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
-  !$acc enter data copyin(u,v,w,p) create(pp)
+  !$acc enter data copyin(u,v,w,p) create(pp,po)
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_SCALAR)
   !$acc enter data copyin(s)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
+  call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,psi)
   !
   ! post-process and write initial condition
   !
@@ -312,8 +322,22 @@ program cans
     call extrapl_p(dt,dto,p,po,pp)
 #endif
     tm_coeff(:) = [2.+dt/dto,-dt/dto]/2.
-    call rk(tm_coeff,n,dli,l,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f,dt,p, &
-            is_bound,bforce,tauxo,tauyo,tauzo,u,v,w,f)
+    !
+    ! VoF update comes here!
+    !
+    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,psi)
+    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,normx,normy,normz,kappa)
+    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,normx)
+    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,normy)
+    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,normz)
+    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,kappa)
+    rho_av = 0.
+    if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
+      call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
+    end if
+    call tm(tm_coeff(:),n,dli,dzci,dzfi,dt, &
+            bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,normx,normy,normz,kappa,s, &
+            p,pp,u,v,w)
     call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
     call fillps(n,dli,dzfi,dti,u,v,w,pp)
 #if defined(_CONSTANT_COEFFS_POISSON)
@@ -323,7 +347,7 @@ program cans
     !call solver_mg(n,dli,dzci,cbcpre,bcpre,psi,p,po)
 #endif
     call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
-    call correc(n,dli,dzci,rho0,rho12,dt,p,psi,u,v,w)
+    call correc(n,dli,dzci,rho0,rho12,dt,pp,psi,u,v,w)
     call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
     call updatep(pp,p)
     call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
@@ -417,9 +441,12 @@ program cans
         !
         ! fld_?.bin -> last checkpoint file (symbolic link)
         !
-        do k = 1,5
+        do k = 1,4
           call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin')
         end do
+#if defined(_SCALAR)
+        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 5 now
+#endif
       end if
       if(myid == 0) print*, '*** Checkpoints saved at time = ', time, 'time step = ', istep, '. ***'
     end if

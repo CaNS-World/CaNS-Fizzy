@@ -6,7 +6,7 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_mom  , only: mom_a
+  use mod_mom  , only: mom_xyz_all
   use mod_utils, only: swap
   use mod_types
   implicit none
@@ -42,7 +42,6 @@ module mod_rk
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
-    factor12 = factor1 + factor2
     !
     ! initialization
     !
@@ -65,7 +64,8 @@ module mod_rk
       dwdtrko => dwdtrko_t
     end if
     !
-    call mom_xyz_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,rho12,mu12,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_all(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,rho12,mu12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+                     u,v,w,p,pp,psi,kappa,s,dudtrk,dvdtrk,dwdtrk)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -83,22 +83,11 @@ module mod_rk
     call swap(dudtrk,dudtrko)
     call swap(dvdtrk,dvdtrko)
     call swap(dwdtrk,dwdtrko)
-    !
-    call mom_xyz_oth(n(1),n(2),n(3),dli(1),dli(2),dzci,rho12,beta12,bforce,gacc,sigma,rho0,rho_av,p,pp,psi,kappa,s,dudtrk,dvdtrk,dwdtrk)
-    !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          u(i,j,k) = u(i,j,k) + factor12*dudtrk(i,j,k)
-          v(i,j,k) = v(i,j,k) + factor12*dvdtrk(i,j,k)
-          w(i,j,k) = w(i,j,k) + factor12*dwdtrk(i,j,k)
-        end do
-      end do
-    end do
   end subroutine rk
   !
   subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dt, &
                      ssource,rho12,ka12,cp12,psi,u,v,w,s)
+  use mod_scal, only: scal_ad
     !
     ! low-storage 3rd-order Runge-Kutta scheme
     ! for time integration of the scalar field.
