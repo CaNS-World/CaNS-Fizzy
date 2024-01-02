@@ -130,6 +130,10 @@ ifeq ($(strip $(MASK_DIVERGENCE_CHECK)),1)
 DEFINES += -D_MASK_DIVERGENCE_CHECK
 endif
 
+ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),1)
+DEFINES += -D_CONSTANT_COEFFS_POISSON
+endif
+
 ifeq ($(strip $(OPENMP)),1)
 ifeq      ($(strip $(FCOMP)),GNU)
 override FFLAGS += -fopenmp
