@@ -37,3 +37,18 @@
   call write_visu_3d(datadir,'pre_fld_'//fldnum//'.bin','log_visu_3d.out','Pressure_P', &
                      [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      p(1:n(1),1:n(2),1:n(3)))
+  call write_visu_3d(datadir,'psi_fld_'//fldnum//'.bin','log_visu_3d.out','VoF', &
+                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                     psi(1:n(1),1:n(2),1:n(3)))
+  call write_visu_3d(datadir,'nox_fld_'//fldnum//'.bin','log_visu_3d.out','Norm_X', &
+                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                     normx(1:n(1),1:n(2),1:n(3)))
+  call write_visu_3d(datadir,'noy_fld_'//fldnum//'.bin','log_visu_3d.out','Norm_Y', &
+                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                     normy(1:n(1),1:n(2),1:n(3)))
+  call write_visu_3d(datadir,'noz_fld_'//fldnum//'.bin','log_visu_3d.out','Norm_Z', &
+                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                     normz(1:n(1),1:n(2),1:n(3)))
+  call write_visu_3d(datadir,'cur_fld_'//fldnum//'.bin','log_visu_3d.out','Kappa', &
+                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                     kappa(1:n(1),1:n(2),1:n(3)))
