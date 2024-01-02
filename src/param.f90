@@ -19,6 +19,7 @@ real(rp), parameter :: eps = epsilon(1._rp)
 real(rp), parameter :: eps = 0._rp
 #endif
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
+character(len=100), parameter :: datadir = 'data/'
 !
 ! variables to be determined from the input file
 !
@@ -82,7 +83,7 @@ contains
                   l, &
                   gtype,gr, &
                   cfl,dtmin, &
-                  inivel,inisca &
+                  inivel,inisca, &
                   is_wallturb, &
                   nstep,time_max,tw_max, &
                   stop_type, &
@@ -91,7 +92,7 @@ contains
                   cbcvel,cbcpre,cbcsca,bcvel,bcpre,bcsca, &
                   bforce,gacc, &
                   dims
-    namelist /twofluid/ &
+    namelist /two_fluid/ &
                   rho12,mu12,sigma, &
                   ka12,cp12,beta12, &
                   inipsi
@@ -104,7 +105,17 @@ contains
     open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
       if( ierr == 0 ) then
         read(iunit,nml=dns,iostat=ierr)
-        read(iunit,nml=twofluid,iostat=ierr)
+        read(iunit,nml=two_fluid,iostat=ierr)
+      else
+        if(myid == 0) print*, 'Error reading the input file'
+        if(myid == 0) print*, 'Aborting...'
+        call MPI_FINALIZE(ierr)
+        error stop
+      end if
+    close(iunit)
+    open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
+      if( ierr == 0 ) then
+        read(iunit,nml=two_fluid,iostat=ierr)
       else
         if(myid == 0) print*, 'Error reading the input file'
         if(myid == 0) print*, 'Aborting...'
