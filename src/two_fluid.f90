@@ -337,8 +337,9 @@ module mod_two_fluid
     close(iunit)
   end subroutine read_sphere_file
   !
-  real(rp) function smooth_step_sin(r,eps) result(res)
+  pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
     use mod_param, only:pi
+    !$acc routine seq 
     !
     ! smooth step function based on trigonometric functions
     !
@@ -354,7 +355,8 @@ module mod_two_fluid
     end if
   end function smooth_step_sin
   !
-  real(rp) function smooth_step_erf(r,eps) result(res)
+  pure elemental real(rp) function smooth_step_erf(r,eps) result(res)
+    !$acc routine seq 
     !
     ! smooth step function based on the error function
     !
@@ -362,10 +364,23 @@ module mod_two_fluid
     !
     real(rp), intent(in) :: r,eps
     !
-    res = .5*( 1.+erf(r/eps) )
+    res = .5*(1.+erf(r/eps))
   end function smooth_step_erf
   !
-  real(rp) function smooth_sign(delta,phi) result(res)
+  pure elemental real(rp) function smooth_step_tanh(r,eps) result(res)
+    !$acc routine seq 
+    !
+    ! smooth step function based on the error function
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: r,eps
+    !
+    res = .5*(1.+tanh(r/(2.*eps)))
+  end function smooth_step_tanh
+  !
+  pure elemental real(rp) function smooth_sign(delta,phi) result(res)
+    !$acc routine seq 
     !
     ! smooth sign function
     !
@@ -378,10 +393,11 @@ module mod_two_fluid
     end if
   end function smooth_sign
   !
-  real(rp) function smooth_impulse(r,eps) result(res)
+  pure elemental real(rp) function smooth_impulse(r,eps) result(res)
     use mod_param, only:pi
+    !$acc routine seq 
     !
-    ! smooth impulse Dirac delta function
+    ! smooth impulse Dirac delta function using trigonometric functions
     !
     implicit none
     !
