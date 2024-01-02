@@ -46,7 +46,6 @@ module mod_rk
     ! initialization
     !
     if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
-      is_first = .false.
       allocate(dudtrk_t( n(1),n(2),n(3)),dvdtrk_t( n(1),n(2),n(3)),dwdtrk_t( n(1),n(2),n(3)))
       allocate(dudtrko_t(n(1),n(2),n(3)),dvdtrko_t(n(1),n(2),n(3)),dwdtrko_t(n(1),n(2),n(3)))
       !$acc enter data create(dudtrk_t ,dvdtrk_t ,dwdtrk_t ) async(1)
@@ -66,6 +65,15 @@ module mod_rk
     !
     call mom_xyz_all(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,rho12,mu12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                      u,v,w,p,pp,psi,kappa,s,dudtrk,dvdtrk,dwdtrk)
+    !
+    if(is_first) then ! use Euler forward
+      !$acc kernels
+      dudtrko(:,:,:) = dudtrk(:,:,:)
+      dvdtrko(:,:,:) = dvdtrk(:,:,:)
+      dwdtrko(:,:,:) = dwdtrk(:,:,:)
+      !$acc end kernels
+      is_first = .false.
+    end if
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
