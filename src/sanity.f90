@@ -27,9 +27,9 @@ module mod_sanity
   use mod_types
   implicit none
   private
-  public test_sanity_input,test_sanity_solver
+  public test_sanity_input
   contains
-  subroutine test_sanity_input(ng,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre,is_forced)
+  subroutine test_sanity_input(ng,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre)
     !
     ! performs some a priori checks of the input files before the calculation starts
     !
@@ -41,20 +41,11 @@ module mod_sanity
     character(len=1), intent(in), dimension(0:1,3)   :: cbcpre
     real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
     real(rp)        , intent(in), dimension(0:1,3)   :: bcpre
-    logical         , intent(in), dimension(3)       :: is_forced
     logical :: passed
     !
     call chk_dims(ng,dims,passed);                 if(.not.passed) call abortit
     call chk_stop_type(stop_type,passed);          if(.not.passed) call abortit
     call chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed); if(.not.passed) call abortit
-    call chk_forcing(cbcpre,is_forced,passed);     if(.not.passed) call abortit
-#if defined(_IMPDIFF_1D) && !defined(_IMPDIFF)
-    if(myid == 0)  print*, 'ERROR: `_IMPDIFF_1D` cpp macro requires building with `_IMPDIFF` too.'; call abortit
-#endif
-#if defined(_IMPDIFF_1D) && !defined(_DECOMP_Z)
-    if(myid == 0)  print*, 'WARNING: a run with implicit Z diffusion (`_IMPDIFF_1D`) is much more efficient &
-                                   & when combined with a Z-pencils parallelization (`_DECOMP_Z`).'
-#endif
   end subroutine test_sanity_input
   !
   subroutine chk_stop_type(stop_type,passed)
@@ -174,6 +165,7 @@ module mod_sanity
   print*, 'ERROR: Flow cannot be forced in a non-periodic direction; check the BCs and is_forced in dns.in.'
   end subroutine chk_forcing
   !
+#if 0
   subroutine test_sanity_solver(ng,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z,dli,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g, &
                                 nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #if defined(_OPENACC)
@@ -256,6 +248,7 @@ module mod_sanity
       error stop
     end if
   end subroutine test_sanity_solver
+#endif
   !
   subroutine abortit
     implicit none
