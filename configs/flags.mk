@@ -91,12 +91,6 @@ endif
 ifeq ($(strip $(TIMING)),1)
 DEFINES += -D_TIMING
 endif
-ifeq ($(strip $(IMPDIFF)),1)
-DEFINES += -D_IMPDIFF
-endif
-ifeq ($(strip $(IMPDIFF_1D)),1)
-DEFINES += -D_IMPDIFF -D_IMPDIFF_1D
-endif
 ifeq      ($(strip $(DECOMP_X)),1)
 DEFINES += -D_DECOMP_X
 else ifeq ($(strip $(DECOMP_Y)),1)
