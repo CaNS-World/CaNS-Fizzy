@@ -64,6 +64,9 @@ program cans
   use mod_sanity         , only: test_sanity_input
 #endif
   use mod_two_fluid      , only: initvof,cmpt_norm_curv
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  use mod_solver_vc      , only: solver_vc
+#endif
 #if !defined(_OPENACC)
   use mod_solver         , only: solver
 #else
@@ -341,7 +344,7 @@ program cans
     call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,pp)
     call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp)
 #else
-    !call solver_mg(n,dli,dzci,cbcpre,bcpre,psi,p,po)
+    call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,p)
 #endif
     call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
     call correc(n,dli,dzci,rho0,rho12,dt,pp,psi,u,v,w)

@@ -1,23 +1,48 @@
 module mod_solver_vc
+#if !defined(_CONSTANT_COEFFS_POISSON)
   use mpi
   use mod_types
   use, intrinsic :: iso_c_binding, only: C_PTR
   implicit none
   integer :: ierr
   private
+  public solver_vc
   integer, parameter, public :: HYPRESolverSMG      = 1, &
                                 HYPRESolverPFMG     = 2, &
                                 HYPRESolverGMRES    = 3, &
                                 HYPRESolverBiCGSTAB = 4
-  public init_matrix_3d,create_solver,setup_solver, &
-         solve_helmholtz,finalize_matrix,finalize_solver, &
-         hypre_solver_t
   type hypre_solver_t
     type(C_PTR) :: grid,stencil,precond,solver,mat,rhs,sol
     integer     :: stype,comm_hypre
   end type hypre_solver_t
   contains
-  subroutine solver_vc(n,dli,dzci,cbcpre,bcpre,psi,p,po)
+  subroutine solver_vc(ng,lo,hi,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,po)
+    !
+    ! hypre solver parameter hard-coded for now
+    !
+    integer , parameter  :: maxiter  = 50
+    real(rp), parameter  :: maxerror = 1.e-3
+    integer , parameter  :: stype    = HYPRESolverSMG
+    type(hypre_solver_t) :: asolver
+    !
+    integer             , intent(in   ), dimension(3)                          :: ng,lo,hi
+    character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
+    real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
+    real(rp)            , intent(in   ), dimension(3)                          :: dli
+    real(rp)            , intent(in   ), dimension(lo(3)-1:)                   :: dzci,dzfi
+    logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
+    real(rp)            , intent(in   ), dimension(2)                          :: alpha12
+    real(rp)            , intent(in   ), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: psi
+    real(rp)            , intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p,po ! updt_rhs_b done here!
+    !
+    ! iterative solver created and destroyed every time step for now
+    !
+    call create_solver(maxiter,maxerror,stype,asolver)
+    call init_matrix_3d(ng,lo,hi,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
+    call setup_solver(asolver)
+    call solve_helmholtz(asolver,lo,hi,p,po)
+    call finalize_matrix(asolver)
+    call finalize_solver(asolver)
   end subroutine solver_vc
   !
   subroutine init_matrix_3d(ng,lo,hi,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
@@ -372,4 +397,5 @@ module mod_solver_vc
     call HYPRE_StructVectorDestroy(rhs,ierr)
     call HYPRE_StructVectorDestroy(sol,ierr)
   end subroutine finalize_matrix
+#endif
 end module mod_solver_vc

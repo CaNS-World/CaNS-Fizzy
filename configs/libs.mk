@@ -14,6 +14,11 @@ endif
 ifneq ($(strip $(GPU)),1)
 override LIBS += -lfftw3
 
+ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),0)
+HYPRE_HOME ?= ${HOME}/software/hypre
+override LIBS += -L$(HYPRE_HOME)/lib -lHYPRE
+endif
+
 ifeq ($(strip $(OPENMP)),1)
 override LIBS += -lfftw3_threads
 endif
