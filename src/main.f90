@@ -274,7 +274,7 @@ program cans
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
-    call initvof('bu3',cbcpsi,lo,hi,l,dl,dzf_g,zc_g,psi)
+    call initvof(inipsi,cbcpsi,lo,hi,l,dl,dzf_g,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition succesfully set ***'
   else
     call load('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
@@ -323,7 +323,6 @@ program cans
     istep = istep + 1
     time = time + dt
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
-    print*,'mimi1'
 #if defined(_CONSTANT_COEFFS_POISSON)
     call extrapl_p(dt,dto,p,po,pp)
 #endif
