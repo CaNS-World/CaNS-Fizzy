@@ -126,7 +126,7 @@ program cans
   !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,normx,normy,normz,kappa
+  real(rp), allocatable, dimension(:,:,:) :: psi,kappa
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -171,7 +171,7 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi,normx,normy,normz,kappa,mold=pp)
+  allocate(psi,kappa,mold=pp)
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -204,9 +204,11 @@ program cans
     close(99)
   end if
   !$acc enter data copyin(lo,hi,n) async
-  !$acc enter data copyin(bforce,dl,dli,l) async
+  !$acc enter data copyin(bforce,gacc,dl,dli,l) async
   !$acc enter data copyin(zc_g,zf_g,dzc_g,dzf_g) async
   !$acc enter data create(zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g) async
+  !
+  !$acc enter data copyin(rho12,mu12,ka12,cp12,beta12) async
   !
   !$acc parallel loop default(present) private(k) async
   do kk=lo(3)-1,hi(3)+1
@@ -291,12 +293,13 @@ program cans
   !$acc enter data copyin(s)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
+  !$acc enter data copyin(psi) create(kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   ! post-process and write initial condition
   !
   write(fldnum,'(i7.7)') istep
-  !$acc update self(u,v,w,p)
+  !$acc update self(u,v,w,p,psi,kappa)
   include 'out1d.h90'
   include 'out2d.h90'
   include 'out3d.h90'
@@ -320,6 +323,7 @@ program cans
     istep = istep + 1
     time = time + dt
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
+    print*,'mimi1'
 #if defined(_CONSTANT_COEFFS_POISSON)
     call extrapl_p(dt,dto,p,po,pp)
 #endif
@@ -328,7 +332,7 @@ program cans
     ! VoF update comes here!
     !
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,normx,normy,normz,kappa)
+    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
     rho_av = 0.
     if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
@@ -404,15 +408,15 @@ program cans
     end if
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
-      !$acc update self(u,v,w,p)
+      !$acc update self(u,v,w,p,psi,kappa)
       include 'out1d.h90'
     end if
     if(mod(istep,iout2d) == 0) then
-      !$acc update self(u,v,w,p)
+      !$acc update self(u,v,w,p,psi,kappa)
       include 'out2d.h90'
     end if
     if(mod(istep,iout3d) == 0) then
-      !$acc update self(u,v,w,p)
+      !$acc update self(u,v,w,p,psi,kappa)
       include 'out3d.h90'
     end if
     if(mod(istep,isave ) == 0.or.(is_done.and..not.kill)) then

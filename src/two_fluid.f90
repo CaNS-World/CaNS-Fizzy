@@ -53,7 +53,7 @@ module mod_two_fluid
     end do
   end subroutine clip_field
   !
-  subroutine cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
     !
     ! computes the normals and curvature based on a VoF field
     ! using finite-differences based on Youngs method
@@ -64,7 +64,8 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(3)           :: dl,dli
     real(rp), intent(in ), dimension(0:)          :: dzc,dzf,dzci,dzfi
     real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    !real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
     real(rp) :: norm
     logical , save :: is_first = .true.
     real(rp), allocatable, dimension(:), save :: mx,my,mz
@@ -140,10 +141,10 @@ module mod_two_fluid
           !
           ! compute the normal vector
           !
+#if 0
           normx(i,j,k) = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
           normy(i,j,k) = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
           normz(i,j,k) = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
-#if 1
           norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
           normx(i,j,k) = normx(i,j,k)/norm
           normy(i,j,k) = normy(i,j,k)/norm

@@ -87,6 +87,8 @@ contains
     !
     ! estimate GPU memory footprint, assuming one MPI task <-> one GPU
     !
+    ! NOTE: not updated for the two-fluid solver
+    !
     use mod_types, only: i8,rp
     integer, intent(in), dimension(3) :: n,n_z
     integer :: nh(3)
