@@ -57,7 +57,7 @@ contains
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          mean = mean + (psi(i,j,k)*p12(1)+1.-psi(i,j,k)*p12(2))*grid_vol_ratio(k)
+          mean = mean + (psi(i,j,k)*p12(1)+(1.-psi(i,j,k))*p12(2))*grid_vol_ratio(k)
         end do
       end do
     end do
