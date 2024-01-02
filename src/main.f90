@@ -39,27 +39,27 @@ program cans
   use mod_correc         , only: correc
   use mod_fft            , only: fftini,fftend
   use mod_fillps         , only: fillps
-  use mod_initflow       , only: initflow
+  use mod_initflow       , only: initflow,initscal
   use mod_initgrid       , only: initgrid
   use mod_initmpi        , only: initmpi
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load
-  use mod_rk             , only: tm => rk
+  use mod_rk             , only: tm => rk,tm_scal => rk_scal
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
   use mod_param          , only: l,small, &
-                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcpsi,bcpsi, &
+                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
                                  cfl,dtmin, &
-                                 inivel,    &
+                                 inivel,inisca,inipsi, &
                                  is_wallturb, &
                                  dims, &
                                  gtype,gr, &
                                  bforce, &
                                  ng,l,dl,dli, &
                                  read_input, &
-                                 rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12,cbcsca
+                                 rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
@@ -103,7 +103,6 @@ program cans
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f
-  real(rp) :: meanvelu,meanvelv,meanvelw
   real(rp), dimension(3) :: dpdl
   !real(rp), allocatable, dimension(:) :: var
   real(rp), dimension(42) :: var
@@ -273,7 +272,7 @@ program cans
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
-    call initvof('bu3',cbcsca,lo,hi,l,dl,dzf_g,zc_g,psi)
+    call initvof('bu3',cbcpsi,lo,hi,l,dl,dzf_g,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition succesfully set ***'
   else
     call load('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
@@ -292,7 +291,7 @@ program cans
   !$acc enter data copyin(s)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
-  call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,psi)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   ! post-process and write initial condition
   !
@@ -302,7 +301,7 @@ program cans
   include 'out2d.h90'
   include 'out3d.h90'
   !
-  call chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax)
+  call chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax,ka12,cp12)
   dt = min(cfl*dtmax,dtmin)
   if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
   dto = dt
@@ -328,14 +327,17 @@ program cans
     !
     ! VoF update comes here!
     !
-    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,psi)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
     call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,normx,normy,normz,kappa)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
     rho_av = 0.
     if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
       call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
     end if
-    call tm(tm_coeff(:),n,dli,dzci,dzfi,dt, &
+#if defined(_SCALAR)
+    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
+#endif
+    call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
             bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
             p,pp,u,v,w)
     call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)

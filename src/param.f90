@@ -85,7 +85,7 @@ contains
                   l, &
                   gtype,gr, &
                   cfl,dtmin, &
-                  inivel,inisca, &
+                  inivel,inisca,inipsi, &
                   is_wallturb, &
                   nstep,time_max,tw_max, &
                   stop_type, &

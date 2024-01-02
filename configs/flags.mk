@@ -130,6 +130,13 @@ ifeq ($(strip $(MASK_DIVERGENCE_CHECK)),1)
 DEFINES += -D_MASK_DIVERGENCE_CHECK
 endif
 
+ifeq ($(strip $(SCALAR)),1)
+DEFINES += -D_SCALAR
+endif
+ifeq ($(strip $(BOUSSINESQ_BUOYANCY)),1)
+DEFINES += -D_BOUSSINESQ_BUOYANCY
+endif
+
 ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),1)
 DEFINES += -D_CONSTANT_COEFFS_POISSON
 endif

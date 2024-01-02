@@ -11,7 +11,7 @@ module mod_initflow
   use mod_types
   implicit none
   private
-  public initflow,add_noise
+  public initflow,initscal,add_noise
   contains
   subroutine initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho,mu,bforce,is_wallturb,u,v,w,p)
     !

@@ -3,8 +3,8 @@ ng(1:3) = 64, 64,  64
 l(1:3)  = 1., 1., 1.
 gtype = 1, gr = 0.
 cfl = 0.95, dtmin = 1.e-4
-inivel = 'zer', inisca = 'uni'
-is_wallturb = T
+inivel = 'zer', inisca = 'uni', inipsi = 'bu3'
+is_wallturb = F
 nstep = 11, time_max = 100., tw_max = 0.1
 stop_type(1:3) = T, F, F
 restart = F, is_overwrite_save = T, nsaves_max = 0

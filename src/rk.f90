@@ -11,7 +11,7 @@ module mod_rk
   use mod_types
   implicit none
   private
-  public rk
+  public rk,rk_scal
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
@@ -87,7 +87,7 @@ module mod_rk
   !
   subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dt, &
                      ssource,rho12,ka12,cp12,psi,u,v,w,s)
-  use mod_scal, only: scal_ad
+    use mod_scal, only: scal_ad
     !
     ! low-storage 3rd-order Runge-Kutta scheme
     ! for time integration of the scalar field.
