@@ -327,16 +327,13 @@ program cans
     !
     call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,psi)
     call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,normx,normy,normz,kappa)
-    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,normx)
-    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,normy)
-    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,normz)
     call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,kappa)
     rho_av = 0.
     if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
       call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
     end if
     call tm(tm_coeff(:),n,dli,dzci,dzfi,dt, &
-            bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,normx,normy,normz,kappa,s, &
+            bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
             p,pp,u,v,w)
     call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
     call fillps(n,dli,dzfi,dti,u,v,w,pp)

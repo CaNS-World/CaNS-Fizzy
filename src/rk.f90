@@ -14,7 +14,7 @@ module mod_rk
   public rk
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,normx,normy,normz,kappa,s, &
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
                 p,pp,u,v,w)
     !
     ! low-storage 3rd-order Runge-Kutta scheme
@@ -30,7 +30,7 @@ module mod_rk
     real(rp), intent(in   )                :: sigma,rho_av
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: psi,normx,normy,normz,kappa,s,p,pp
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: psi,kappa,s,p,pp
     real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
     real(rp), target     , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
                                                                   dudtrko_t,dvdtrko_t,dwdtrko_t
