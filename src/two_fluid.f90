@@ -190,7 +190,7 @@ module mod_two_fluid
     !
     is_sphere = .false.
     psi(:,:,:) = 0.
-    eps_dl = max(dl(1),dl(2),maxval(dzf_g(:)))*sqrt(3._rp)/2.
+    eps_dl = max(dl(1),dl(2),maxval(dzf_g(:)))*sqrt(3._rp)/2.*3
     select case(trim(inipsi))
     case('uni')
       psi(:,:,:) = 1._rp
@@ -336,4 +336,60 @@ module mod_two_fluid
     end do
     close(iunit)
   end subroutine read_sphere_file
+  !
+  real(rp) function smooth_step_sin(r,eps) result(res)
+    use mod_param, only:pi
+    !
+    ! smooth step function based on trigonometric functions
+    !
+    implicit none
+    real(rp), intent(in) :: r,eps
+    !
+    if(r <= -eps) then
+      res = 0.
+    else if(r.lt.eps) then
+      res = .5 + .5*r/eps + .5/pi*sin(pi*r/eps)
+    else
+      res = 1.
+    end if
+  end function smooth_step_sin
+  !
+  real(rp) function smooth_step_erf(r,eps) result(res)
+    !
+    ! smooth step function based on the error function
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: r,eps
+    !
+    res = .5*( 1.+erf(r/eps) )
+  end function smooth_step_erf
+  !
+  real(rp) function smooth_sign(delta,phi) result(res)
+    !
+    ! smooth sign function
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: delta,phi
+    res = sign(1._rp,phi)
+    if(abs(phi) <= delta) then
+      res = phi/(sqrt(phi**2+delta**2))
+    end if
+  end function smooth_sign
+  !
+  real(rp) function smooth_impulse(r,eps) result(res)
+    use mod_param, only:pi
+    !
+    ! smooth impulse Dirac delta function
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: r,eps
+    if(abs(r) >= eps) then
+      res = 0.
+    else
+      res = .5/eps + .5/eps*cos(pi*r/eps)
+    end if
+  end function smooth_impulse
 end module mod_two_fluid
