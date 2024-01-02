@@ -9,7 +9,7 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_all
+  public mom_xyz_all,mom_xyz_oth
   contains
   !
   subroutine momx_a(nx,ny,nz,dxi,dyi,dzfi,u,v,w,dudt)
@@ -706,6 +706,9 @@ module mod_mom
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/rhozp + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/rhozp + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)/rhozp
+          dudt(i,j,k) = dudt_aux
+          dvdt(i,j,k) = dvdt_aux
+          dwdt(i,j,k) = dwdt_aux
         end do
       end do
     end do
@@ -823,6 +826,9 @@ module mod_mom
           dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
           dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
 #endif
+          dudt(i,j,k) = dudt(i,j,k) + dudt_aux
+          dvdt(i,j,k) = dvdt(i,j,k) + dvdt_aux
+          dwdt(i,j,k) = dwdt(i,j,k) + dwdt_aux
         end do
       end do
     end do
@@ -1095,6 +1101,9 @@ module mod_mom
           dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
           dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
 #endif
+          dudt(i,j,k) = dudt_aux
+          dvdt(i,j,k) = dvdt_aux
+          dwdt(i,j,k) = dwdt_aux
         end do
       end do
     end do
