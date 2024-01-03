@@ -336,6 +336,9 @@ program cans
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
       call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
       call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+#if defined(_SCALAR)
+      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
+#endif
 #if defined(_CONSTANT_COEFFS_POISSON)
       call extrapl_p(dt,dto,p,po,pp)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
@@ -353,7 +356,7 @@ program cans
       call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,pp)
       call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp)
 #else
-      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,p)
+      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,po)
 #endif
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
       call correc(n,dli,dzci,rho0,rho12,dt,pp,psi,u,v,w)

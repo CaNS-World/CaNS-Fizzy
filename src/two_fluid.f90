@@ -27,7 +27,7 @@ module mod_two_fluid
     prop1 = prop12(1)
     prop2 = prop12(2)
     !$acc kernels default(present) async(1)
-       p(:,:,:) = psi(:,:,:)*prop1+(1.-psi(:,:,:))*prop2
+    p(:,:,:) = psi(:,:,:)*prop1+(1.-psi(:,:,:))*prop2
     !$acc end kernels
   end subroutine update_property
   !
@@ -348,7 +348,7 @@ module mod_two_fluid
     !
     if(r <= -eps) then
       res = 0.
-    else if(r.lt.eps) then
+    else if(r <= eps) then
       res = .5 + .5*r/eps + .5/pi*sin(pi*r/eps)
     else
       res = 1.
