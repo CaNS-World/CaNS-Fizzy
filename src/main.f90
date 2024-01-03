@@ -51,6 +51,7 @@ program cans
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
+                                 is_solve_ns, &
                                  cfl,dtmin, &
                                  inivel,inisca,inipsi, &
                                  is_wallturb, &
@@ -269,7 +270,7 @@ program cans
     istep = 0
     time = 0.
     !$acc update self(zc,dzc,dzf)
-    call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,u,v,w,p)
+    call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
     po(:,:,:) = p(:,:,:)
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
@@ -327,37 +328,40 @@ program cans
     !
     ! VoF update comes here!
     !
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
-    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+    if(.not.is_solve_ns) then
+      call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
+      !$acc wait
+      !$acc update device(u,v,w,p)
+    else
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+      call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
+      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
 #if defined(_CONSTANT_COEFFS_POISSON)
-    call extrapl_p(dt,dto,p,po,pp)
-    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
+      call extrapl_p(dt,dto,p,po,pp)
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
 #endif
-    rho_av = 0.
-    if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
-      call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
-    end if
-#if defined(_SCALAR)
-    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
-#endif
-    call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
+      rho_av = 0.
+      if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
+        call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
+      end if
+      call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
             bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
             p,pp,u,v,w)
-    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-    call fillps(n,dli,dzfi,dti,u,v,w,pp)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
+      call fillps(n,dli,dzfi,dti,u,v,w,pp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-    call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,pp)
-    call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp)
+      call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,pp)
+      call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp)
 #else
-    call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,p)
+      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,p)
 #endif
-    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
-    call correc(n,dli,dzci,rho0,rho12,dt,pp,psi,u,v,w)
-    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
-    call updatep(pp,p)
-    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-    dto = dt
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
+      call correc(n,dli,dzci,rho0,rho12,dt,pp,psi,u,v,w)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
+      call updatep(pp,p)
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+      dto = dt
+    end if
     !
     ! check simulation stopping criteria
     !
