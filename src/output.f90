@@ -256,7 +256,7 @@ module mod_output
     integer :: iunit
     !
     write(cfmt, '(A)') '(A,A,A,9i5,E16.7e3,i7)'
-    if (myid  ==  0) then
+    if (myid ==  0) then
       open(newunit=iunit,file=fname,position='append')
       write(iunit,trim(cfmt)) trim(fname_fld),' ',trim(varname),nmin,nmax,nskip,time,istep
       close(iunit)
