@@ -13,7 +13,7 @@ module mod_initflow
   private
   public initflow,initscal,add_noise
   contains
-  subroutine initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho,mu,bforce,is_wallturb,u,v,w,p)
+  subroutine initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho,mu,bforce,is_wallturb,time,u,v,w,p)
     !
     ! computes initial conditions for the velocity field
     !
@@ -26,6 +26,7 @@ module mod_initflow
     real(rp), intent(in)               :: rho,mu
     real(rp), intent(in), dimension(3) :: bforce
     logical , intent(in)               :: is_wallturb
+    real(rp), intent(in)               :: time
     real(rp), dimension(0:,0:,0:), intent(out) :: u,v,w,p
     real(rp), allocatable, dimension(:) :: u1d
     !real(rp), allocatable, dimension(:,:) :: u2d

@@ -28,6 +28,7 @@ real(rp), protected, dimension(3) :: l
 integer , protected :: gtype
 real(rp), protected :: gr
 real(rp), protected :: cfl,dtmin
+logical , protected :: is_solve_ns
 !
 character(len=100), protected :: inivel,inisca
 logical, protected :: is_wallturb
@@ -85,6 +86,7 @@ contains
                   l, &
                   gtype,gr, &
                   cfl,dtmin, &
+                  is_solve_ns, &
                   inivel,inisca, &
                   is_wallturb, &
                   nstep,time_max,tw_max, &
