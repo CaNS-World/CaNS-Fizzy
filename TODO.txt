@@ -1,5 +1,6 @@
   - basic example files
   - momentum test - lid-driven cavity (done)
   - advection tests (Zalezak, translation, deforming circle/sphere)
-  - multiphase tests (2D rising bubble and capillary wave)
+  - multiphase tests (static droplet for spurious currents, 2D rising bubble and capillary wave)
+  - extrapolation of surface tension term, a la Cifani
   - heat transfer tests (differentially heated cavity)
