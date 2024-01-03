@@ -323,9 +323,6 @@ program cans
     istep = istep + 1
     time = time + dt
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
-#if defined(_CONSTANT_COEFFS_POISSON)
-    call extrapl_p(dt,dto,p,po,pp)
-#endif
     tm_coeff(:) = [2.+dt/dto,-dt/dto]/2.
     !
     ! VoF update comes here!
@@ -333,6 +330,10 @@ program cans
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
     call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+#if defined(_CONSTANT_COEFFS_POISSON)
+    call extrapl_p(dt,dto,p,po,pp)
+    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
+#endif
     rho_av = 0.
     if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
       call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
