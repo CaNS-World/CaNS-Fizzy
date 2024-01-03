@@ -36,7 +36,7 @@ module mod_updatep
     !
     factor = dt/dto
     !$acc kernels default(present) async(1)
-    pp(:,:,:)   = (1.+factor)*p(:,:,:) - factor*po(:,:,:)
+    pp(:,:,:) = (1.+factor)*p(:,:,:) - factor*po(:,:,:)
     po(:,:,:) = p(:,:,:)
     !$acc end kernels
   end subroutine extrapl_p

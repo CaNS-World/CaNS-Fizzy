@@ -5,10 +5,14 @@
 !
 ! -
 module mod_two_fluid
+  use mpi
   use mod_types
   implicit none
   private
   public initvof,cmpt_norm_curv
+  type sphere
+    real(rp) :: x,y,z,r
+  end type sphere
   contains
   subroutine update_property(nh,prop12,psi,p)
     !
@@ -23,7 +27,7 @@ module mod_two_fluid
     prop1 = prop12(1)
     prop2 = prop12(2)
     !$acc kernels default(present) async(1)
-       p(:,:,:) = psi(:,:,:)*prop1+(1.-psi(:,:,:))*prop2
+    p(:,:,:) = psi(:,:,:)*prop1+(1.-psi(:,:,:))*prop2
     !$acc end kernels
   end subroutine update_property
   !
@@ -49,18 +53,19 @@ module mod_two_fluid
     end do
   end subroutine clip_field
   !
-  subroutine cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
     !
     ! computes the normals and curvature based on a VoF field
     ! using finite-differences based on Youngs method
     !
     implicit none
-    integer , parameter :: eps = epsilon(1._rp)
+    real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3)           :: n
     real(rp), intent(in ), dimension(3)           :: dl,dli
     real(rp), intent(in ), dimension(0:)          :: dzc,dzf,dzci,dzfi
     real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    !real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
     real(rp) :: norm
     logical , save :: is_first = .true.
     real(rp), allocatable, dimension(:), save :: mx,my,mz
@@ -136,10 +141,10 @@ module mod_two_fluid
           !
           ! compute the normal vector
           !
+#if 0
           normx(i,j,k) = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
           normy(i,j,k) = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
           normz(i,j,k) = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
-#if 1
           norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
           normx(i,j,k) = normx(i,j,k)/norm
           normy(i,j,k) = normy(i,j,k)/norm
@@ -156,29 +161,25 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv
   !
-  subroutine initvof(inipsi,cbcpsi,lo,hi,l,dl,dzf,zc,psi)
+  subroutine initvof(inipsi,cbcpsi,lo,hi,l,dl,dzf_g,zc_g,psi)
     use mod_common_mpi, only: myid
-    use mod_param, only: datadir
     !
     ! computes initial conditions for the velocity field
     !
     implicit none
-    type sphere
-      real(rp) :: x,y,z,r
-    end type sphere
     character(len=*), intent(in) :: inipsi
     character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), dimension(0:), intent(out) :: dzf,zc
-    real(rp), dimension(0:,0:,0:), intent(out) :: psi
+    real(rp), dimension(0:), intent(out) :: dzf_g,zc_g
+    real(rp), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:), intent(out) :: psi
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
     real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,sdist1,sdist2
     integer  :: nbox
     real(rp), dimension(3) :: dlbox
-    real(rp) :: eps,epsbox,grid_vol_ratio
+    real(rp) :: eps_dl,eps_dl_box,grid_vol_ratio
     integer , dimension(3) :: iperiod,iexp
     logical , dimension(3) :: is_dim
     real(rp) :: psi_aux
@@ -189,12 +190,13 @@ module mod_two_fluid
     !
     is_sphere = .false.
     psi(:,:,:) = 0.
+    eps_dl = max(dl(1),dl(2),maxval(dzf_g(:)))*sqrt(3._rp)/2.*3
     select case(trim(inipsi))
     case('uni')
       psi(:,:,:) = 1._rp
     case('zer')
     case('bu3')
-      call read_sphere_file(trim(datadir)//'spheres.in',spheres,nspheres)
+      call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
     case('bu2')
@@ -208,21 +210,20 @@ module mod_two_fluid
       grid_vol_ratio = 1./(1.*nbox**3)
       iperiod(:) = 0
       where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
-      eps = max(dl(1),dl(2),maxval(dzf(:)))*sqrt(3._rp)/2.
       !
       do k=lo(3),hi(3)
-        z = zc(k)
+        z = zc_g(k)
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
             sdist = z-l(3)/2.
-            if(      sdist <= -eps ) then
+            if(      sdist <= -eps_dl ) then
               psi(i,j,k) = 1.
-            else if( sdist <=  eps ) then
+            else if( sdist <=  eps_dl ) then
               psi(i,j,k) = 0.
             else
-              dlbox(3) = dzf(k)/(1.*nbox)
-              epsbox = dlbox(3)/2.
-              zl = z-dzf(k)/2.
+              dlbox(3) = dzf_g(k)/(1.*nbox)
+              eps_dl_box = dlbox(3)/2.
+              zl = z-dzf_g(k)/2.
               yl = y-dl(2)/2.
               xl = x-dl(1)/2.
               do kk=1,nbox
@@ -230,7 +231,7 @@ module mod_two_fluid
                 do jj=1,nbox
                   do ii=1,nbox
                     sdist = zz-l(3)/2.
-                    if(sdist <= -epsbox) psi(i,j,k) = psi(i,j,k) + grid_vol_ratio
+                    if(sdist <= -eps_dl_box) psi(i,j,k) = psi(i,j,k) + grid_vol_ratio
                   end do
                 end do
               end do
@@ -248,7 +249,7 @@ module mod_two_fluid
     end select
     !
     if(is_sphere) then
-      nbox = 100
+      nbox = 10
       grid_vol_ratio = 1./(1.*nbox**3)
       iperiod(:) = 0
       where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
@@ -261,7 +262,7 @@ module mod_two_fluid
         r   = spheres(q)%r
         psi_aux = 0.
         do k=lo(3),hi(3)
-          z = zc(k)
+          z = zc_g(k)
           do j=lo(2),hi(2)
             y = (j-0.5)*dl(2)
             do i=lo(1),hi(1)
@@ -278,14 +279,14 @@ module mod_two_fluid
                 end do
               end do
               sdist = sdistmin
-              if(      sdist <= -eps ) then
+              if(      sdist <= -eps_dl ) then
                 psi_aux = 1.
-              else if( sdist <=  eps ) then
+              else if( sdist <=  eps_dl ) then
                 psi_aux = 0.
               else
-                dlbox(:) = [dl(1),dl(2),dzf(k)]/(1.*nbox)
-                epsbox = sqrt(dlbox(1)**(2*iexp(1)) + dlbox(2)**(2*iexp(2)) + dlbox(3)**(2*iexp(3)))/2.
-                zl = z-dzf(k)/2.
+                dlbox(:) = [dl(1),dl(2),dzf_g(k)]/(1.*nbox)
+                eps_dl_box = sqrt(dlbox(1)**(2*iexp(1)) + dlbox(2)**(2*iexp(2)) + dlbox(3)**(2*iexp(3)))/2.
+                zl = z-dzf_g(k)/2.
                 yl = y-dl(2)/2.
                 xl = x-dl(1)/2.
                 do kk=1,nbox
@@ -295,7 +296,7 @@ module mod_two_fluid
                     do ii=1,nbox
                       xx = xl + ii*dlbox(1)
                       sdist = sqrt((xx-xxc)**(2*iexp(1)) + (yy-yyc)**(2*iexp(2)) + (zz-zzc)**(2*iexp(3))) - r
-                      if(sdist <= -epsbox) psi_aux = psi_aux + grid_vol_ratio
+                      if(sdist <= -eps_dl_box) psi_aux = psi_aux + grid_vol_ratio
                     end do
                   end do
                 end do
@@ -310,9 +311,6 @@ module mod_two_fluid
   !
   subroutine read_sphere_file(fname,spheres,nspheres)
     implicit none
-    type sphere
-      real(rp) :: x,y,z,r
-    end type sphere 
     character(len=*), intent(in) :: fname
     type(sphere), allocatable, intent(out), dimension(:) :: spheres
     integer, intent(out) :: nspheres
@@ -323,9 +321,9 @@ module mod_two_fluid
     if (ierr /= 0) then
       error stop 'Error reading input file '//trim(fname)//'.'
     end if
-    nspheres = 0
+    nspheres = -1
     do while(ierr == 0)
-      read(10, '(A)', iostat=ierr) dummy
+      read(iunit, '(A)', iostat=ierr) dummy
       if(ierr > 0) then
         error stop 'Error reading input file '//trim(fname)//'.'
       end if
@@ -336,5 +334,78 @@ module mod_two_fluid
     do q = 1,nspheres
       read(iunit,*) spheres(q)%x,spheres(q)%y,spheres(q)%z,spheres(q)%r
     end do
+    close(iunit)
   end subroutine read_sphere_file
+  !
+  pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
+    use mod_param, only:pi
+    !$acc routine seq 
+    !
+    ! smooth step function based on trigonometric functions
+    !
+    implicit none
+    real(rp), intent(in) :: r,eps
+    !
+    if(r <= -eps) then
+      res = 0.
+    else if(r <= eps) then
+      res = .5 + .5*r/eps + .5/pi*sin(pi*r/eps)
+    else
+      res = 1.
+    end if
+  end function smooth_step_sin
+  !
+  pure elemental real(rp) function smooth_step_erf(r,eps) result(res)
+    !$acc routine seq 
+    !
+    ! smooth step function based on the error function
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: r,eps
+    !
+    res = .5*(1.+erf(r/eps))
+  end function smooth_step_erf
+  !
+  pure elemental real(rp) function smooth_step_tanh(r,eps) result(res)
+    !$acc routine seq 
+    !
+    ! smooth step function based on the error function
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: r,eps
+    !
+    res = .5*(1.+tanh(r/(2.*eps)))
+  end function smooth_step_tanh
+  !
+  pure elemental real(rp) function smooth_sign(delta,phi) result(res)
+    !$acc routine seq 
+    !
+    ! smooth sign function
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: delta,phi
+    res = sign(1._rp,phi)
+    if(abs(phi) <= delta) then
+      res = phi/(sqrt(phi**2+delta**2))
+    end if
+  end function smooth_sign
+  !
+  pure elemental real(rp) function smooth_impulse(r,eps) result(res)
+    use mod_param, only:pi
+    !$acc routine seq 
+    !
+    ! smooth impulse Dirac delta function using trigonometric functions
+    !
+    implicit none
+    !
+    real(rp), intent(in) :: r,eps
+    if(abs(r) >= eps) then
+      res = 0.
+    else
+      res = .5/eps + .5/eps*cos(pi*r/eps)
+    end if
+  end function smooth_impulse
 end module mod_two_fluid

@@ -19,6 +19,7 @@ real(rp), parameter :: eps = epsilon(1._rp)
 real(rp), parameter :: eps = 0._rp
 #endif
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
+character(len=100), parameter :: datadir = 'data/'
 !
 ! variables to be determined from the input file
 !
@@ -27,6 +28,7 @@ real(rp), protected, dimension(3) :: l
 integer , protected :: gtype
 real(rp), protected :: gr
 real(rp), protected :: cfl,dtmin
+logical , protected :: is_solve_ns
 !
 character(len=100), protected :: inivel,inisca
 logical, protected :: is_wallturb
@@ -46,6 +48,8 @@ character(len=1), protected, dimension(0:1,3,3) ::  cbcvel
 real(rp)        , protected, dimension(0:1,3,3) ::   bcvel
 character(len=1), protected, dimension(0:1,3)   ::  cbcpre
 real(rp)        , protected, dimension(0:1,3)   ::   bcpre
+character(len=1), protected, dimension(0:1,3)   ::  cbcpsi
+real(rp)        , protected, dimension(0:1,3)   ::   bcpsi
 character(len=1), protected, dimension(0:1,3)   ::  cbcsca
 real(rp)        , protected, dimension(0:1,3)   ::   bcsca
 !
@@ -82,7 +86,8 @@ contains
                   l, &
                   gtype,gr, &
                   cfl,dtmin, &
-                  inivel,inisca &
+                  is_solve_ns, &
+                  inivel,inisca, &
                   is_wallturb, &
                   nstep,time_max,tw_max, &
                   stop_type, &
@@ -91,10 +96,10 @@ contains
                   cbcvel,cbcpre,cbcsca,bcvel,bcpre,bcsca, &
                   bforce,gacc, &
                   dims
-    namelist /twofluid/ &
+    namelist /two_fluid/ &
+                  inipsi, &
                   rho12,mu12,sigma, &
-                  ka12,cp12,beta12, &
-                  inipsi
+                  ka12,cp12,beta12
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -104,7 +109,7 @@ contains
     open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
       if( ierr == 0 ) then
         read(iunit,nml=dns,iostat=ierr)
-        read(iunit,nml=twofluid,iostat=ierr)
+        read(iunit,nml=two_fluid,iostat=ierr)
       else
         if(myid == 0) print*, 'Error reading the input file'
         if(myid == 0) print*, 'Aborting...'

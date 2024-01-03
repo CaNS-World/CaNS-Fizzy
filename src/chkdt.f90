@@ -12,7 +12,7 @@ module mod_chkdt
   private
   public chkdt
   contains
-  subroutine chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax)
+  subroutine chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax,ka12,cp12)
     !
     ! computes maximum allowed time step
     ! see Kang et al. JCP 15, 323–360
@@ -24,6 +24,7 @@ module mod_chkdt
     real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3)
     real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(out) :: dtmax
+    real(rp), intent(in ), optional :: ka12(2),cp12(2)
     real(rp) :: dxi,dyi,dzi
     real(rp) :: ux,uy,uz,vx,vy,vz,wx,wy,wz
     real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dti
@@ -69,11 +70,12 @@ module mod_chkdt
     dtiv = maxval(mu12(:)/rho12(:))*2.*(3./dlmin**2)
     dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
     dtig = maxval(abs(gacc))/dlmin
-    dti = 2.*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))**(-1)
+    dti = 2.*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))
     if(dti == 0.) dti = 1.
     dtmax = dti**(-1)
 #if defined(_SCALAR)
-    dti = maxval(kappa12(:)/rhocp12(:))/dlmin**2
+    if(present(ka12) .and. present(cp12)) &
+      dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/dlmin**2
     if(dti == 0.) dti = 1.
     dtmax = min(dtmax,dti**(-1))
 #endif
