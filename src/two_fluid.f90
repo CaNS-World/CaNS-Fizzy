@@ -265,17 +265,19 @@ module mod_two_fluid
       end do
     case('zalesak-disk')
       !
-      ! Zalesak disk (WIP, not working yet)
+      ! Zalesak's disk (WIP, not working yet)
       !
       block
-        real(rp) :: sw,sl,xxc_slot,zzc_slot
+        real(rp) :: sw,sl,shift,xxc_slot,zzc_slot
         r   = 0.15 ! disk radius
         xxc = 0.5
         zzc = 0.75
-        sw  = 0.05 ! slot width
-        sl  = 0.25 ! slot length
-        xxc_slot = xxc  +sw/2.
-        zzc_slot = zzc-r+sl*2.
+        sw  = 0.05/2 ! slot half width
+        sl  = 0.25/2 ! slot half length
+        shift = r/2
+        xxc_slot = xxc
+        zzc_slot = zzc-r+sl-shift
+        sl = sl + shift
         !
         do k=lo(3),hi(3)
           z = zc_g(k)/l(3)
@@ -289,12 +291,14 @@ module mod_two_fluid
               !
               ! sdf of the slot
               !
-              sdist2 = sqrt(max(x-xxc_slot,0._rp)**2 + max(z-zzc_slot,0._rp)**2) + &
-                       min(max(x-xxc_slot,z-zzc_slot),0._rp)
+              xx = abs(x-xxc_slot)
+              zz = abs(z-zzc_slot)
+              sdist2 = sqrt(max(xx-sw,0._rp)**2 + max(zz-sl,0._rp)**2) + &
+                       min(max(xx-sw,zz-sl),0._rp)
               !
               ! subtract sdfs
               !
-              sdist  = max(-sdist1,sdist2)
+              sdist  = -max(sdist1,-sdist2)
               !
               ! TODO: compute PSI
               !
@@ -313,12 +317,13 @@ module mod_two_fluid
     !
     if(is_sphere) then
       if(nspheres == 0) then
-        if(myid == 0) print*, '`spheres.in` file not found, initializing sphere in the domain center with radius r=0.25*minval(l(:)).'
+        if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
+        if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
         nspheres = nspheres + 1
         allocate(spheres(nspheres))
         q = nspheres
         spheres(q)%xyz(:) = l(:)/2
-        spheres(q)%r = 0.25*minval(l(:))
+        spheres(q)%r = 0.25*minval(l(:),mask=is_dim)
       end if
       nbox = 10
       grid_vol_ratio = 1./(1.*nbox**3)
