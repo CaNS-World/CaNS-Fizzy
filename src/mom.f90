@@ -9,7 +9,7 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_all,mom_xyz_oth
+  public mom_xyz_ad,mom_xyz_oth
   contains
   !
   subroutine momx_a(nx,ny,nz,dxi,dyi,dzfi,u,v,w,dudt)
@@ -789,14 +789,18 @@ module mod_mom
           psiyp = 0.5*(c_cpc+c_ccc)
           psizp = 0.5*(c_ccp+c_ccc)
           !
+          rhoxp = rho + drho*psixp
+          rhoyp = rho + drho*psiyp
+          rhozp = rho + drho*psizp
+          !
           ! pressure gradient
           !
           dpdx = -(p_pcc-p_ccc)*dxi
           dpdy = -(p_cpc-p_ccc)*dyi
           dpdz = -(p_ccp-p_ccc)*dzci_c
-          dudt_aux = dudt_aux + bforcex/rhoxp + gaccx*(1.-rho_av/rhoxp)
-          dvdt_aux = dvdt_aux + bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
-          dwdt_aux = dwdt_aux + bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
+          dudt_aux = bforcex/rhoxp + gaccx*(1.-rho_av/rhoxp)
+          dvdt_aux = bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
+          dwdt_aux = bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
 #if defined(_CONSTANT_COEFFS_POISSON)
           dudt_aux = dudt_aux + dpdx/rho0 + (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
           dvdt_aux = dvdt_aux + dpdy/rho0 + (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
@@ -826,9 +830,9 @@ module mod_mom
           dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
           dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
 #endif
-          dudt(i,j,k) = dudt(i,j,k) + dudt_aux
-          dvdt(i,j,k) = dvdt(i,j,k) + dvdt_aux
-          dwdt(i,j,k) = dwdt(i,j,k) + dwdt_aux
+          dudt(i,j,k) = dudt_aux
+          dvdt(i,j,k) = dvdt_aux
+          dwdt(i,j,k) = dwdt_aux
         end do
       end do
     end do
