@@ -12,7 +12,7 @@ module mod_two_fluid
   private
   public initvof,cmpt_norm_curv
   type sphere
-    real(rp) :: x,y,z,r
+    real(rp) :: xyz(3),r
   end type sphere
   contains
   subroutine update_property(nh,prop12,psi,p)
@@ -201,9 +201,11 @@ module mod_two_fluid
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
     case('bu2')
+      call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.false.,.true.] ! cylinder
       is_sphere = .true.
     case('bu1')
+      call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
     case('flm')
@@ -310,6 +312,14 @@ module mod_two_fluid
     end select
     !
     if(is_sphere) then
+      if(nspheres == 0) then
+        if(myid == 0) print*, '`spheres.in` file not found, initializing sphere in the domain center with radius r=0.25*minval(l(:)).'
+        nspheres = nspheres + 1
+        allocate(spheres(nspheres))
+        q = nspheres
+        spheres(q)%xyz(:) = l(:)/2
+        spheres(q)%r = 0.25*minval(l(:))
+      end if
       nbox = 10
       grid_vol_ratio = 1./(1.*nbox**3)
       iperiod(:) = 0
@@ -317,9 +327,9 @@ module mod_two_fluid
       iexp(:) = 1
       where(.not.is_dim(:)) iexp(:) = 0
       do q = 1,nspheres
-        xxc = spheres(q)%x
-        yyc = spheres(q)%y
-        zzc = spheres(q)%z
+        xxc = spheres(q)%xyz(1)
+        yyc = spheres(q)%xyz(2)
+        zzc = spheres(q)%xyz(3)
         r   = spheres(q)%r
         psi_aux = 0.
         do k=lo(3),hi(3)
@@ -377,25 +387,31 @@ module mod_two_fluid
     integer, intent(out) :: nspheres
     character(len=1024) :: dummy
     integer :: q,iunit,ierr
+    logical :: is_bubble_file
     !
-    open(newunit=iunit,file=fname,action='read',iostat=ierr)
-    if (ierr /= 0) then
-      error stop 'Error reading input file '//trim(fname)//'.'
-    end if
-    nspheres = -1
-    do while(ierr == 0)
-      read(iunit, '(A)', iostat=ierr) dummy
-      if(ierr > 0) then
+    inquire(file=fname,exist=is_bubble_file)
+    if(.not.is_bubble_file) then
+      nspheres = 0
+    else
+      open(newunit=iunit,file=fname,action='read',iostat=ierr)
+      if (ierr /= 0) then
         error stop 'Error reading input file '//trim(fname)//'.'
       end if
-      nspheres = nspheres + 1
-    end do
-    allocate(spheres(nspheres))
-    rewind(iunit)
-    do q = 1,nspheres
-      read(iunit,*) spheres(q)%x,spheres(q)%y,spheres(q)%z,spheres(q)%r
-    end do
-    close(iunit)
+      nspheres = -1
+      do while(ierr == 0)
+        read(iunit, '(A)', iostat=ierr) dummy
+        if(ierr > 0) then
+          error stop 'Error reading input file '//trim(fname)//'.'
+        end if
+        nspheres = nspheres + 1
+      end do
+      allocate(spheres(nspheres))
+      rewind(iunit)
+      do q = 1,nspheres
+        read(iunit,*) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
+      end do
+      close(iunit)
+    end if
   end subroutine read_sphere_file
   !
   pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
