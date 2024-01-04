@@ -6,6 +6,7 @@
 ! -
 module mod_two_fluid
   use mpi
+  use mod_param, only: pi
   use mod_types
   implicit none
   private
@@ -176,7 +177,7 @@ module mod_two_fluid
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
-    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,sdist1,sdist2
+    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2
     integer  :: nbox
     real(rp), dimension(3) :: dlbox
     real(rp) :: eps_dl,eps_dl_box,grid_vol_ratio
@@ -239,6 +240,66 @@ module mod_two_fluid
           end do
         end do
       end do
+    case('cap-wav-1d')
+      !
+      ! initial condition for the capillary wave benchmark
+      ! (Prosperetti, Phys. Fluids 24 (1981) 1217)
+      !
+      ! interface at z = l(3)/2, with a sinusoidal bump
+      ! with amplitude zfilm_max and wavelength = lx
+      !
+      zfilm_max = 0.05
+      do k=lo(3),hi(3)
+        z = zc_g(k)/l(3) - 0.5
+        do j=lo(2),hi(2)
+          do i=lo(1),hi(1)
+            x = (i-0.5)*dl(1)/l(1)
+            sdist = z - zfilm_max*cos(2*pi*x)
+            !
+            ! TODO: compute PSI
+            !
+          end do
+        end do
+      end do
+    case('zalesak-disk')
+      !
+      ! Zalesak disk (WIP, not working yet)
+      !
+      block
+        real(rp) :: sw,sl,xxc_slot,zzc_slot
+        r   = 0.15 ! disk radius
+        xxc = 0.5
+        zzc = 0.75
+        sw  = 0.05 ! slot width
+        sl  = 0.25 ! slot length
+        xxc_slot = xxc  +sw/2.
+        zzc_slot = zzc-r+sl*2.
+        !
+        do k=lo(3),hi(3)
+          z = zc_g(k)/l(3)
+          do j=lo(2),hi(2)
+            do i=lo(1),hi(1)
+              x = (i-0.5)*dl(1)/l(1)
+              !
+              ! sdf of the disk
+              !
+              sdist1 = sqrt((x-xxc)**2+(z-zzc)**2) - r
+              !
+              ! sdf of the slot
+              !
+              sdist2 = sqrt(max(x-xxc_slot,0._rp)**2 + max(z-zzc_slot,0._rp)**2) + &
+                       min(max(x-xxc_slot,z-zzc_slot),0._rp)
+              !
+              ! subtract sdfs
+              !
+              sdist  = max(-sdist1,sdist2)
+              !
+              ! TODO: compute PSI
+              !
+            end do
+          end do
+        end do
+      end block
     case default
       if(myid == 0) print*, 'ERROR: invalid name for initial VoF field'
       if(myid == 0) print*, ''
