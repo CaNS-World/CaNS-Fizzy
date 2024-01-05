@@ -316,9 +316,9 @@ module mod_two_fluid
               do kk = -1,1
                 do jj = -1,1
                   do ii = -1,1
-                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**(2*iexp(1)) + &
-                                  (y+jj*iperiod(2)*l(2)-yyc)**(2*iexp(2)) + &
-                                  (z+kk*iperiod(3)*l(3)-zzc)**(2*iexp(3)) ) - r
+                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**2*iexp(1) + &
+                                  (y+jj*iperiod(2)*l(2)-yyc)**2*iexp(2) + &
+                                  (z+kk*iperiod(3)*l(3)-zzc)**2*iexp(3) ) - r
                     if(abs(sdist) <= sdistmin) sdistmin = sdist
                   end do
                 end do
