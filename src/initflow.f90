@@ -152,6 +152,71 @@ module mod_initflow
         call poiseuille(2*n(3),zc2/(2*l(3)),ubulk,u1d)
       end if
       is_mean = .true.
+    case('roz') ! solid body rotation around z
+      do k=1,n(3)
+        zcc = zc(k)/l(3)-0.5
+        do j=1,n(2)
+          yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
+          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
+          do i=1,n(1)
+            xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
+            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
+            u(i,j,k) = -2.*pi*yc
+            v(i,j,k) =  2.*pi*xc
+            w(i,j,k) = 0.
+            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+          end do
+        end do
+      end do
+    case('roy') ! solid body rotation around y
+      do k=1,n(3)
+        zcc = zc(k)/l(3)-0.5
+        do j=1,n(2)
+          yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
+          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
+          do i=1,n(1)
+            xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
+            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
+            u(i,j,k) = -2.*pi*zcc
+            v(i,j,k) =  0.
+            w(i,j,k) =  2.*pi*xc
+            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+          end do
+        end do
+      end do
+    case('voz') ! 2D serpentine vortex around z
+      do k=1,n(3)
+        zcc = zc(k)/l(3)
+        do j=1,n(2)
+          yc = (j+lo(2)-1-.5)*dl(2)/l(2)
+          yf = (j+lo(2)-1-.0)*dl(2)/l(2)
+          do i=1,n(1)
+            xc = (i+lo(1)-1-.5)*dl(1)/l(1)
+            xf = (i+lo(1)-1-.0)*dl(1)/l(1)
+            u(i,j,k) =  sin(pi*xf)**2*sin(2*pi*yc)*cos(pi*time/8.)
+            v(i,j,k) = -sin(pi*yf)**2*sin(2*pi*xc)*cos(pi*time/8.)
+            w(i,j,k) = 0.
+            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+          end do
+        end do
+      end do
+    case('voy') ! 2D serpentine vortex around y
+      do k=1,n(3)
+        zcc = zc(k)/l(3)
+        zff = zf(k)/l(3)
+        do j=1,n(2)
+          yc = (j+lo(2)-1-.5)*dl(2)/l(2)
+          yf = (j+lo(2)-1-.0)*dl(2)/l(2)
+          do i=1,n(1)
+            xc = (i+lo(1)-1-.5)*dl(1)/l(1)
+            xf = (i+lo(1)-1-.0)*dl(1)/l(1)
+            u(i,j,k) =  sin(pi*xf )**2*sin(2*pi*zcc)*cos(pi*time/8.)
+            v(i,j,k) = 0.
+            w(i,j,k) = -sin(pi*zff)**2*sin(2*pi*xc )*cos(pi*time/8.)
+            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+          end do
+        end do
+      end do
     case default
       if(myid == 0) print*, 'ERROR: invalid name for initial velocity field'
       if(myid == 0) print*, ''
@@ -160,7 +225,7 @@ module mod_initflow
       call MPI_FINALIZE(ierr)
       error stop
     end select
-    if(.not.any(inivel == ['tgv','tgw'])) then
+    if(.not.any(inivel == ['tgv','tgw','roy','roz','voy','voz'])) then
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)

@@ -6,12 +6,13 @@
 ! -
 module mod_two_fluid
   use mpi
+  use mod_param, only: pi
   use mod_types
   implicit none
   private
   public initvof,cmpt_norm_curv
   type sphere
-    real(rp) :: x,y,z,r
+    real(rp) :: xyz(3),r
   end type sphere
   contains
   subroutine update_property(nh,prop12,psi,p)
@@ -161,14 +162,15 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv
   !
-  subroutine initvof(inipsi,cbcpsi,lo,hi,l,dl,dzf_g,zc_g,psi)
+  subroutine initvof(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
     use mod_common_mpi, only: myid
     !
-    ! computes initial conditions for the velocity field
+    ! computes initial conditions for the volume fraction field psi
     !
     implicit none
     character(len=*), intent(in) :: inipsi
     character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
+    real(rp), intent(in)               :: seps
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), dimension(0:), intent(out) :: dzf_g,zc_g
@@ -176,11 +178,8 @@ module mod_two_fluid
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
-    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,sdist1,sdist2
-    integer  :: nbox
-    real(rp), dimension(3) :: dlbox
-    real(rp) :: eps_dl,eps_dl_box,grid_vol_ratio
-    integer , dimension(3) :: iperiod,iexp
+    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2
+    integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
     real(rp) :: psi_aux
     logical :: is_sphere
@@ -190,7 +189,6 @@ module mod_two_fluid
     !
     is_sphere = .false.
     psi(:,:,:) = 0.
-    eps_dl = max(dl(1),dl(2),maxval(dzf_g(:)))*sqrt(3._rp)/2.*3
     select case(trim(inipsi))
     case('uni')
       psi(:,:,:) = 1._rp
@@ -200,45 +198,86 @@ module mod_two_fluid
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
     case('bu2')
+      call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.false.,.true.] ! cylinder
       is_sphere = .true.
     case('bu1')
+      call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
     case('flm')
-      nbox = 100
-      grid_vol_ratio = 1./(1.*nbox**3)
-      iperiod(:) = 0
-      where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
-      !
       do k=lo(3),hi(3)
         z = zc_g(k)
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
             sdist = z-l(3)/2.
-            if(      sdist <= -eps_dl ) then
-              psi(i,j,k) = 1.
-            else if( sdist <=  eps_dl ) then
-              psi(i,j,k) = 0.
-            else
-              dlbox(3) = dzf_g(k)/(1.*nbox)
-              eps_dl_box = dlbox(3)/2.
-              zl = z-dzf_g(k)/2.
-              yl = y-dl(2)/2.
-              xl = x-dl(1)/2.
-              do kk=1,nbox
-                zz = zl + kk*dlbox(3)
-                do jj=1,nbox
-                  do ii=1,nbox
-                    sdist = zz-l(3)/2.
-                    if(sdist <= -eps_dl_box) psi(i,j,k) = psi(i,j,k) + grid_vol_ratio
-                  end do
-                end do
-              end do
-            end if
+            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
           end do
         end do
       end do
+    case('cap-wav-1d')
+      !
+      ! initial condition for the capillary wave benchmark
+      ! (Prosperetti, Phys. Fluids 24 (1981) 1217)
+      !
+      ! interface at z = l(3)/2, with a sinusoidal bump
+      ! with amplitude zfilm_max and wavelength = lx
+      !
+      zfilm_max = 0.05
+      do k=lo(3),hi(3)
+        z = zc_g(k)/l(3) - 0.5
+        do j=lo(2),hi(2)
+          do i=lo(1),hi(1)
+            x = (i-0.5)*dl(1)/l(1)
+            sdist = z - zfilm_max*cos(2*pi*x)
+            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+          end do
+        end do
+      end do
+    case('zalesak-disk')
+      !
+      ! Zalesak's disk (WIP, not working yet)
+      !
+      block
+        real(rp) :: sw,sl,shift,xxc_slot,zzc_slot
+        r   = 0.15 ! disk radius
+        xxc = 0.5
+        zzc = 0.75
+        sw  = 0.05/2 ! slot half width
+        sl  = 0.25/2 ! slot half length
+        shift = r/2
+        xxc_slot = xxc
+        zzc_slot = zzc-r+sl-shift
+        sl = sl + shift
+        !
+        do k=lo(3),hi(3)
+          z = zc_g(k)/l(3)
+          do j=lo(2),hi(2)
+            do i=lo(1),hi(1)
+              x = (i-0.5)*dl(1)/l(1)
+              !
+              ! sdf of the disk
+              !
+              sdist1 = sqrt((x-xxc)**2+(z-zzc)**2) - r
+              !
+              ! sdf of the slot
+              !
+              xx = abs(x-xxc_slot)
+              zz = abs(z-zzc_slot)
+              sdist2 = sqrt(max(xx-sw,0._rp)**2 + max(zz-sl,0._rp)**2) + &
+                       min(max(xx-sw,zz-sl),0._rp)
+              !
+              ! subtract sdfs
+              !
+              sdist  = -max(sdist1,-sdist2)
+              !
+              ! compute psi
+              !
+              psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+            end do
+          end do
+        end do
+      end block
     case default
       if(myid == 0) print*, 'ERROR: invalid name for initial VoF field'
       if(myid == 0) print*, ''
@@ -249,58 +288,43 @@ module mod_two_fluid
     end select
     !
     if(is_sphere) then
-      nbox = 10
-      grid_vol_ratio = 1./(1.*nbox**3)
+      if(nspheres == 0) then
+        if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
+        if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
+        nspheres = nspheres + 1
+        allocate(spheres(nspheres))
+        q = nspheres
+        spheres(q)%xyz(:) = l(:)/2
+        spheres(q)%r = 0.25*minval(l(:),mask=is_dim)
+      end if
       iperiod(:) = 0
       where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
-      iexp(:) = 1
-      where(.not.is_dim(:)) iexp(:) = 0
+      idir(:) = 1
+      where(.not.is_dim(:)) idir(:) = 0
       do q = 1,nspheres
-        xxc = spheres(q)%x
-        yyc = spheres(q)%y
-        zzc = spheres(q)%z
+        xxc = spheres(q)%xyz(1)
+        yyc = spheres(q)%xyz(2)
+        zzc = spheres(q)%xyz(3)
         r   = spheres(q)%r
-        psi_aux = 0.
         do k=lo(3),hi(3)
           z = zc_g(k)
           do j=lo(2),hi(2)
             y = (j-0.5)*dl(2)
             do i=lo(1),hi(1)
               x = (i-0.5)*dl(1)
-              sdistmin = maxval(l(:)*iexp(:))*2.0
+              sdistmin = maxval(l(:)*idir(:))*2.0
               do kk = -1,1
                 do jj = -1,1
                   do ii = -1,1
-                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**(2*iexp(1)) + &
-                                  (y+jj*iperiod(2)*l(2)-yyc)**(2*iexp(2)) + &
-                                  (z+kk*iperiod(3)*l(3)-zzc)**(2*iexp(3)) ) - r
+                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**2*idir(1) + &
+                                  (y+jj*iperiod(2)*l(2)-yyc)**2*idir(2) + &
+                                  (z+kk*iperiod(3)*l(3)-zzc)**2*idir(3) ) - r
                     if(abs(sdist) <= sdistmin) sdistmin = sdist
                   end do
                 end do
               end do
               sdist = sdistmin
-              if(      sdist <= -eps_dl ) then
-                psi_aux = 1.
-              else if( sdist <=  eps_dl ) then
-                psi_aux = 0.
-              else
-                dlbox(:) = [dl(1),dl(2),dzf_g(k)]/(1.*nbox)
-                eps_dl_box = sqrt(dlbox(1)**(2*iexp(1)) + dlbox(2)**(2*iexp(2)) + dlbox(3)**(2*iexp(3)))/2.
-                zl = z-dzf_g(k)/2.
-                yl = y-dl(2)/2.
-                xl = x-dl(1)/2.
-                do kk=1,nbox
-                  zz = zl + kk*dlbox(3)
-                  do jj=1,nbox
-                    yy = yl + jj*dlbox(2)
-                    do ii=1,nbox
-                      xx = xl + ii*dlbox(1)
-                      sdist = sqrt((xx-xxc)**(2*iexp(1)) + (yy-yyc)**(2*iexp(2)) + (zz-zzc)**(2*iexp(3))) - r
-                      if(sdist <= -eps_dl_box) psi_aux = psi_aux + grid_vol_ratio
-                    end do
-                  end do
-                end do
-              end if
+              psi_aux = smooth_step_tanh(sdist,seps)
               psi(i,j,k) = max(psi(i,j,k),psi_aux)
             end do
           end do
@@ -316,25 +340,31 @@ module mod_two_fluid
     integer, intent(out) :: nspheres
     character(len=1024) :: dummy
     integer :: q,iunit,ierr
+    logical :: is_bubble_file
     !
-    open(newunit=iunit,file=fname,action='read',iostat=ierr)
-    if (ierr /= 0) then
-      error stop 'Error reading input file '//trim(fname)//'.'
-    end if
-    nspheres = -1
-    do while(ierr == 0)
-      read(iunit, '(A)', iostat=ierr) dummy
-      if(ierr > 0) then
+    inquire(file=fname,exist=is_bubble_file)
+    if(.not.is_bubble_file) then
+      nspheres = 0
+    else
+      open(newunit=iunit,file=fname,action='read',iostat=ierr)
+      if (ierr /= 0) then
         error stop 'Error reading input file '//trim(fname)//'.'
       end if
-      nspheres = nspheres + 1
-    end do
-    allocate(spheres(nspheres))
-    rewind(iunit)
-    do q = 1,nspheres
-      read(iunit,*) spheres(q)%x,spheres(q)%y,spheres(q)%z,spheres(q)%r
-    end do
-    close(iunit)
+      nspheres = -1
+      do while(ierr == 0)
+        read(iunit, '(A)', iostat=ierr) dummy
+        if(ierr > 0) then
+          error stop 'Error reading input file '//trim(fname)//'.'
+        end if
+        nspheres = nspheres + 1
+      end do
+      allocate(spheres(nspheres))
+      rewind(iunit)
+      do q = 1,nspheres
+        read(iunit,*) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
+      end do
+      close(iunit)
+    end if
   end subroutine read_sphere_file
   !
   pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
