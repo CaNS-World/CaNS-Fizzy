@@ -179,7 +179,7 @@ module mod_two_fluid
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
     real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2
-    integer , dimension(3) :: iperiod,iexp
+    integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
     real(rp) :: psi_aux
     logical :: is_sphere
@@ -299,8 +299,8 @@ module mod_two_fluid
       end if
       iperiod(:) = 0
       where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
-      iexp(:) = 1
-      where(.not.is_dim(:)) iexp(:) = 0
+      idir(:) = 1
+      where(.not.is_dim(:)) idir(:) = 0
       do q = 1,nspheres
         xxc = spheres(q)%xyz(1)
         yyc = spheres(q)%xyz(2)
@@ -312,13 +312,13 @@ module mod_two_fluid
             y = (j-0.5)*dl(2)
             do i=lo(1),hi(1)
               x = (i-0.5)*dl(1)
-              sdistmin = maxval(l(:)*iexp(:))*2.0
+              sdistmin = maxval(l(:)*idir(:))*2.0
               do kk = -1,1
                 do jj = -1,1
                   do ii = -1,1
-                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**2*iexp(1) + &
-                                  (y+jj*iperiod(2)*l(2)-yyc)**2*iexp(2) + &
-                                  (z+kk*iperiod(3)*l(3)-zzc)**2*iexp(3) ) - r
+                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**2*idir(1) + &
+                                  (y+jj*iperiod(2)*l(2)-yyc)**2*idir(2) + &
+                                  (z+kk*iperiod(3)*l(3)-zzc)**2*idir(3) ) - r
                     if(abs(sdist) <= sdistmin) sdistmin = sdist
                   end do
                 end do
