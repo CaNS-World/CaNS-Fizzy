@@ -162,14 +162,15 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv
   !
-  subroutine initvof(inipsi,cbcpsi,lo,hi,l,dl,dzf_g,zc_g,psi)
+  subroutine initvof(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
     use mod_common_mpi, only: myid
     !
-    ! computes initial conditions for the velocity field
+    ! computes initial conditions for the volume fraction field psi
     !
     implicit none
     character(len=*), intent(in) :: inipsi
     character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
+    real(rp), intent(in)               :: seps
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), dimension(0:), intent(out) :: dzf_g,zc_g
@@ -178,10 +179,7 @@ module mod_two_fluid
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
     real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2
-    integer  :: nbox
-    real(rp), dimension(3) :: dlbox
-    real(rp) :: eps_dl,eps_dl_box,grid_vol_ratio
-    integer , dimension(3) :: iperiod,iexp
+    integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
     real(rp) :: psi_aux
     logical :: is_sphere
@@ -191,7 +189,6 @@ module mod_two_fluid
     !
     is_sphere = .false.
     psi(:,:,:) = 0.
-    eps_dl = max(dl(1),dl(2),maxval(dzf_g(:)))*sqrt(3._rp)/2.*3
     select case(trim(inipsi))
     case('uni')
       psi(:,:,:) = 1._rp
@@ -209,36 +206,12 @@ module mod_two_fluid
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
     case('flm')
-      nbox = 100
-      grid_vol_ratio = 1./(1.*nbox**3)
-      iperiod(:) = 0
-      where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
-      !
       do k=lo(3),hi(3)
         z = zc_g(k)
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
             sdist = z-l(3)/2.
-            if(      sdist <= -eps_dl ) then
-              psi(i,j,k) = 1.
-            else if( sdist <=  eps_dl ) then
-              psi(i,j,k) = 0.
-            else
-              dlbox(3) = dzf_g(k)/(1.*nbox)
-              eps_dl_box = dlbox(3)/2.
-              zl = z-dzf_g(k)/2.
-              yl = y-dl(2)/2.
-              xl = x-dl(1)/2.
-              do kk=1,nbox
-                zz = zl + kk*dlbox(3)
-                do jj=1,nbox
-                  do ii=1,nbox
-                    sdist = zz-l(3)/2.
-                    if(sdist <= -eps_dl_box) psi(i,j,k) = psi(i,j,k) + grid_vol_ratio
-                  end do
-                end do
-              end do
-            end if
+            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
           end do
         end do
       end do
@@ -257,9 +230,7 @@ module mod_two_fluid
           do i=lo(1),hi(1)
             x = (i-0.5)*dl(1)/l(1)
             sdist = z - zfilm_max*cos(2*pi*x)
-            !
-            ! TODO: compute PSI
-            !
+            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
           end do
         end do
       end do
@@ -300,8 +271,9 @@ module mod_two_fluid
               !
               sdist  = -max(sdist1,-sdist2)
               !
-              ! TODO: compute PSI
+              ! compute psi
               !
+              psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
             end do
           end do
         end do
@@ -325,58 +297,34 @@ module mod_two_fluid
         spheres(q)%xyz(:) = l(:)/2
         spheres(q)%r = 0.25*minval(l(:),mask=is_dim)
       end if
-      nbox = 10
-      grid_vol_ratio = 1./(1.*nbox**3)
       iperiod(:) = 0
       where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
-      iexp(:) = 1
-      where(.not.is_dim(:)) iexp(:) = 0
+      idir(:) = 1
+      where(.not.is_dim(:)) idir(:) = 0
       do q = 1,nspheres
         xxc = spheres(q)%xyz(1)
         yyc = spheres(q)%xyz(2)
         zzc = spheres(q)%xyz(3)
         r   = spheres(q)%r
-        psi_aux = 0.
         do k=lo(3),hi(3)
           z = zc_g(k)
           do j=lo(2),hi(2)
             y = (j-0.5)*dl(2)
             do i=lo(1),hi(1)
               x = (i-0.5)*dl(1)
-              sdistmin = maxval(l(:)*iexp(:))*2.0
+              sdistmin = maxval(l(:)*idir(:))*2.0
               do kk = -1,1
                 do jj = -1,1
                   do ii = -1,1
-                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**(2*iexp(1)) + &
-                                  (y+jj*iperiod(2)*l(2)-yyc)**(2*iexp(2)) + &
-                                  (z+kk*iperiod(3)*l(3)-zzc)**(2*iexp(3)) ) - r
+                    sdist = sqrt( (x+ii*iperiod(1)*l(1)-xxc)**2*idir(1) + &
+                                  (y+jj*iperiod(2)*l(2)-yyc)**2*idir(2) + &
+                                  (z+kk*iperiod(3)*l(3)-zzc)**2*idir(3) ) - r
                     if(abs(sdist) <= sdistmin) sdistmin = sdist
                   end do
                 end do
               end do
               sdist = sdistmin
-              if(      sdist <= -eps_dl ) then
-                psi_aux = 1.
-              else if( sdist <=  eps_dl ) then
-                psi_aux = 0.
-              else
-                dlbox(:) = [dl(1),dl(2),dzf_g(k)]/(1.*nbox)
-                eps_dl_box = sqrt(dlbox(1)**(2*iexp(1)) + dlbox(2)**(2*iexp(2)) + dlbox(3)**(2*iexp(3)))/2.
-                zl = z-dzf_g(k)/2.
-                yl = y-dl(2)/2.
-                xl = x-dl(1)/2.
-                do kk=1,nbox
-                  zz = zl + kk*dlbox(3)
-                  do jj=1,nbox
-                    yy = yl + jj*dlbox(2)
-                    do ii=1,nbox
-                      xx = xl + ii*dlbox(1)
-                      sdist = sqrt((xx-xxc)**(2*iexp(1)) + (yy-yyc)**(2*iexp(2)) + (zz-zzc)**(2*iexp(3))) - r
-                      if(sdist <= -eps_dl_box) psi_aux = psi_aux + grid_vol_ratio
-                    end do
-                  end do
-                end do
-              end if
+              psi_aux = smooth_step_tanh(sdist,seps)
               psi(i,j,k) = max(psi(i,j,k),psi_aux)
             end do
           end do
