@@ -87,17 +87,21 @@ contains
                   gtype,gr, &
                   cfl,dtmin, &
                   is_solve_ns, &
-                  inivel,inisca, &
+                  inivel, &
                   is_wallturb, &
                   nstep,time_max,tw_max, &
                   stop_type, &
                   restart,is_overwrite_save,nsaves_max, &
                   icheck,iout0d,iout1d,iout2d,iout3d,isave, &
-                  cbcvel,cbcpre,cbcsca,bcvel,bcpre,bcsca, &
+                  cbcvel,cbcpre,bcvel,bcpre, &
                   bforce,gacc, &
                   dims
+    namelist /scalar/ &
+                  inisca, &
+                  cbcsca,bcsca
     namelist /two_fluid/ &
                   inipsi, &
+                  cbcpsi,bcpsi, &
                   rho12,mu12,sigma, &
                   ka12,cp12,beta12
 #if defined(_OPENACC)
@@ -109,6 +113,9 @@ contains
     open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
       if( ierr == 0 ) then
         read(iunit,nml=dns,iostat=ierr)
+        rewind(iunit)
+        read(iunit,nml=scalar,iostat=ierr)
+        rewind(iunit)
         read(iunit,nml=two_fluid,iostat=ierr)
       else
         if(myid == 0) print*, 'Error reading the input file'
