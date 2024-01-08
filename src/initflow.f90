@@ -303,7 +303,7 @@ module mod_initflow
   !
   subroutine initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
     !
-    ! computes initial conditions for the velocity field
+    ! computes initial conditions for the scalar field
     !
     implicit none
     character(len=*), intent(in) :: inisca
