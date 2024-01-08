@@ -129,6 +129,9 @@ contains
     !
     dl(:) = l(:)/(1.*ng(:))
     dli(:) = dl(:)**(-1)
+#if defined(_CONSTANT_COEFFS_POISSON)
+    rho0 = minval(rho12(:))
+#endif
 #if defined(_OPENACC)
     !
     ! read cuDecomp parameter file cudecomp.in, if it exists
