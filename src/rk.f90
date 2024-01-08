@@ -11,7 +11,7 @@ module mod_rk
   use mod_types
   implicit none
   private
-  public rk,rk_scal
+  public rk,rk_scal,rk_2fl
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
@@ -168,4 +168,55 @@ module mod_rk
     !
     call swap(dsdtrk,dsdtrko)
   end subroutine rk_scal
+  !
+  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
+    use mod_acdi, only: pf
+    !
+    ! low-storage 3rd-order Runge-Kutta scheme
+    ! for time integration of the phase field (actually Adams-Bashforth).
+    !
+    implicit none
+    logical , parameter :: is_cmpt_wallflux = .false.
+    real(rp), intent(in   ), dimension(2) :: rkpar
+    integer , intent(in   ), dimension(3) :: n
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ) :: gam,seps,dt
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(inout), dimension(0:,0:,0:) :: psi
+    real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
+    real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
+    logical, save :: is_first = .true.
+    real(rp) :: factor1,factor2,factor12
+    integer :: i,j,k
+    !
+    factor1 = rkpar(1)*dt
+    factor2 = rkpar(2)*dt
+    factor12 = factor1 + factor2
+    if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
+      is_first = .false.
+      allocate(dpsidtrk_t(n(1),n(2),n(3)),dpsidtrko_t(n(1),n(2),n(3)))
+      !$acc enter data create(dpsidtrk_t,dpsidtrko_t) async(1)
+      !$acc kernels default(present) async(1) ! not really necessary
+      dpsidtrko_t(:,:,:) = 0._rp
+      !$acc end kernels
+      dpsidtrk  => dpsidtrk_t
+      dpsidtrko => dpsidtrko_t
+    end if
+    call pf(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,gam,seps,u,v,w,psi,dpsidtrk)
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          psi(i,j,k) = psi(i,j,k) + factor1*dpsidtrk(i,j,k) + factor2*dpsidtrko(i,j,k)
+        end do
+      end do
+    end do
+    !
+    ! swap d?dtrk <-> d?dtrko
+    !
+    call swap(dpsidtrk,dpsidtrko)
+    !
+  end subroutine rk_2fl
 end module mod_rk

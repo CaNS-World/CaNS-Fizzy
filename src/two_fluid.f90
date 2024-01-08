@@ -10,7 +10,7 @@ module mod_two_fluid
   use mod_types
   implicit none
   private
-  public initvof,cmpt_norm_curv
+  public init2fl,cmpt_norm_curv
   type sphere
     real(rp) :: xyz(3),r
   end type sphere
@@ -162,7 +162,7 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv
   !
-  subroutine initvof(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
+  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
     use mod_common_mpi, only: myid
     !
     ! computes initial conditions for the volume fraction field psi
@@ -331,7 +331,7 @@ module mod_two_fluid
         end do
       end do
     end if
-  end subroutine initvof
+  end subroutine init2fl
   !
   subroutine read_sphere_file(fname,spheres,nspheres)
     implicit none

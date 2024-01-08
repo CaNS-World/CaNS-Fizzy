@@ -39,6 +39,8 @@ rho12(1:2)      = 1., 1.
 kappa12(1:2)    = 0., 0.
 cp12(1:2)       = 0., 0.
 beta12(1:2)     = 0., 0.
+gam_factor      = 1.
+seps_factor     = 1.
 \
 
 &cudecomp
