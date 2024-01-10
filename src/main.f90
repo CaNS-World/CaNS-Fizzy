@@ -101,6 +101,7 @@ program cans
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
   real(rp) :: dt,dto,dti,dtmax,time,divtot,divmax
+  real(rp) :: gam,seps
   integer :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
@@ -259,7 +260,6 @@ program cans
 #endif
   !
   call set_seps(dl,dzfi,seps)
-  call set_gam(n,u,v,w,gam)
   !
   fexts(1) = 'u'
   fexts(2) = 'v'
@@ -291,6 +291,8 @@ program cans
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
+  call set_gam(n,u,v,w,gam)
+  if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
   !$acc enter data copyin(u,v,w,p) create(pp,po)
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
@@ -309,7 +311,7 @@ program cans
   include 'out2d.h90'
   include 'out3d.h90'
   !
-  call chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax,ka12,cp12)
+  call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
   dt = min(cfl*dtmax,dtmin)
   if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
   dto = dt
@@ -333,17 +335,17 @@ program cans
     ! VoF update comes here! (discuss)
     !
     call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
+    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+#if defined(_SCALAR)
+    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
+#endif
     if(.not.is_solve_ns) then
       call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
       !$acc wait
       !$acc update device(u,v,w,p)
     else
-      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-      call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
-      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-#if defined(_SCALAR)
-      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
-#endif
 #if defined(_CONSTANT_COEFFS_POISSON)
       call extrapl_p(dt,dto,p,po,pp)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
@@ -368,8 +370,8 @@ program cans
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
       call updatep(pp,p)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-      dto = dt
     end if
+    dto = dt
     !
     ! check simulation stopping criteria
     !
@@ -384,8 +386,11 @@ program cans
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
     if(mod(istep,icheck) == 0) then
+      if(myid == 0) print*, 'Calculating maximum velocity to set Gamma...'
+      call set_gam(n,u,v,w,gam)
+      if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax)
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
       dt  = min(cfl*dtmax,dtmin)
       if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
       if(dtmax < small) then
@@ -396,8 +401,6 @@ program cans
       end if
       dto = dt
       dti = 1./dt
-      if(myid == 0) print*, 'Calculating maximum velocity to set gam...'
-      call set_gam(n,u,v,w,gam)
       call chkdiv(lo,hi,dli,dzfi,u,v,w,divtot,divmax)
       if(myid == 0) print*, 'Total divergence = ', divtot, '| Maximum divergence = ', divmax
 #if !defined(_MASK_DIVERGENCE_CHECK)

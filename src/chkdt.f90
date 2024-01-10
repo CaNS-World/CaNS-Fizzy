@@ -12,22 +12,23 @@ module mod_chkdt
   private
   public chkdt
   contains
-  subroutine chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax,ka12,cp12)
+  subroutine chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
     !
     ! computes maximum allowed time step
-    ! see Kang et al. JCP 15, 323–360
+    ! see Kang et al. Journal of Acientific Computing 15, 323–360
     !
     implicit none
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dl
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3)
+    logical,  intent(in) :: is_solve_ns
+    real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
     real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(out) :: dtmax
     real(rp), intent(in ), optional :: ka12(2),cp12(2)
     real(rp) :: dxi,dyi,dzi
     real(rp) :: ux,uy,uz,vx,vy,vz,wx,wy,wz
-    real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dti
+    real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dtipsi,dti
     integer :: i,j,k
     real(rp), save :: dlmin
     logical , save :: is_first = .true.
@@ -67,12 +68,17 @@ module mod_chkdt
     !$acc end data
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,dti,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
-    dtiv = maxval(mu12(:)/rho12(:))*2.*(3./dlmin**2)
-    dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
-    dtig = maxval(abs(gacc))/dlmin
-    dti = 2.*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))
-    if(dti == 0.) dti = 1.
-    dtmax = dti**(-1)
+    dtipsi = gam*seps/dlmin**2
+    if(.not.is_solve_ns) then
+      dtmax = min(dti**(-1),dtipsi**(-1))
+    else
+      dtiv = maxval(mu12(:)/rho12(:))*2.*(3./dlmin**2)
+      dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
+      dtig = maxval(abs(gacc))/dlmin
+      dti = 2.*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2))) !TODO: follow Kang's paper to include dtipsi in the single dti formula, if is_solve_ns = .true.
+      if(dti == 0.) dti = 1.
+      dtmax = min(dti**(-1),dtipsi**(-1))
+    end if
 #if defined(_SCALAR)
     if(present(ka12) .and. present(cp12)) &
       dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/dlmin**2

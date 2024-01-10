@@ -33,6 +33,7 @@ module mod_acdi
     ! computes gam (every icheck iterations)
     !
     implicit none
+    integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(out) :: gam
     real(rp) :: uc,vc,wc,vel,velmax
@@ -56,7 +57,7 @@ module mod_acdi
     call MPI_ALLREDUCE(MPI_IN_PLACE,vel,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
     velmax = vel
     gam = velmax*gam_factor
-  end subroutine set_gam_seps
+  end subroutine set_gam
   !
   subroutine pf(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,gam,seps,u,v,w,phi,dphidt)
     !

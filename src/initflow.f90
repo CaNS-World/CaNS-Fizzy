@@ -43,7 +43,7 @@ module mod_initflow
     is_noise = .false.
     is_mean  = .false.
     is_pair  = .false.
-    uref  = 1.
+    uref  = 5. !change back to 1. later
     ubulk = uref
     visc = mu/rho
     select case(trim(inivel))
