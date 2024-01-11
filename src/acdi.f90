@@ -59,7 +59,7 @@ module mod_acdi
     gam = velmax*gam_factor
   end subroutine set_gam
   !
-  subroutine pf(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,gam,seps,u,v,w,phi,dphidt)
+  subroutine pf(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,gam,seps,u,v,w,psi,dpsidt)
     !
     !
     !
@@ -68,41 +68,24 @@ module mod_acdi
     real(rp), intent(in) :: dxi,dyi,dzi,gam,seps
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
     real(rp), dimension(0:,0:,0:), intent(in) :: u,v,w
-    real(rp), dimension(0:,0:,0:), intent(inout) :: phi
-    real(rp), dimension(:,:,:), intent(out) :: dphidt
+    real(rp), dimension(0:,0:,0:), intent(inout) :: psi
+    real(rp), dimension(:,:,:), intent(out) :: dpsidt
     integer :: i,j,k
     real(rp) :: sepsi 
     real(rp) :: wghtpp,wghtpm,wghtmp,wghtmm
     real(rp) :: ADV,DIFF,SHARP
-    real(rp) :: uphiip,uphiim,vphijp,vphijm,wphikp,wphikm
-    real(rp) :: dphidxp,dphidxm,dphidyp,dphidym,dphidzp,dphidzm
-    real(rp) :: psimcm,psicmm,psiccm,psicpm,psipcm,psimmc,psimcc,psimpc,psicmc,psiccc, &
-                psicpc,psipmc,psipcc,psippc,psimcp,psicmp,psiccp,psicpp,psipcp
-    real(rp) :: dpsidxleft,dpsidyleft,dpsidzleft,dpsidxright,dpsidyright,dpsidzright, &
-                dpsidxback,dpsidyback,dpsidzback,dpsidxfront,dpsidyfront,dpsidzfront, &
-                dpsidxbottom,dpsidybottom,dpsidzbottom,dpsidxtop,dpsidytop,dpsidztop
+    real(rp) :: upsiip,upsiim,vpsijp,vpsijm,wpsikp,wpsikm
+    real(rp) :: dpsidxp,dpsidxm,dpsidyp,dpsidym,dpsidzp,dpsidzm
+    real(rp) :: phimcm,phicmm,phiccm,phicpm,phipcm,phimmc,phimcc,phimpc,phicmc,phiccc, &
+                phicpc,phipmc,phipcc,phippc,phimcp,phicmp,phiccp,phicpp,phipcp
+    real(rp) :: dphidxleft,dphidyleft,dphidzleft,dphidxright,dphidyright,dphidzright, &
+                dphidxback,dphidyback,dphidzback,dphidxfront,dphidyfront,dphidzfront, &
+                dphidxbottom,dphidybottom,dphidzbottom,dphidxtop,dphidytop,dphidztop
     real(rp) :: nleft,nright,nback,nfront,nbottom,ntop
     
     sepsi = 1./seps
     !
-    !$acc parallel loop collapse(3) default(present) private(wghtpp,wghtpm,wghtmp,wghtmm) &
-    !$acc private(uphiip,uphiim,vphijp,vphijm,wphikp,wphikm,ADV) &
-    !$acc private(dphidxp,dphidxm,dphidyp,dphidym,dphidzp,dphidzm,DIFF) &
-    !$acc private(psimcm,psicmm,psiccm,psicpm,psipcm,psimmc,psimcc,psimpc,psicmc,psiccc) &
-    !$acc private(psicpc,psipmc,psipcc,psippc,psimcp,psicmp,psiccp,psicpp,psipcp) &
-    !$acc private(dpsidxleft,dpsidyleft,dpsidzleft,dpsidxright,dpsidyright,dpsidzright) &
-    !$acc private(dpsidxback,dpsidyback,dpsidzback,dpsidxfront,dpsidyfront,dpsidzfront) &
-    !$acc private(dpsidxbottom,dpsidybottom,dpsidzbottom,dpsidxtop,dpsidytop,dpsidztop) &
-    !$acc private(nleft,nright,nback,nfront,nbottom,ntop,SHARP) async(1)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)  PRIVATE(wghtpp,wghtpm,wghtmp,wghtmm) &
-    !$OMP private(uphiip,uphiim,vphijp,vphijm,wphikp,wphikm,ADV) &
-    !$OMP private(dphidxp,dphidxm,dphidyp,dphidym,dphidzp,dphidzm,DIFF) &
-    !$OMP private(psimcm,psicmm,psiccm,psicpm,psipcm,psimmc,psimcc,psimpc,psicmc,psiccc) &
-    !$OMP private(psicpc,psipmc,psipcc,psippc,psimcp,psicmp,psiccp,psicpp,psipcp) &
-    !$OMP private(dpsidxleft,dpsidyleft,dpsidzleft,dpsidxright,dpsidyright,dpsidzright) &
-    !$OMP private(dpsidxback,dpsidyback,dpsidzback,dpsidxfront,dpsidyfront,dpsidzfront) &
-    !$OMP private(dpsidxbottom,dpsidybottom,dpsidzbottom,dpsidxtop,dpsidytop,dpsidztop) &
-    !$OMP private(nleft,nright,nback,nfront,nbottom,ntop,SHARP)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -117,98 +100,92 @@ module mod_acdi
           !wghtmm = 1. 
           !
           ! clip the field
-          !phi(i,j,k) = min(max(0.,phi(i,j,k)),1.)
+          !psi(i,j,k) = min(max(0.,psi(i,j,k)),1.)
           !
           ! ADVECTION
           !
-          uphiim  = 0.5*( phi(i-1,j,k)+phi(i,j,k) )*u(i-1,j,k)
-          uphiip  = 0.5*( phi(i+1,j,k)+phi(i,j,k) )*u(i  ,j,k)
-          vphijm  = 0.5*( phi(i,j-1,k)+phi(i,j,k) )*v(i,j-1,k)
-          vphijp  = 0.5*( phi(i,j+1,k)+phi(i,j,k) )*v(i,j  ,k)
-          wphikm  = 0.5*( phi(i,j,k-1)*wghtmp + phi(i,j,k)*wghtmm )*w(i,j,k-1) 
-          wphikp  = 0.5*( phi(i,j,k+1)*wghtpm + phi(i,j,k)*wghtpp )*w(i,j,k  )
-          ADV     = dxi*( uphiip - uphiim ) + dyi*( vphijp - vphijm ) + dzfi(k)*( wphikp - wphikm )
-          ! upwind
-          !ADV     = dxi*( 1.*(phi(i,j,k)-phi(i-1,j,k)) ) + dyi*( 0.*(phi(i,j,k)-phi(i,j-1,k)) )
+          upsiim  = 0.5*( psi(i-1,j,k)+psi(i,j,k) )*u(i-1,j,k)
+          upsiip  = 0.5*( psi(i+1,j,k)+psi(i,j,k) )*u(i  ,j,k)
+          vpsijm  = 0.5*( psi(i,j-1,k)+psi(i,j,k) )*v(i,j-1,k)
+          vpsijp  = 0.5*( psi(i,j+1,k)+psi(i,j,k) )*v(i,j  ,k)
+          wpsikm  = 0.5*( psi(i,j,k-1)*wghtmp + psi(i,j,k)*wghtmm )*w(i,j,k-1) 
+          wpsikp  = 0.5*( psi(i,j,k+1)*wghtpm + psi(i,j,k)*wghtpp )*w(i,j,k  )
+          ADV     = dxi*( upsiip - upsiim ) + dyi*( vpsijp - vpsijm ) + dzfi(k)*( wpsikp - wpsikm )
           !
           ! DIFFUSION
           !
-          dphidxp = (phi(i+1,j,k)-phi(i  ,j,k))*dxi
-          dphidxm = (phi(i  ,j,k)-phi(i-1,j,k))*dxi
-          dphidyp = (phi(i,j+1,k)-phi(i,j  ,k))*dyi
-          dphidym = (phi(i,j  ,k)-phi(i,j-1,k))*dyi
-          dphidzp = (phi(i,j,k+1)-phi(i,j,k  ))*dzci(k  )
-          dphidzm = (phi(i,j,k  )-phi(i,j,k-1))*dzci(k-1)
-          DIFF    = gam*seps*( (dphidxp-dphidxm)*dxi + (dphidyp-dphidym)*dyi + (dphidzp-dphidzm)*dzfi(k) )
+          dpsidxp = (psi(i+1,j,k)-psi(i  ,j,k))*dxi
+          dpsidxm = (psi(i  ,j,k)-psi(i-1,j,k))*dxi
+          dpsidyp = (psi(i,j+1,k)-psi(i,j  ,k))*dyi
+          dpsidym = (psi(i,j  ,k)-psi(i,j-1,k))*dyi
+          dpsidzp = (psi(i,j,k+1)-psi(i,j,k  ))*dzci(k  )
+          dpsidzm = (psi(i,j,k  )-psi(i,j,k-1))*dzci(k-1)
+          DIFF    = gam*seps*( (dpsidxp-dpsidxm)*dxi + (dpsidyp-dpsidym)*dyi + (dpsidzp-dpsidzm)*dzfi(k) )
           !
           ! SHARPENING
           ! 
           ! calculate the surface normal at the cell faces
-          !!!!if (phi(i+1,j+1,k) < 0.) then
-          !!!if (ANY (phi < 0.)) then
-          !!!  print*, 'indices', i-1,i,i+1,j-1,j,j+1,k-1,k,k+1
-          !!!  print*, 'suspicious', (phi(i,j+2,k)), ' ', (phi(i+1,j+2,k)), ' ', (phi(i+2,j+2,k))
-          !!!  print*, 'suspicious', (phi(i,j+1,k)), ' ', (phi(i+1,j+1,k)), ' ', (phi(i+2,j+1,k))
-          !!!  print*, 'suspicious', (phi(i,j,k  )), ' ', (phi(i+1,j,k  )), ' ', (phi(i+2,j,k  ))
-          !!!endif
-         !psimmm = seps*log((phi(i-1,j-1,k-1)+eps)/(1.-phi(i-1,j-1,k-1)+eps))  
-          psimcm = seps*log((phi(i-1,j  ,k-1)+eps)/(1.-phi(i-1,j  ,k-1)+eps))  
-         !psimpm = seps*log((phi(i-1,j+1,k-1)+eps)/(1.-phi(i-1,j+1,k-1)+eps))  
-          psicmm = seps*log((phi(i  ,j-1,k-1)+eps)/(1.-phi(i  ,j-1,k-1)+eps))  
-          psiccm = seps*log((phi(i  ,j  ,k-1)+eps)/(1.-phi(i  ,j  ,k-1)+eps))  
-          psicpm = seps*log((phi(i  ,j+1,k-1)+eps)/(1.-phi(i  ,j+1,k-1)+eps))  
-         !psipmm = seps*log((phi(i+1,j-1,k-1)+eps)/(1.-phi(i+1,j-1,k-1)+eps))  
-          psipcm = seps*log((phi(i+1,j  ,k-1)+eps)/(1.-phi(i+1,j  ,k-1)+eps))  
-         !psippm = seps*log((phi(i+1,j+1,k-1)+eps)/(1.-phi(i+1,j+1,k-1)+eps))  
-          psimmc = seps*log((phi(i-1,j-1,k  )+eps)/(1.-phi(i-1,j-1,k  )+eps))  
-          psimcc = seps*log((phi(i-1,j  ,k  )+eps)/(1.-phi(i-1,j  ,k  )+eps))  
-          psimpc = seps*log((phi(i-1,j+1,k  )+eps)/(1.-phi(i-1,j+1,k  )+eps))  
-          psicmc = seps*log((phi(i  ,j-1,k  )+eps)/(1.-phi(i  ,j-1,k  )+eps))  
-          psiccc = seps*log((phi(i  ,j  ,k  )+eps)/(1.-phi(i  ,j  ,k  )+eps))  
-          psicpc = seps*log((phi(i  ,j+1,k  )+eps)/(1.-phi(i  ,j+1,k  )+eps))  
-          psipmc = seps*log((phi(i+1,j-1,k  )+eps)/(1.-phi(i+1,j-1,k  )+eps))  
-          psipcc = seps*log((phi(i+1,j  ,k  )+eps)/(1.-phi(i+1,j  ,k  )+eps))  
-          psippc = seps*log((phi(i+1,j+1,k  )+eps)/(1.-phi(i+1,j+1,k  )+eps))  
-         !psimmp = seps*log((phi(i-1,j-1,k+1)+eps)/(1.-phi(i-1,j-1,k+1)+eps))  
-          psimcp = seps*log((phi(i-1,j  ,k+1)+eps)/(1.-phi(i-1,j  ,k+1)+eps))  
-         !psimpp = seps*log((phi(i-1,j+1,k+1)+eps)/(1.-phi(i-1,j+1,k+1)+eps))  
-          psicmp = seps*log((phi(i  ,j-1,k+1)+eps)/(1.-phi(i  ,j-1,k+1)+eps))  
-          psiccp = seps*log((phi(i  ,j  ,k+1)+eps)/(1.-phi(i  ,j  ,k+1)+eps))  
-          psicpp = seps*log((phi(i  ,j+1,k+1)+eps)/(1.-phi(i  ,j+1,k+1)+eps))  
-         !psipmp = seps*log((phi(i+1,j-1,k+1)+eps)/(1.-phi(i+1,j-1,k+1)+eps))  
-          psipcp = seps*log((phi(i+1,j  ,k+1)+eps)/(1.-phi(i+1,j  ,k+1)+eps))  
-         !psippp = seps*log((phi(i+1,j+1,k+1)+eps)/(1.-phi(i+1,j+1,k+1)+eps))  
-          dpsidxleft   = 1.00*(psiccc       -psimcc       )*dxi
-          dpsidyleft   = 0.25*(psicpc+psimpc-psicmc-psimmc)*dyi
-          dpsidzleft   = 0.50*(psiccp+psimcp-psiccm-psimcm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
-          dpsidxright  = 1.00*(psipcc       -psiccc       )*dxi
-          dpsidyright  = 0.25*(psippc+psicpc-psipmc-psicmc)*dyi
-          dpsidzright  = 0.50*(psipcp+psiccp-psipcm-psiccm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
-          dpsidxback   = 0.25*(psippc+psipcc-psimpc-psimcc)*dxi
-          dpsidyback   = 1.00*(psicpc       -psiccc       )*dyi
-          dpsidzback   = 0.50*(psicpp+psiccp-psicpm-psiccm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
-          dpsidxfront  = 0.25*(psipcc+psipmc-psimcc-psimmc)*dxi
-          dpsidyfront  = 1.00*(psiccc       -psicmc       )*dyi
-          dpsidzfront  = 0.50*(psiccp+psicmp-psiccm-psicmm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
-          dpsidxbottom = 0.25*((psipcm-psimcm)*wghtmp+(psipcc-psimcc)*wghtmm)*dxi
-          dpsidybottom = 0.25*((psicpm-psicmm)*wghtmp+(psicpc-psicmc)*wghtmm)*dyi
-          dpsidzbottom = 1.00*( psiccc               -psiccm                )*dzci(k-1)
-          dpsidxtop    = 0.25*((psipcp-psimcp)*wghtpm+(psipcc-psimcc)*wghtpp)*dxi
-          dpsidytop    = 0.25*((psicpp-psicmp)*wghtpm+(psicpc-psicmc)*wghtpp)*dyi
-          dpsidztop    = 1.00*( psiccp               -psiccc                )*dzci(k)
-          nleft   = dpsidxleft  / (sqrt(  dpsidxleft**2 +   dpsidyleft**2 +   dpsidzleft**2)+eps) 
-          nright  = dpsidxright / (sqrt( dpsidxright**2 +  dpsidyright**2 +  dpsidzright**2)+eps)
-          nback   = dpsidyback  / (sqrt(  dpsidxback**2 +   dpsidyback**2 +   dpsidzback**2)+eps)
-          nfront  = dpsidyfront / (sqrt( dpsidxfront**2 +  dpsidyfront**2 +  dpsidzfront**2)+eps)       
-          nbottom = dpsidzbottom/ (sqrt(dpsidxbottom**2 + dpsidybottom**2 + dpsidzbottom**2)+eps)
-          ntop    = dpsidztop   / (sqrt(   dpsidxtop**2 +    dpsidytop**2 +    dpsidztop**2)+eps)
-          SHARP = 0.25*gam*((1.-(tanh(0.25*(psipcc       +psiccc       )*sepsi))**2)*nright-&
-                            (1.-(tanh(0.25*(psiccc       +psimcc       )*sepsi))**2)*nleft  )*dxi + &
-                  0.25*gam*((1.-(tanh(0.25*(psicpc       +psiccc       )*sepsi))**2)*nback -&
-                            (1.-(tanh(0.25*(psiccc       +psicmc       )*sepsi))**2)*nfront )*dyi + &
-                  0.25*gam*((1.-(tanh(0.25*(psiccp*wghtpm+psiccc*wghtpp)*sepsi))**2)*ntop  -&
-                            (1.-(tanh(0.25*(psiccc*wghtmm+psiccm*wghtmp)*sepsi))**2)*nbottom)*dzfi(k)
-          dphidt(i,j,k) = -ADV+DIFF-SHARP
+         !phimmm = seps*log((psi(i-1,j-1,k-1)+eps)/(1.-psi(i-1,j-1,k-1)+eps))  
+          phimcm = seps*log((psi(i-1,j  ,k-1)+eps)/(1.-psi(i-1,j  ,k-1)+eps))  
+         !phimpm = seps*log((psi(i-1,j+1,k-1)+eps)/(1.-psi(i-1,j+1,k-1)+eps))  
+          phicmm = seps*log((psi(i  ,j-1,k-1)+eps)/(1.-psi(i  ,j-1,k-1)+eps))  
+          phiccm = seps*log((psi(i  ,j  ,k-1)+eps)/(1.-psi(i  ,j  ,k-1)+eps))  
+          phicpm = seps*log((psi(i  ,j+1,k-1)+eps)/(1.-psi(i  ,j+1,k-1)+eps))  
+         !phipmm = seps*log((psi(i+1,j-1,k-1)+eps)/(1.-psi(i+1,j-1,k-1)+eps))  
+          phipcm = seps*log((psi(i+1,j  ,k-1)+eps)/(1.-psi(i+1,j  ,k-1)+eps))  
+         !phippm = seps*log((psi(i+1,j+1,k-1)+eps)/(1.-psi(i+1,j+1,k-1)+eps))  
+          phimmc = seps*log((psi(i-1,j-1,k  )+eps)/(1.-psi(i-1,j-1,k  )+eps))  
+          phimcc = seps*log((psi(i-1,j  ,k  )+eps)/(1.-psi(i-1,j  ,k  )+eps))  
+          phimpc = seps*log((psi(i-1,j+1,k  )+eps)/(1.-psi(i-1,j+1,k  )+eps))  
+          phicmc = seps*log((psi(i  ,j-1,k  )+eps)/(1.-psi(i  ,j-1,k  )+eps))  
+          phiccc = seps*log((psi(i  ,j  ,k  )+eps)/(1.-psi(i  ,j  ,k  )+eps))  
+          phicpc = seps*log((psi(i  ,j+1,k  )+eps)/(1.-psi(i  ,j+1,k  )+eps))  
+          phipmc = seps*log((psi(i+1,j-1,k  )+eps)/(1.-psi(i+1,j-1,k  )+eps))  
+          phipcc = seps*log((psi(i+1,j  ,k  )+eps)/(1.-psi(i+1,j  ,k  )+eps))  
+          phippc = seps*log((psi(i+1,j+1,k  )+eps)/(1.-psi(i+1,j+1,k  )+eps))  
+         !phimmp = seps*log((psi(i-1,j-1,k+1)+eps)/(1.-psi(i-1,j-1,k+1)+eps))  
+          phimcp = seps*log((psi(i-1,j  ,k+1)+eps)/(1.-psi(i-1,j  ,k+1)+eps))  
+         !phimpp = seps*log((psi(i-1,j+1,k+1)+eps)/(1.-psi(i-1,j+1,k+1)+eps))  
+          phicmp = seps*log((psi(i  ,j-1,k+1)+eps)/(1.-psi(i  ,j-1,k+1)+eps))  
+          phiccp = seps*log((psi(i  ,j  ,k+1)+eps)/(1.-psi(i  ,j  ,k+1)+eps))  
+          phicpp = seps*log((psi(i  ,j+1,k+1)+eps)/(1.-psi(i  ,j+1,k+1)+eps))  
+         !phipmp = seps*log((psi(i+1,j-1,k+1)+eps)/(1.-psi(i+1,j-1,k+1)+eps))  
+          phipcp = seps*log((psi(i+1,j  ,k+1)+eps)/(1.-psi(i+1,j  ,k+1)+eps))  
+         !phippp = seps*log((psi(i+1,j+1,k+1)+eps)/(1.-psi(i+1,j+1,k+1)+eps))  
+          dphidxleft   = 1.00*(phiccc       -phimcc       )*dxi
+          dphidyleft   = 0.25*(phicpc+phimpc-phicmc-phimmc)*dyi
+          dphidzleft   = 0.50*(phiccp+phimcp-phiccm-phimcm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
+          dphidxright  = 1.00*(phipcc       -phiccc       )*dxi
+          dphidyright  = 0.25*(phippc+phicpc-phipmc-phicmc)*dyi
+          dphidzright  = 0.50*(phipcp+phiccp-phipcm-phiccm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
+          dphidxback   = 0.25*(phippc+phipcc-phimpc-phimcc)*dxi
+          dphidyback   = 1.00*(phicpc       -phiccc       )*dyi
+          dphidzback   = 0.50*(phicpp+phiccp-phicpm-phiccm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
+          dphidxfront  = 0.25*(phipcc+phipmc-phimcc-phimmc)*dxi
+          dphidyfront  = 1.00*(phiccc       -phicmc       )*dyi
+          dphidzfront  = 0.50*(phiccp+phicmp-phiccm-phicmm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
+          dphidxbottom = 0.25*((phipcm-phimcm)*wghtmp+(phipcc-phimcc)*wghtmm)*dxi
+          dphidybottom = 0.25*((phicpm-phicmm)*wghtmp+(phicpc-phicmc)*wghtmm)*dyi
+          dphidzbottom = 1.00*( phiccc               -phiccm                )*dzci(k-1)
+          dphidxtop    = 0.25*((phipcp-phimcp)*wghtpm+(phipcc-phimcc)*wghtpp)*dxi
+          dphidytop    = 0.25*((phicpp-phicmp)*wghtpm+(phicpc-phicmc)*wghtpp)*dyi
+          dphidztop    = 1.00*( phiccp               -phiccc                )*dzci(k)
+          nleft   = dphidxleft  / (sqrt(  dphidxleft**2 +   dphidyleft**2 +   dphidzleft**2)+eps) 
+          nright  = dphidxright / (sqrt( dphidxright**2 +  dphidyright**2 +  dphidzright**2)+eps)
+          nback   = dphidyback  / (sqrt(  dphidxback**2 +   dphidyback**2 +   dphidzback**2)+eps)
+          nfront  = dphidyfront / (sqrt( dphidxfront**2 +  dphidyfront**2 +  dphidzfront**2)+eps)       
+          nbottom = dphidzbottom/ (sqrt(dphidxbottom**2 + dphidybottom**2 + dphidzbottom**2)+eps)
+          ntop    = dphidztop   / (sqrt(   dphidxtop**2 +    dphidytop**2 +    dphidztop**2)+eps)
+          SHARP = 0.25*gam*((1.-(tanh(0.25*(phipcc       +phiccc       )*sepsi))**2)*nright-&
+                            (1.-(tanh(0.25*(phiccc       +phimcc       )*sepsi))**2)*nleft  )*dxi + &
+                  0.25*gam*((1.-(tanh(0.25*(phicpc       +phiccc       )*sepsi))**2)*nback -&
+                            (1.-(tanh(0.25*(phiccc       +phicmc       )*sepsi))**2)*nfront )*dyi + &
+                  0.25*gam*((1.-(tanh(0.25*(phiccp*wghtpm+phiccc*wghtpp)*sepsi))**2)*ntop  -&
+                            (1.-(tanh(0.25*(phiccc*wghtmm+phiccm*wghtmp)*sepsi))**2)*nbottom)*dzfi(k)
+          !
+          ! FULL TRANSPORT
+          !
+          dpsidt(i,j,k) = -ADV+DIFF-SHARP
         end do
       end do
     end do
