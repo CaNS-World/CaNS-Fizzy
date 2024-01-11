@@ -37,7 +37,7 @@
   call write_visu_3d(datadir,'pre_fld_'//fldnum//'.bin','log_visu_3d.out','Pressure_P', &
                      [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      p(1:n(1),1:n(2),1:n(3)))
-  call write_visu_3d(datadir,'psi_fld_'//fldnum//'.bin','log_visu_3d.out','VoF', &
+  call write_visu_3d(datadir,'psi_fld_'//fldnum//'.bin','log_visu_3d.out','Psi', &
                      [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      psi(1:n(1),1:n(2),1:n(3)))
   call write_visu_3d(datadir,'cur_fld_'//fldnum//'.bin','log_visu_3d.out','Kappa', &

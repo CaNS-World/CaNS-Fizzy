@@ -44,7 +44,7 @@ program cans
   use mod_initmpi        , only: initmpi
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
-  use mod_rk             , only: tm => rk,tm_scal => rk_scal
+  use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
   use mod_param          , only: l,small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
@@ -64,7 +64,8 @@ program cans
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_two_fluid      , only: initvof,cmpt_norm_curv
+  use mod_acdi           , only: set_seps,set_gam
+  use mod_two_fluid      , only: init2fl,cmpt_norm_curv
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
 #endif
@@ -100,6 +101,7 @@ program cans
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
   real(rp) :: dt,dto,dti,dtmax,time,divtot,divmax
+  real(rp) :: gam,seps
   integer :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
@@ -257,12 +259,15 @@ program cans
                           nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #endif
   !
+  call set_seps(dl,dzfi,seps)
+  !
   fexts(1) = 'u'
   fexts(2) = 'v'
   fexts(3) = 'w'
   fexts(4) = 'p'
+  fexts(5) = 'psi'
 #if defined(_SCALAR)
-  fexts(5) = 's'
+  fexts(6) = 's'
 #endif
   if(.not.restart) then
     istep = 0
@@ -273,21 +278,21 @@ program cans
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
-    !
-    ! ***TODO*** seps computation to add as input below
-    !
-    call initvof(inipsi,cbcpsi,1.*dl(1),lo,hi,l,dl,dzf_g,zc_g,psi)
+    call init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition succesfully set ***'
   else
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
 #if defined(_SCALAR)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
+  call set_gam(n,u,v,w,gam)
+  if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
   !$acc enter data copyin(u,v,w,p) create(pp,po)
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
@@ -306,7 +311,7 @@ program cans
   include 'out2d.h90'
   include 'out3d.h90'
   !
-  call chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax,ka12,cp12)
+  call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
   dt = min(cfl*dtmax,dtmin)
   if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
   dto = dt
@@ -327,19 +332,22 @@ program cans
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
     tm_coeff(:) = [2.+dt/dto,-dt/dto]/2.
     !
-    ! VoF update comes here!
+    ! VoF update comes here! (discuss)
     !
+    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
+    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+#if defined(_SCALAR)
+    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
+    call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
+#endif
     if(.not.is_solve_ns) then
       call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc wait
       !$acc update device(u,v,w,p)
     else
-      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-      call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
-      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-#if defined(_SCALAR)
-      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
-#endif
 #if defined(_CONSTANT_COEFFS_POISSON)
       call extrapl_p(dt,dto,p,po,pp)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
@@ -364,8 +372,8 @@ program cans
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
       call updatep(pp,p)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-      dto = dt
     end if
+    dto = dt
     !
     ! check simulation stopping criteria
     !
@@ -380,8 +388,11 @@ program cans
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
     if(mod(istep,icheck) == 0) then
+      if(myid == 0) print*, 'Calculating maximum velocity to set Gamma...'
+      call set_gam(n,u,v,w,gam)
+      if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,mu12,rho12,sigma,gacc,u,v,w,dtmax)
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
       dt  = min(cfl*dtmax,dtmin)
       if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
       if(dtmax < small) then
@@ -443,23 +454,24 @@ program cans
           call out0d(trim(datadir)//'log_checkpoints.out',3,var)
         end if
       end if
-      !$acc update self(u,v,w,p)
+      !$acc update self(u,v,w,p,psi)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
 #if defined(_SCALAR)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
 #endif
       if(.not.is_overwrite_save) then
         !
         ! fld_?.bin -> last checkpoint file (symbolic link)
         !
-        do k = 1,4
+        do k = 1,5
           call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin')
         end do
 #if defined(_SCALAR)
-        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 5 now
+        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 6 now
 #endif
       end if
       if(myid == 0) print*, '*** Checkpoints saved at time = ', time, 'time step = ', istep, '. ***'

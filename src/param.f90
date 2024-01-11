@@ -59,10 +59,11 @@ real(rp), protected, dimension(3) :: dl,dli
 !
 ! two-fluid input parameters
 !
-real(rp), protected, dimension(2) :: rho12,mu12
+character(len=100), protected     :: inipsi
+real(rp), protected               :: gam_factor,seps_factor
 real(rp), protected               :: sigma
+real(rp), protected, dimension(2) :: mu12,rho12
 real(rp), protected, dimension(2) :: ka12,cp12,beta12
-character(len=100), protected :: inipsi
 real(rp), protected               :: rho0 ! not an input
 #if defined(_OPENACC)
 !
@@ -102,8 +103,9 @@ contains
     namelist /two_fluid/ &
                   inipsi, &
                   cbcpsi,bcpsi, &
-                  rho12,mu12,sigma, &
-                  ka12,cp12,beta12
+                  sigma,mu12,rho12, &
+                  ka12,cp12,beta12, &
+                  gam_factor,seps_factor
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -127,6 +129,9 @@ contains
     !
     dl(:) = l(:)/(1.*ng(:))
     dli(:) = dl(:)**(-1)
+#if defined(_CONSTANT_COEFFS_POISSON)
+    rho0 = minval(rho12(:))
+#endif
 #if defined(_OPENACC)
     !
     ! read cuDecomp parameter file cudecomp.in, if it exists
