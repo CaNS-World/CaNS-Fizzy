@@ -805,7 +805,7 @@ module mod_mom
           dudt_aux = dudt_aux + dpdx/rho0 + (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
           dvdt_aux = dvdt_aux + dpdy/rho0 + (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
           dwdt_aux = dwdt_aux + dpdz/rho0 + (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
-#else                                 
+#else
           dudt_aux = dudt_aux + dpdx/rhoxp
           dvdt_aux = dvdt_aux + dpdy/rhoyp
           dwdt_aux = dwdt_aux + dpdz/rhozp
@@ -1080,7 +1080,7 @@ module mod_mom
           dudt_aux = dudt_aux + dpdx/rho0 + (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
           dvdt_aux = dvdt_aux + dpdy/rho0 + (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
           dwdt_aux = dwdt_aux + dpdz/rho0 + (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
-#else                                 
+#else
           dudt_aux = dudt_aux + dpdx/rhoxp
           dvdt_aux = dvdt_aux + dpdy/rhoyp
           dwdt_aux = dwdt_aux + dpdz/rhozp

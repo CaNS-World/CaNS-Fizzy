@@ -369,7 +369,7 @@ module mod_two_fluid
   !
   pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
     use mod_param, only:pi
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth step function based on trigonometric functions
     !
@@ -386,7 +386,7 @@ module mod_two_fluid
   end function smooth_step_sin
   !
   pure elemental real(rp) function smooth_step_erf(r,eps) result(res)
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth step function based on the error function
     !
@@ -398,7 +398,7 @@ module mod_two_fluid
   end function smooth_step_erf
   !
   pure elemental real(rp) function smooth_step_tanh(r,eps) result(res)
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth step function based on the error function
     !
@@ -410,7 +410,7 @@ module mod_two_fluid
   end function smooth_step_tanh
   !
   pure elemental real(rp) function smooth_sign(delta,phi) result(res)
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth sign function
     !
@@ -425,7 +425,7 @@ module mod_two_fluid
   !
   pure elemental real(rp) function smooth_impulse(r,eps) result(res)
     use mod_param, only:pi
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth impulse Dirac delta function using trigonometric functions
     !

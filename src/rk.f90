@@ -170,7 +170,7 @@ module mod_rk
   end subroutine rk_scal
   !
   subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
-    use mod_acdi, only: pf
+    use mod_acdi, only: acdi_transport_pf
     !
     ! low-storage 3rd-order Runge-Kutta scheme
     ! for time integration of the phase field (actually Adams-Bashforth).
@@ -203,7 +203,7 @@ module mod_rk
       dpsidtrk  => dpsidtrk_t
       dpsidtrko => dpsidtrko_t
     end if
-    call pf(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,gam,seps,u,v,w,psi,dpsidtrk)
+    call acdi_transport_pf(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,gam,seps,u,v,w,psi,dpsidtrk)
     !$acc parallel loop collapse(3) default(present) async(1)
     !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
     do k=1,n(3)
