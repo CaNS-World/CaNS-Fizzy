@@ -41,9 +41,9 @@ module mod_acdi
     real(rp) :: uc,vc,wc,vel,velmax
     integer :: i,j,k
     !
+    velmax = 0.
     !$acc data copy(vel) async(1)
-    !$acc parallel loop collapse(3) default(present) private(uc,vc,wc) reduction(max:vel) async(1)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)  PRIVATE(uc,vc,wc) REDUCTION(max:vel)
+    !$acc parallel loop collapse(3) default(present) private(uc,vc,wc,vel) reduction(max:velmax) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -51,13 +51,13 @@ module mod_acdi
           vc  = 0.5*(v(i,j,k) + v(i,j-1,k))
           wc  = 0.5*(w(i,j,k) + w(i,j,k-1))
           vel = sqrt(uc**2 + vc**2 + wc**2)
+          velmax = max(velmax,vel)
         end do
       end do
     end do
     !$acc end data
     !$acc wait(1)
-    call MPI_ALLREDUCE(MPI_IN_PLACE,vel,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
-    velmax = vel
+    call MPI_ALLREDUCE(MPI_IN_PLACE,velmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
     gam = velmax*gam_factor
   end subroutine acdi_set_gamma
   !
