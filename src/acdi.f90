@@ -50,7 +50,7 @@ module mod_acdi
           uc  = 0.5*(u(i,j,k) + u(i-1,j,k))
           vc  = 0.5*(v(i,j,k) + v(i,j-1,k))
           wc  = 0.5*(w(i,j,k) + w(i,j,k-1))
-          vel = sqrt(uc**2 + vc**2 + wc**2)
+          vel = uc**2 + vc**2 + wc**2
           velmax = max(velmax,vel)
         end do
       end do
@@ -58,7 +58,7 @@ module mod_acdi
     !$acc end data
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,velmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
-    gam = velmax*gam_factor
+    gam = sqrt(velmax)*gam_factor
   end subroutine acdi_set_gamma
   !
   subroutine acdi_transport_pf(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,gam,seps,u,v,w,psi,dpsidt)
