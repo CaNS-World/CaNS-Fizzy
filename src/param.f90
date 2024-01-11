@@ -60,7 +60,7 @@ real(rp), protected, dimension(3) :: dl,dli
 ! two-fluid input parameters
 !
 character(len=100), protected     :: inipsi
-real(rp), protected               :: gam_factor,seps_factor
+real(rp), protected               :: acdi_gam_factor,acdi_eps_factor
 real(rp), protected               :: sigma
 real(rp), protected, dimension(2) :: mu12,rho12
 real(rp), protected, dimension(2) :: ka12,cp12,beta12
@@ -105,7 +105,7 @@ contains
                   cbcpsi,bcpsi, &
                   rho12,mu12,sigma, &
                   ka12,cp12,beta12, &
-                  gam_factor,seps_factor
+                  acdi_gam_factor,acdi_eps_factor
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &

@@ -60,11 +60,12 @@ program cans
                                  bforce, &
                                  ng,l,dl,dli, &
                                  read_input, &
-                                 rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12
+                                 rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12, &
+                                 acdi_gam_factor,acdi_eps_factor
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_acdi           , only: set_seps,set_gam
+  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma
   use mod_two_fluid      , only: init2fl,cmpt_norm_curv
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
@@ -259,7 +260,7 @@ program cans
                           nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #endif
   !
-  call set_seps(dl,dzfi,seps)
+  call acdi_set_epsilon(dl,dzfi,acdi_eps_factor,seps)
   !
   fexts(1) = 'u'
   fexts(2) = 'v'
@@ -291,7 +292,7 @@ program cans
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
-  call set_gam(n,u,v,w,gam)
+  call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
   !$acc enter data copyin(u,v,w,p) create(pp,po)
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
@@ -345,6 +346,7 @@ program cans
       call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
       !$acc wait
       !$acc update device(u,v,w,p)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
     else
 #if defined(_CONSTANT_COEFFS_POISSON)
       call extrapl_p(dt,dto,p,po,pp)
@@ -387,7 +389,7 @@ program cans
     end if
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Calculating maximum velocity to set Gamma...'
-      call set_gam(n,u,v,w,gam)
+      call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
       if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
@@ -422,6 +424,11 @@ program cans
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
       !
+      var(1) = 1.*istep
+      var(2) = time
+      var(3) = gam
+      var(4) = seps
+      call out0d(trim(datadir)//'log_acdi.out',4,var)
     end if
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
@@ -469,7 +476,7 @@ program cans
           call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin')
         end do
 #if defined(_SCALAR)
-        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 5 now
+        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 6 now
 #endif
       end if
       if(myid == 0) print*, '*** Checkpoints saved at time = ', time, 'time step = ', istep, '. ***'
