@@ -340,6 +340,7 @@ program cans
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
 #if defined(_SCALAR)
     call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
+    call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
     if(.not.is_solve_ns) then
       call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
@@ -469,7 +470,7 @@ program cans
           call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin')
         end do
 #if defined(_SCALAR)
-        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 5 now
+        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 6 now !??
 #endif
       end if
       if(myid == 0) print*, '*** Checkpoints saved at time = ', time, 'time step = ', istep, '. ***'

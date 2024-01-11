@@ -103,7 +103,7 @@ contains
     namelist /two_fluid/ &
                   inipsi, &
                   cbcpsi,bcpsi, &
-                  rho12,mu12,sigma, &
+                  sigma,mu12,rho12, &
                   ka12,cp12,beta12, &
                   gam_factor,seps_factor
 #if defined(_OPENACC)
