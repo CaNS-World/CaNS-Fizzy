@@ -826,9 +826,9 @@ module mod_mom
           factorxp = rhobeta + drhobeta*psixp
           factoryp = rhobeta + drhobeta*psiyp
           factorzp = rhobeta + drhobeta*psizp
-          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)
-          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
-          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
+          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)/rhoxp
+          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)/rhoyp
+          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)/rhozp
 #endif
           dudt(i,j,k) = dudt_aux
           dvdt(i,j,k) = dvdt_aux
@@ -1101,9 +1101,9 @@ module mod_mom
           factorxp = rhobeta + drhobeta*psixp
           factoryp = rhobeta + drhobeta*psiyp
           factorzp = rhobeta + drhobeta*psizp
-          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)
-          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
-          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
+          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)/rhoxp
+          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)/rhoyp
+          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)/rhozp
 #endif
           dudt(i,j,k) = dudt_aux
           dvdt(i,j,k) = dvdt_aux
