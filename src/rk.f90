@@ -144,6 +144,7 @@ module mod_rk
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
+    rhocp12 = rho12(:)*cp12(:)
     if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
       is_first = .false.
       allocate(dsdtrk_t(n(1),n(2),n(3)),dsdtrko_t(n(1),n(2),n(3)))
