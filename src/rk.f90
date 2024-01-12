@@ -51,11 +51,6 @@ module mod_rk
       allocate(dudtrko_t(n(1),n(2),n(3)),dvdtrko_t(n(1),n(2),n(3)),dwdtrko_t(n(1),n(2),n(3)))
       !$acc enter data create(dudtrk_t ,dvdtrk_t ,dwdtrk_t ) async(1)
       !$acc enter data create(dudtrko_t,dvdtrko_t,dwdtrko_t) async(1)
-      !$acc kernels default(present) async(1) ! not really necessary
-      dudtrko_t(:,:,:) = dudtrk_t(:,:,:)
-      dvdtrko_t(:,:,:) = dvdtrk_t(:,:,:)
-      dwdtrko_t(:,:,:) = dwdtrk_t(:,:,:)
-      !$acc end kernels
       dudtrk  => dudtrk_t
       dvdtrk  => dvdtrk_t
       dwdtrk  => dwdtrk_t
@@ -146,16 +141,18 @@ module mod_rk
     factor12 = factor1 + factor2
     rhocp12 = rho12(:)*cp12(:)
     if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
-      is_first = .false.
       allocate(dsdtrk_t(n(1),n(2),n(3)),dsdtrko_t(n(1),n(2),n(3)))
       !$acc enter data create(dsdtrk_t,dsdtrko_t) async(1)
-      !$acc kernels default(present) async(1) ! not really necessary
-      dsdtrko_t(:,:,:) = 0._rp
-      !$acc end kernels
       dsdtrk  => dsdtrk_t
       dsdtrko => dsdtrko_t
     end if
     call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ssource,ka12,rhocp12,psi,u,v,w,s,dsdtrk)
+    if(is_first) then ! use Euler forward
+      !$acc kernels
+      dsdtrko(:,:,:) = dsdtrk(:,:,:)
+      !$acc end kernels
+      is_first = .false.
+    end if
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
@@ -195,16 +192,18 @@ module mod_rk
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
     if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
-      is_first = .false.
       allocate(dpsidtrk_t(n(1),n(2),n(3)),dpsidtrko_t(n(1),n(2),n(3)))
       !$acc enter data create(dpsidtrk_t,dpsidtrko_t) async(1)
-      !$acc kernels default(present) async(1) ! not really necessary
-      dpsidtrko_t(:,:,:) = 0._rp
-      !$acc end kernels
       dpsidtrk  => dpsidtrk_t
       dpsidtrko => dpsidtrko_t
     end if
     call acdi_transport_pf(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,gam,seps,u,v,w,psi,dpsidtrk)
+    if(is_first) then ! use Euler forward
+      !$acc kernels
+      dpsidtrko(:,:,:) = dpsidtrk(:,:,:)
+      !$acc end kernels
+      is_first = .false.
+    end if
     !$acc parallel loop collapse(3) default(present) async(1)
     !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
     do k=1,n(3)
