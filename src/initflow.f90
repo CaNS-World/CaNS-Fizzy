@@ -328,7 +328,7 @@ module mod_initflow
     sref = 1.
     sref = 0.5*(bcsca(0,3)+bcsca(1,3))
     select case(trim(inisca))
-    case('cou')
+    case('cou','dhc')
       call couette(   n(3),zc/l(3),1._rp,s1d)
       s1d(:) = s1d(:) + 0.5 ! from 0 to 1
       s1d(:) = bcsca(0,3)*(1.-s1d(:)) + bcsca(1,3)*(s1d(:))

@@ -118,7 +118,7 @@ program cans
   integer  :: savecounter
   character(len=7  ) :: fldnum
   character(len=4  ) :: chkptnum
-  character(len=100) :: filename,fexts(5)
+  character(len=100) :: filename,fexts(6)
   integer :: k,kk
   logical :: is_done,kill
   real(rp), dimension(2) :: tm_coeff
@@ -308,9 +308,9 @@ program cans
   !
   write(fldnum,'(i7.7)') istep
   !$acc update self(u,v,w,p,psi,kappa)
-  include 'out1d.h90'
-  include 'out2d.h90'
-  include 'out3d.h90'
+#include "out1d.h90"
+#include "out2d.h90"
+#include "out3d.h90"
   !
   call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
   dt = min(cfl*dtmax,dtmin)
@@ -435,15 +435,15 @@ program cans
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
       !$acc update self(u,v,w,p,psi,kappa)
-      include 'out1d.h90'
+#include "out1d.h90"
     end if
     if(mod(istep,iout2d) == 0) then
       !$acc update self(u,v,w,p,psi,kappa)
-      include 'out2d.h90'
+#include "out2d.h90"
     end if
     if(mod(istep,iout3d) == 0) then
       !$acc update self(u,v,w,p,psi,kappa)
-      include 'out3d.h90'
+#include "out3d.h90"
     end if
     if(mod(istep,isave ) == 0.or.(is_done.and..not.kill)) then
       if(is_overwrite_save) then

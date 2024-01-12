@@ -43,3 +43,8 @@
   call write_visu_3d(datadir,'cur_fld_'//fldnum//'.bin','log_visu_3d.out','Kappa', &
                      [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      kappa(1:n(1),1:n(2),1:n(3)))
+#if defined(_SCALAR)
+  call write_visu_3d(datadir,'sca_fld_'//fldnum//'.bin','log_visu_3d.out','Temperature', &
+                     [1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                     s(1:n(1),1:n(2),1:n(3)))
+#endif

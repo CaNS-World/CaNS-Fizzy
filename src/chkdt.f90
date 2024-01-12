@@ -69,6 +69,7 @@ module mod_chkdt
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,dti,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
     dtipsi = gam*seps/dlmin**2
+    if(dtipsi == 0.) dtipsi = 1.
     if(.not.is_solve_ns) then
       dtmax = min(dti**(-1),dtipsi**(-1))
     else
