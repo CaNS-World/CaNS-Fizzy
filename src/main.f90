@@ -260,7 +260,7 @@ program cans
                           nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #endif
   !
-  call acdi_set_epsilon(dl,dzfi,acdi_eps_factor,seps)
+  !call acdi_set_epsilon(dl,dzfi,acdi_eps_factor,seps)
   !
   fexts(1) = 'u'
   fexts(2) = 'v'
@@ -335,10 +335,10 @@ program cans
     !
     ! VoF update comes here! (discuss)
     !
-    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
-    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+!    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
+!    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+!    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
+!    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
 #if defined(_SCALAR)
     call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
     call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
@@ -375,7 +375,6 @@ program cans
       call updatep(pp,p)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
     end if
-    dto = dt
     !
     ! check simulation stopping criteria
     !
@@ -389,9 +388,10 @@ program cans
       tw = (MPI_WTIME()-twi)/3600.
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
+    dto = dt
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Calculating maximum velocity to set ACDI gamma parameter...'
-      call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
+      !call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
       if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
@@ -403,7 +403,6 @@ program cans
         is_done = .true.
         kill = .true.
       end if
-      dto = dt
       dti = 1./dt
       call chkdiv(lo,hi,dli,dzfi,u,v,w,divtot,divmax)
       if(myid == 0) print*, 'Total divergence = ', divtot, '| Maximum divergence = ', divmax
