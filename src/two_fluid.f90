@@ -211,7 +211,7 @@ module mod_two_fluid
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
             sdist = z-l(3)/2.
-            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+            psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
         end do
       end do
@@ -230,7 +230,7 @@ module mod_two_fluid
           do i=lo(1),hi(1)
             x = (i-0.5)*dl(1)/l(1)
             sdist = z - zfilm_max*cos(2*pi*x)
-            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+            psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
         end do
       end do
@@ -273,7 +273,7 @@ module mod_two_fluid
               !
               ! compute psi
               !
-              psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+              psi(i,j,k) = smooth_step_tanh(sdist,seps)
             end do
           end do
         end do
@@ -369,7 +369,7 @@ module mod_two_fluid
   !
   pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
     use mod_param, only:pi
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth step function based on trigonometric functions
     !
@@ -386,7 +386,7 @@ module mod_two_fluid
   end function smooth_step_sin
   !
   pure elemental real(rp) function smooth_step_erf(r,eps) result(res)
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth step function based on the error function
     !
@@ -398,7 +398,7 @@ module mod_two_fluid
   end function smooth_step_erf
   !
   pure elemental real(rp) function smooth_step_tanh(r,eps) result(res)
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth step function based on the error function
     !
@@ -410,7 +410,7 @@ module mod_two_fluid
   end function smooth_step_tanh
   !
   pure elemental real(rp) function smooth_sign(delta,phi) result(res)
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth sign function
     !
@@ -425,7 +425,7 @@ module mod_two_fluid
   !
   pure elemental real(rp) function smooth_impulse(r,eps) result(res)
     use mod_param, only:pi
-    !$acc routine seq 
+    !$acc routine seq
     !
     ! smooth impulse Dirac delta function using trigonometric functions
     !
