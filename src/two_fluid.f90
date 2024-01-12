@@ -211,7 +211,7 @@ module mod_two_fluid
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
             sdist = z-l(3)/2.
-            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+            psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
         end do
       end do
@@ -230,7 +230,7 @@ module mod_two_fluid
           do i=lo(1),hi(1)
             x = (i-0.5)*dl(1)/l(1)
             sdist = z - zfilm_max*cos(2*pi*x)
-            psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+            psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
         end do
       end do
@@ -273,7 +273,7 @@ module mod_two_fluid
               !
               ! compute psi
               !
-              psi(i,j,k) = smooth_step_tanh(sdistmin,seps)
+              psi(i,j,k) = smooth_step_tanh(sdist,seps)
             end do
           end do
         end do
