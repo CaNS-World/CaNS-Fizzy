@@ -155,12 +155,12 @@ module mod_acdi
           dphidx_11 =      (phipcc       -phiccc       )*dxi
           dphidy_11 = 0.25*(phippc+phicpc-phipmc-phicmc)*dyi
           dphidz_11 = 0.50*(phipcp+phiccp-phipcm-phiccm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
-          dphidx_02 = 0.25*(phippc+phipcc-phimpc-phimcc)*dxi
-          dphidy_02 =      (phicpc       -phiccc       )*dyi
-          dphidz_02 = 0.50*(phicpp+phiccp-phicpm-phiccm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
-          dphidx_12 = 0.25*(phipcc+phipmc-phimcc-phimmc)*dxi
-          dphidy_12 =      (phiccc       -phicmc       )*dyi
-          dphidz_12 = 0.50*(phiccp+phicmp-phiccm-phicmm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
+          dphidx_02 = 0.25*(phipcc+phipmc-phimcc-phimmc)*dxi
+          dphidy_02 =      (phiccc       -phicmc       )*dyi
+          dphidz_02 = 0.50*(phiccp+phicmp-phiccm-phicmm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
+          dphidx_12 = 0.25*(phippc+phipcc-phimpc-phimcc)*dxi
+          dphidy_12 =      (phicpc       -phiccc       )*dyi
+          dphidz_12 = 0.50*(phicpp+phiccp-phicpm-phiccm)*(dzci(k-1)*dzci(k))/(dzci(k-1)+dzci(k))
           dphidx_03 = 0.25*((phipcm-phimcm)*wghtmp+(phipcc-phimcc)*wghtmm)*dxi
           dphidy_03 = 0.25*((phicpm-phicmm)*wghtmp+(phicpc-phicmc)*wghtmm)*dyi
           dphidz_03 =      ( phiccc               -phiccm                )*dzci(k-1)
@@ -177,8 +177,8 @@ module mod_acdi
           !
           sharp = 0.25*gam*( (1.-(tanh(0.25*(phipcc       +phiccc       )*sepsi))**2)*rn_11 - &
                              (1.-(tanh(0.25*(phiccc       +phimcc       )*sepsi))**2)*rn_01 )*dxi + &
-                  0.25*gam*( (1.-(tanh(0.25*(phicpc       +phiccc       )*sepsi))**2)*rn_02 - &
-                             (1.-(tanh(0.25*(phiccc       +phicmc       )*sepsi))**2)*rn_12 )*dyi + &
+                  0.25*gam*( (1.-(tanh(0.25*(phicpc       +phiccc       )*sepsi))**2)*rn_12 - &
+                             (1.-(tanh(0.25*(phiccc       +phicmc       )*sepsi))**2)*rn_02 )*dyi + &
                   0.25*gam*( (1.-(tanh(0.25*(phiccp*wghtpm+phiccc*wghtpp)*sepsi))**2)*rn_13 - &
                              (1.-(tanh(0.25*(phiccc*wghtmm+phiccm*wghtmp)*sepsi))**2)*rn_03 )*dzfi(k)
           !
