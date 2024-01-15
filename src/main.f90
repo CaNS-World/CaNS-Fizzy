@@ -78,7 +78,7 @@ program cans
   use mod_common_cudecomp, only: istream_acc_queue_1
 #endif
   use mod_timer          , only: timer_tic,timer_toc,timer_print
-  use mod_updatep        , only: updatep,extrapl_p
+  use mod_updatep        , only: updatep
   use mod_utils          , only: bulk_mean,bulk_mean_12
   !@acc use mod_utils    , only: device_memory_footprint
   use mod_types
@@ -150,8 +150,11 @@ program cans
            v( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            w( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
            p( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           pp(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           po(0:n(1)+1,0:n(2)+1,0:n(3)+1))
+           pp(0:n(1)+1,0:n(2)+1,0:n(3)+1))
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  allocate(po,mold=pp)
+  po(:,:,:) = 0._rp
+#endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
 #endif
@@ -275,7 +278,6 @@ program cans
     time = 0.
     !$acc update self(zc,dzc,dzf)
     call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
-    po(:,:,:) = p(:,:,:)
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
@@ -294,7 +296,7 @@ program cans
   end if
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
-  !$acc enter data copyin(u,v,w,p) create(pp,po)
+  !$acc enter data copyin(u,v,w,p) create(pp)
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_SCALAR)
@@ -350,10 +352,6 @@ program cans
       !$acc update device(u,v,w,p)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
     else
-#if defined(_CONSTANT_COEFFS_POISSON)
-      call extrapl_p(dt,dto,p,po,pp)
-      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
-#endif
       rho_av = 0.
       if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
@@ -362,15 +360,19 @@ program cans
             bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
             p,pp,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-      call fillps(n,dli,dzfi,dti,u,v,w,pp)
-#if defined(_CONSTANT_COEFFS_POISSON)
-      call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,pp)
-      call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp)
-#else
-      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,po)
-#endif
+      !$acc kernels
+      pp(:,:,:) = p(:,:,:)
+      !$acc end kernels
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
-      call correc(n,dli,dzci,rho0,rho12,dt,pp,psi,u,v,w)
+      call fillps(n,dli,dzfi,dti,u,v,w,p)
+#if defined(_CONSTANT_COEFFS_POISSON)
+      call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
+      call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
+#else
+      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
+#endif
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+      call correc(n,dli,dzci,rho0,rho12,dt,p,psi,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
       call updatep(pp,p)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)

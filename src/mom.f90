@@ -254,10 +254,10 @@ module mod_mom
     end do
   end subroutine momz_d
   !
-  subroutine momx_p(nx,ny,nz,dxi,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dudt)
+  subroutine momx_p(nx,ny,nz,dxi,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dudt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi
+    real(rp), intent(in) :: dxi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
     real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dudt
@@ -276,7 +276,9 @@ module mod_mom
           !
           dudt(i,j,k) = dudt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
 #if defined(_CONSTANT_COEFFS_POISSON)
-                        dpdl/rho0 + (1./rhop-1./rho0)*(pp(i+1,j,k)-pp(i,j,k))*dxi
+                        dpdl/rho0 + (1./rhop-1./rho0)*( ((1.+dt_r)*p(i+1,j,k)-dt_r*(pp(i+1,j,k))) - &
+                                                        ((1.+dt_r)*p(i  ,j,k)-dt_r*(pp(i  ,j,k))) &
+                                                      )*dxi
 #else
                         dpdl/rhop
 #endif
@@ -285,10 +287,10 @@ module mod_mom
     end do
   end subroutine momx_p
   !
-  subroutine momy_p(nx,ny,nz,dyi,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dvdt)
+  subroutine momy_p(nx,ny,nz,dyi,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dvdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dyi
+    real(rp), intent(in) :: dyi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
     real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
@@ -307,7 +309,9 @@ module mod_mom
           !
           dvdt(i,j,k) = dvdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
 #if defined(_CONSTANT_COEFFS_POISSON)
-                        dpdl/rho0 + (1./rhop-1./rho0)*(pp(i,j+1,k)-pp(i,j,k))*dyi
+                        dpdl/rho0 + (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j+1,k)-dt_r*(pp(i,j+1,k))) - &
+                                                        ((1.+dt_r)*p(i,j  ,k)-dt_r*(pp(i,j  ,k))) &
+                                                      )*dyi
 #else
                         dpdl/rhop
 #endif
@@ -316,10 +320,11 @@ module mod_mom
     end do
   end subroutine momy_p
   !
-  subroutine momz_p(nx,ny,nz,dzci,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dwdt)
+  subroutine momz_p(nx,ny,nz,dzci,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in) :: dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
     real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
@@ -338,7 +343,9 @@ module mod_mom
           !
           dwdt(i,j,k) = dwdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
 #if defined(_CONSTANT_COEFFS_POISSON)
-                        dpdl/rho0 + (1./rhop-1./rho0)*(pp(i,j,k+1)-pp(i,j,k))*dzci(k)
+                        dpdl/rho0 + (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j,k+1)-dt_r*(pp(i,j,k+1))) - &
+                                                        ((1.+dt_r)*p(i,j,k  )-dt_r*(pp(i,j,k  ))) &
+                                                      )*dzci(k)
 #else
                         dpdl/rhop
 #endif
@@ -714,12 +721,13 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_oth(nx,ny,nz,dxi,dyi,dzci,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_oth(nx,ny,nz,dxi,dyi,dzci,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,pp,psi,kappa,s,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in) :: dt_r
     real(rp), intent(in), dimension(2) :: rho12,beta12
     real(rp), intent(in), dimension(3) :: bforce,gacc
     real(rp), intent(in) :: sigma
@@ -754,10 +762,10 @@ module mod_mom
           p_cpc = p(i  ,j+1,k  )
           p_ccp = p(i  ,j  ,k+1)
           !
-          q_ccc = pp(i  ,j  ,k  )
-          q_pcc = pp(i+1,j  ,k  )
-          q_cpc = pp(i  ,j+1,k  )
-          q_ccp = pp(i  ,j  ,k+1)
+          q_ccc = (1.+dt_r)*p(i  ,j  ,k  )-dt_r*pp(i  ,j  ,k  )
+          q_pcc = (1.+dt_r)*p(i+1,j  ,k  )-dt_r*pp(i+1,j  ,k  )
+          q_cpc = (1.+dt_r)*p(i  ,j+1,k  )-dt_r*pp(i  ,j+1,k  )
+          q_ccp = (1.+dt_r)*p(i  ,j  ,k+1)-dt_r*pp(i  ,j  ,k+1)
           !
 #if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
           s_ccc = s(i  ,j  ,k  )
@@ -838,12 +846,13 @@ module mod_mom
     end do
   end subroutine mom_xyz_oth
   !
-  subroutine mom_xyz_all(nx,ny,nz,dxi,dyi,dzci,dzfi,rho12,mu12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_all(nx,ny,nz,dxi,dyi,dzci,dzfi,dt_r,rho12,mu12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          u,v,w,p,pp,psi,kappa,s,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in) :: dt_r
     real(rp), intent(in), dimension(2) :: rho12,mu12,beta12
     real(rp), intent(in), dimension(3) :: bforce,gacc
     real(rp), intent(in) :: sigma
@@ -927,10 +936,10 @@ module mod_mom
           p_cpc = p(i  ,j+1,k  )
           p_ccp = p(i  ,j  ,k+1)
           !
-          q_ccc = pp(i  ,j  ,k  )
-          q_pcc = pp(i+1,j  ,k  )
-          q_cpc = pp(i  ,j+1,k  )
-          q_ccp = pp(i  ,j  ,k+1)
+          q_ccc = (1.+dt_r)*p(i  ,j  ,k  )-dt_r*pp(i  ,j  ,k  )
+          q_pcc = (1.+dt_r)*p(i+1,j  ,k  )-dt_r*pp(i+1,j  ,k  )
+          q_cpc = (1.+dt_r)*p(i  ,j+1,k  )-dt_r*pp(i  ,j+1,k  )
+          q_ccp = (1.+dt_r)*p(i  ,j  ,k+1)-dt_r*pp(i  ,j  ,k+1)
           !
 #if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
           s_ccc = s(i  ,j  ,k  )
