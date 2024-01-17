@@ -37,12 +37,13 @@ module mod_rk
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
                                                                   dudtrko  ,dvdtrko  ,dwdtrko
     logical, save :: is_first = .true.
-    real(rp) :: factor1,factor2,factor12
+    real(rp) :: factor1,factor2,factor12,dt_r
     integer :: i,j,k
     !
     factor1  = rkpar(1)*dt
     factor2  = rkpar(2)*dt
     factor12 = factor1+factor2
+    dt_r     = -2.*rkpar(2) ! N.B.: For AB2 only, rkpar(2) = -(dt/dto)/2 = dt_r/2
     !
     ! initialization
     !
@@ -91,7 +92,7 @@ module mod_rk
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n(1),n(2),n(3),dli(1),dli(2),dzci,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+    call mom_xyz_oth(n(1),n(2),n(3),dli(1),dli(2),dzci,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                      p,pp,psi,kappa,s,dudtrk,dvdtrk,dwdtrk)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
