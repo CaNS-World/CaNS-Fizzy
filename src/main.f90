@@ -375,7 +375,6 @@ program cans
       call updatep(pp,p)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
     end if
-    dto = dt
     !
     ! check simulation stopping criteria
     !
@@ -389,6 +388,7 @@ program cans
       tw = (MPI_WTIME()-twi)/3600.
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
+    dto = dt
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Calculating maximum velocity to set ACDI gamma parameter...'
       call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
@@ -403,7 +403,6 @@ program cans
         is_done = .true.
         kill = .true.
       end if
-      dto = dt
       dti = 1./dt
       call chkdiv(lo,hi,dli,dzfi,u,v,w,divtot,divmax)
       if(myid == 0) print*, 'Total divergence = ', divtot, '| Maximum divergence = ', divmax
