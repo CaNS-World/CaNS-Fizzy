@@ -10,7 +10,7 @@ module mod_two_fluid
   use mod_types
   implicit none
   private
-  public init2fl,cmpt_norm_curv
+  public init2fl,clip_field,cmpt_norm_curv
   type sphere
     real(rp) :: xyz(3),r
   end type sphere

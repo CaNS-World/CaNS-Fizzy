@@ -77,7 +77,8 @@ module mod_chkdt
       dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
       dtig = maxval(abs(gacc))/dlmin
       dti = 2.*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2))) !TODO: follow Kang's paper to include dtipsi in the single dti formula, if is_solve_ns = .true.
-      if(dti == 0.) dti = 1.
+      if(dti    == 0.) dti    = 1.
+      if(dtipsi == 0.) dtipsi = 1.
       dtmax = min(dti**(-1),dtipsi**(-1))
     end if
 #if defined(_SCALAR)

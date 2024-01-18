@@ -169,7 +169,8 @@ module mod_rk
   end subroutine rk_scal
   !
   subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
-    use mod_acdi, only: acdi_transport_pf
+    use mod_acdi     , only: acdi_transport_pf
+    use mod_two_fluid, only: clip_field
     !
     ! low-storage 3rd-order Runge-Kutta scheme
     ! for time integration of the phase field (actually Adams-Bashforth).
@@ -214,6 +215,7 @@ module mod_rk
         end do
       end do
     end do
+    call clip_field([1,1,1],[0._rp,1._rp],psi)
     !
     ! swap d?dtrk <-> d?dtrko
     !
