@@ -6,8 +6,8 @@ cfl = 0.95, dtmin = 1.e9
 is_solve_ns = T
 inivel = 'zer'
 is_wallturb = F
-nstep = 1500, time_max = 100., tw_max = 0.1
-stop_type(1:3) = T, F, F
+nstep = 20000, time_max = 15.5, tw_max = 0.1
+stop_type(1:3) = T, T, F
 restart = F, is_overwrite_save = T, nsaves_max = 0
 icheck = 10, iout0d = 10, iout1d = 20, iout2d = 500, iout3d = 500, isave = 2000
 cbcvel(0:1,1:3,1) = 'P','P',  'D','D',  'D','D'
@@ -33,9 +33,9 @@ inipsi          = 'uni'
 cbcpsi(0:1,1:3) = 'P','P',  'N','N',  'N','N'
 bcpsi(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
 rho12(1:2)      = 1., 1.
-mu12(1:2)       = 0.001,0.001
+mu12(1:2)       = 0.01,0.01
 sigma           = 0.
-ka12(1:2)       = 0.001,0.001
+ka12(1:2)       = 0.01,0.01
 cp12(1:2)       = 1., 1.
 beta12(1:2)     = 1., 1.
 acdi_gam_factor = 1.
