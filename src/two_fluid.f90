@@ -10,7 +10,7 @@ module mod_two_fluid
   use mod_types
   implicit none
   private
-  public init2fl,cmpt_norm_curv
+  public init2fl,clip_field,cmpt_norm_curv
   type sphere
     real(rp) :: xyz(3),r
   end type sphere
@@ -41,15 +41,18 @@ module mod_two_fluid
     real(rp), intent(in   ), dimension(2) :: minmax
     real(rp), intent(inout), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: p
     real(rp) :: rmin,rmax
-    integer :: n1,n2,n3,i,j,k
+    integer :: n1,n2,n3,nh1,nh2,nh3,i,j,k
     !
     n1 = size(p,1)-2*nh(1)
     n2 = size(p,2)-2*nh(2)
     n3 = size(p,3)-2*nh(3)
+    nh1 = nh(1)
+    nh2 = nh(2)
+    nh3 = nh(3)
     rmin = minmax(1); rmax = minmax(2)
     !
     !$acc parallel loop collapse(3) default(present) private(rmin,rmax) async(1)
-    do concurrent(k=0:n3-1,j=0:n2-1,i=0:n1-1)
+    do concurrent(k=1-nh3:n3+nh3,j=1-nh2:n2+nh2,i=1-nh1:n1+nh1)
       p(i,j,k) = min(max(rmin,p(i,j,k)),rmax)
     end do
   end subroutine clip_field
