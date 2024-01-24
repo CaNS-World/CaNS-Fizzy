@@ -65,8 +65,8 @@ program cans
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma
-  use mod_two_fluid      , only: init2fl,cmpt_norm_curv
+  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv
+  use mod_two_fluid      , only: init2fl
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
 #endif
@@ -129,7 +129,7 @@ program cans
   !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,kappa
+  real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -177,7 +177,7 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi,kappa,mold=pp)
+  allocate(psi,kappa,normx,normy,normz,mold=pp)
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -294,8 +294,6 @@ program cans
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
-  call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
-  if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
   !$acc enter data copyin(u,v,w,p) create(pp)
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
@@ -305,6 +303,15 @@ program cans
 #endif
   !$acc enter data copyin(psi) create(kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+  !
+  call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+  !
+  call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
+  if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
   !
   ! post-process and write initial condition
   !
@@ -335,12 +342,15 @@ program cans
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
     tm_coeff(:) = [2.+dt/dto,-dt/dto]/2.
     !
-    ! VoF update comes here! (discuss)
+    ! Phase field update
     !
-    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,psi)
+    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi)
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-    call cmpt_norm_curv(n,dl,dli,dzc,dzf,dzci,dzfi,psi,kappa)
+    call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
 #if defined(_SCALAR)
     call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
     call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)

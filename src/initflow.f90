@@ -193,8 +193,8 @@ module mod_initflow
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)
             xf = (i+lo(1)-1-.0)*dl(1)/l(1)
-            u(i,j,k) =  sin(pi*xf)**2*sin(2*pi*yc)*cos(pi*time/8.)
-            v(i,j,k) = -sin(pi*yf)**2*sin(2*pi*xc)*cos(pi*time/8.)
+            u(i,j,k) =  sin(pi*xf)**2*sin(2*pi*yc)*cos(pi*time/4.)
+            v(i,j,k) = -sin(pi*yf)**2*sin(2*pi*xc)*cos(pi*time/4.)
             w(i,j,k) = 0.
             p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
           end do
@@ -210,9 +210,9 @@ module mod_initflow
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)
             xf = (i+lo(1)-1-.0)*dl(1)/l(1)
-            u(i,j,k) =  sin(pi*xf )**2*sin(2*pi*zcc)*cos(pi*time/8.)
+            u(i,j,k) =  sin(pi*xf )**2*sin(2*pi*zcc)*cos(pi*time/4.)
             v(i,j,k) = 0.
-            w(i,j,k) = -sin(pi*zff)**2*sin(2*pi*xc )*cos(pi*time/8.)
+            w(i,j,k) = -sin(pi*zff)**2*sin(2*pi*xc )*cos(pi*time/4.)
             p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
           end do
         end do
