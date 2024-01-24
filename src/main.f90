@@ -304,6 +304,12 @@ program cans
   !$acc enter data copyin(psi) create(kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
+  call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
+  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+  !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
   !
@@ -338,14 +344,13 @@ program cans
     !
     ! Phase field update
     !
-    call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
     call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi)
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
     call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
+    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
 #if defined(_SCALAR)
     call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
     call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
