@@ -336,7 +336,7 @@ program cans
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
     tm_coeff(:) = [2.+dt/dto,-dt/dto]/2.
     !
-    ! Phase field update comes here! (discuss)
+    ! Phase field update
     !
     call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
