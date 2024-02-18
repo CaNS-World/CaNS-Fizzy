@@ -26,12 +26,12 @@ module mod_mom
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          uuip  = 0.25*( u(i+1,j,k)+u(i,j,k) )*( u(i+1,j  ,k  )+u(i,j  ,k  ) )
-          uuim  = 0.25*( u(i-1,j,k)+u(i,j,k) )*( u(i-1,j  ,k  )+u(i,j  ,k  ) )
-          uvjp  = 0.25*( u(i,j+1,k)+u(i,j,k) )*( v(i+1,j  ,k  )+v(i,j  ,k  ) )
-          uvjm  = 0.25*( u(i,j-1,k)+u(i,j,k) )*( v(i+1,j-1,k  )+v(i,j-1,k  ) )
-          uwkp  = 0.25*( u(i,j,k+1)+u(i,j,k) )*( w(i+1,j  ,k  )+w(i,j  ,k  ) )
-          uwkm  = 0.25*( u(i,j,k-1)+u(i,j,k) )*( w(i+1,j  ,k-1)+w(i,j  ,k-1) )
+          uuip  = 0.25*( u(i,j,k)+u(i+1,j,k) )*( u(i+1,j  ,k  )+u(i,j  ,k  ) )
+          uuim  = 0.25*( u(i,j,k)+u(i-1,j,k) )*( u(i-1,j  ,k  )+u(i,j  ,k  ) )
+          uvjp  = 0.25*( u(i,j,k)+u(i,j+1,k) )*( v(i+1,j  ,k  )+v(i,j  ,k  ) )
+          uvjm  = 0.25*( u(i,j,k)+u(i,j-1,k) )*( v(i+1,j-1,k  )+v(i,j-1,k  ) )
+          uwkp  = 0.25*( u(i,j,k)+u(i,j,k+1) )*( w(i+1,j  ,k  )+w(i,j  ,k  ) )
+          uwkm  = 0.25*( u(i,j,k)+u(i,j,k-1) )*( w(i+1,j  ,k-1)+w(i,j  ,k-1) )
           !
           dudt(i,j,k) = dudt(i,j,k) + &
                         dxi*(     -uuip + uuim ) + &
@@ -548,8 +548,8 @@ module mod_mom
     real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
-    rho      = rho12(2); drho = rho12(1)-rho12(2)
-    mu       = mu12(2); dmu = mu12(1)-mu12(2)
+    rho = rho12(2); drho = rho12(1)-rho12(2)
+    mu  = mu12(2);  dmu  = mu12(1)-mu12(2)
     !
     !$acc parallel loop collapse(3) default(present) private(uuip,uuim,uvjp,uvjm,uwkp,uwkm) async(1)
     do k=1,nz
@@ -625,12 +625,12 @@ module mod_mom
           !
           ! advection
           !
-          uuip  = 0.25*(u_pcc+u_ccc)*(u_pcc+u_ccc)
-          uuim  = 0.25*(u_mcc+u_ccc)*(u_mcc+u_ccc)
-          uvjp  = 0.25*(u_cpc+u_ccc)*(v_pcc+v_ccc)
-          uvjm  = 0.25*(u_cmc+u_ccc)*(v_pmc+v_cmc)
-          uwkp  = 0.25*(u_ccp+u_ccc)*(w_pcc+w_ccc)
-          uwkm  = 0.25*(u_ccm+u_ccc)*(w_pcm+w_ccm)
+          uuip  = 0.25*(u_ccc+u_pcc)*(u_pcc+u_ccc)
+          uuim  = 0.25*(u_ccc+u_mcc)*(u_mcc+u_ccc)
+          uvjp  = 0.25*(u_ccc+u_cpc)*(v_pcc+v_ccc)
+          uvjm  = 0.25*(u_ccc+u_cmc)*(v_pmc+v_cmc)
+          uwkp  = 0.25*(u_ccc+u_ccp)*(w_pcc+w_ccc)
+          uwkm  = 0.25*(u_ccc+u_ccm)*(w_pcm+w_ccm)
           dudt_aux = dxi*( -uuip + uuim ) + dyi*( -uvjp + uvjm ) + dzfi_c*( -uwkp + uwkm )
           !
           uvip  = 0.25*(v_ccc+v_pcc)*(u_ccc+u_cpc)
@@ -762,10 +762,12 @@ module mod_mom
           p_cpc = p(i  ,j+1,k  )
           p_ccp = p(i  ,j  ,k+1)
           !
+#if defined(_CONSTANT_COEFFS_POISSON)
           q_ccc = (1.+dt_r)*p(i  ,j  ,k  )-dt_r*pp(i  ,j  ,k  )
           q_pcc = (1.+dt_r)*p(i+1,j  ,k  )-dt_r*pp(i+1,j  ,k  )
           q_cpc = (1.+dt_r)*p(i  ,j+1,k  )-dt_r*pp(i  ,j+1,k  )
           q_ccp = (1.+dt_r)*p(i  ,j  ,k+1)-dt_r*pp(i  ,j  ,k+1)
+#endif
           !
 #if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
           s_ccc = s(i  ,j  ,k  )
@@ -936,10 +938,12 @@ module mod_mom
           p_cpc = p(i  ,j+1,k  )
           p_ccp = p(i  ,j  ,k+1)
           !
+#if defined(_CONSTANT_COEFFS_POISSON)
           q_ccc = (1.+dt_r)*p(i  ,j  ,k  )-dt_r*pp(i  ,j  ,k  )
           q_pcc = (1.+dt_r)*p(i+1,j  ,k  )-dt_r*pp(i+1,j  ,k  )
           q_cpc = (1.+dt_r)*p(i  ,j+1,k  )-dt_r*pp(i  ,j+1,k  )
           q_ccp = (1.+dt_r)*p(i  ,j  ,k+1)-dt_r*pp(i  ,j  ,k+1)
+#endif
           !
 #if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
           s_ccc = s(i  ,j  ,k  )
@@ -988,12 +992,12 @@ module mod_mom
           !
           ! advection
           !
-          uuip  = 0.25*(u_pcc+u_ccc)*(u_pcc+u_ccc)
-          uuim  = 0.25*(u_mcc+u_ccc)*(u_mcc+u_ccc)
-          uvjp  = 0.25*(u_cpc+u_ccc)*(v_pcc+v_ccc)
-          uvjm  = 0.25*(u_cmc+u_ccc)*(v_pmc+v_cmc)
-          uwkp  = 0.25*(u_ccp+u_ccc)*(w_pcc+w_ccc)
-          uwkm  = 0.25*(u_ccm+u_ccc)*(w_pcm+w_ccm)
+          uuip  = 0.25*(u_ccc+u_pcc)*(u_pcc+u_ccc)
+          uuim  = 0.25*(u_ccc+u_mcc)*(u_mcc+u_ccc)
+          uvjp  = 0.25*(u_ccc+u_cpc)*(v_pcc+v_ccc)
+          uvjm  = 0.25*(u_ccc+u_cmc)*(v_pmc+v_cmc)
+          uwkp  = 0.25*(u_ccc+u_ccp)*(w_pcc+w_ccc)
+          uwkm  = 0.25*(u_ccc+u_ccm)*(w_pcm+w_ccm)
           dudt_aux = dxi*( -uuip + uuim ) + dyi*( -uvjp + uvjm ) + dzfi_c*( -uwkp + uwkm )
           !
           uvip  = 0.25*(v_ccc+v_pcc)*(u_ccc+u_cpc)
