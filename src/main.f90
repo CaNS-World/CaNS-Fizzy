@@ -373,7 +373,7 @@ program cans
       pp(:,:,:) = p(:,:,:)
       !$acc end kernels
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
-      call fillps(n,dli,dzfi,dti,u,v,w,p)
+      call fillps(n,dli,dzfi,dti,rho0,u,v,w,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
       call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
       call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
