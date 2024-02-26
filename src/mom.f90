@@ -272,15 +272,15 @@ module mod_mom
       do j=1,ny
         do i=1,nx
           rhop = rho + drho*0.5*(psi(i+1,j,k)+psi(i,j,k))
-          dpdl = -(p(i+1,j,k)-p(i,j,k))*dxi
+          dpdl = (p(i+1,j,k)-p(i,j,k))*dxi
           !
           dudt(i,j,k) = dudt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
 #if defined(_CONSTANT_COEFFS_POISSON)
-                        dpdl/rho0 + (1./rhop-1./rho0)*( ((1.+dt_r)*p(i+1,j,k)-dt_r*(pp(i+1,j,k))) - &
-                                                        ((1.+dt_r)*p(i  ,j,k)-dt_r*(pp(i  ,j,k))) &
-                                                      )*dxi
+                        -dpdl/rho0 - (1./rhop-1./rho0)*( ((1.+dt_r)*p(i+1,j,k)-dt_r*(pp(i+1,j,k))) - &
+                                                         ((1.+dt_r)*p(i  ,j,k)-dt_r*(pp(i  ,j,k))) &
+                                                        )*dxi
 #else
-                        dpdl/rhop
+                        -dpdl/rhop
 #endif
         end do
       end do
@@ -305,15 +305,15 @@ module mod_mom
       do j=1,ny
         do i=1,nx
           rhop = rho + drho*0.5*(psi(i,j+1,k)+psi(i,j,k))
-          dpdl = -(p(i,j+1,k)-p(i,j,k))*dyi
+          dpdl = (p(i,j+1,k)-p(i,j,k))*dyi
           !
           dvdt(i,j,k) = dvdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
 #if defined(_CONSTANT_COEFFS_POISSON)
-                        dpdl/rho0 + (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j+1,k)-dt_r*(pp(i,j+1,k))) - &
-                                                        ((1.+dt_r)*p(i,j  ,k)-dt_r*(pp(i,j  ,k))) &
-                                                      )*dyi
+                        -dpdl/rho0 - (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j+1,k)-dt_r*(pp(i,j+1,k))) - &
+                                                         ((1.+dt_r)*p(i,j  ,k)-dt_r*(pp(i,j  ,k))) &
+                                                       )*dyi
 #else
-                        dpdl/rhop
+                        -dpdl/rhop
 #endif
         end do
       end do
@@ -339,15 +339,15 @@ module mod_mom
       do j=1,ny
         do i=1,nx
           rhop = rho + drho*0.5*(psi(i,j,k+1)+psi(i,j,k))
-          dpdl = -(p(i,j,k+1)-p(i,j,k))*dzci(k)
+          dpdl = (p(i,j,k+1)-p(i,j,k))*dzci(k)
           !
           dwdt(i,j,k) = dwdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
 #if defined(_CONSTANT_COEFFS_POISSON)
-                        dpdl/rho0 + (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j,k+1)-dt_r*(pp(i,j,k+1))) - &
-                                                        ((1.+dt_r)*p(i,j,k  )-dt_r*(pp(i,j,k  ))) &
-                                                      )*dzci(k)
+                        -dpdl/rho0 - (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j,k+1)-dt_r*(pp(i,j,k+1))) - &
+                                                         ((1.+dt_r)*p(i,j,k  )-dt_r*(pp(i,j,k  ))) &
+                                                       )*dzci(k)
 #else
-                        dpdl/rhop
+                        -dpdl/rhop
 #endif
         end do
       end do
@@ -805,20 +805,20 @@ module mod_mom
           !
           ! pressure gradient
           !
-          dpdx = -(p_pcc-p_ccc)*dxi
-          dpdy = -(p_cpc-p_ccc)*dyi
-          dpdz = -(p_ccp-p_ccc)*dzci_c
+          dpdx = (p_pcc-p_ccc)*dxi
+          dpdy = (p_cpc-p_ccc)*dyi
+          dpdz = (p_ccp-p_ccc)*dzci_c
           dudt_aux = bforcex/rhoxp + gaccx*(1.-rho_av/rhoxp)
           dvdt_aux = bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
           dwdt_aux = bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-          dudt_aux = dudt_aux + dpdx/rho0 - (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
-          dvdt_aux = dvdt_aux + dpdy/rho0 - (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
-          dwdt_aux = dwdt_aux + dpdz/rho0 - (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
+          dudt_aux = dudt_aux - dpdx/rho0 - (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
+          dvdt_aux = dvdt_aux - dpdy/rho0 - (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
+          dwdt_aux = dwdt_aux - dpdz/rho0 - (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
 #else
-          dudt_aux = dudt_aux + dpdx/rhoxp
-          dvdt_aux = dvdt_aux + dpdy/rhoyp
-          dwdt_aux = dwdt_aux + dpdz/rhozp
+          dudt_aux = dudt_aux - dpdx/rhoxp
+          dvdt_aux = dvdt_aux - dpdy/rhoyp
+          dwdt_aux = dwdt_aux - dpdz/rhozp
 #endif
           !
           ! surface tension
@@ -1083,20 +1083,20 @@ module mod_mom
           !
           ! pressure gradient
           !
-          dpdx = -(p_pcc-p_ccc)*dxi
-          dpdy = -(p_cpc-p_ccc)*dyi
-          dpdz = -(p_ccp-p_ccc)*dzci_c
+          dpdx = (p_pcc-p_ccc)*dxi
+          dpdy = (p_cpc-p_ccc)*dyi
+          dpdz = (p_ccp-p_ccc)*dzci_c
           dudt_aux = dudt_aux + bforcex/rhoxp + gaccx*(1.-rho_av/rhoxp)
           dvdt_aux = dvdt_aux + bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
           dwdt_aux = dwdt_aux + bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-          dudt_aux = dudt_aux + dpdx/rho0 - (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
-          dvdt_aux = dvdt_aux + dpdy/rho0 - (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
-          dwdt_aux = dwdt_aux + dpdz/rho0 - (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
+          dudt_aux = dudt_aux - dpdx/rho0 - (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
+          dvdt_aux = dvdt_aux - dpdy/rho0 - (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
+          dwdt_aux = dwdt_aux - dpdz/rho0 - (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
 #else
-          dudt_aux = dudt_aux + dpdx/rhoxp
-          dvdt_aux = dvdt_aux + dpdy/rhoyp
-          dwdt_aux = dwdt_aux + dpdz/rhozp
+          dudt_aux = dudt_aux - dpdx/rhoxp
+          dvdt_aux = dvdt_aux - dpdy/rhoyp
+          dwdt_aux = dwdt_aux - dpdz/rhozp
 #endif
           !
           ! surface tension
