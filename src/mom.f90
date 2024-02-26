@@ -812,9 +812,9 @@ module mod_mom
           dvdt_aux = bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
           dwdt_aux = bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-          dudt_aux = dudt_aux + dpdx/rho0 + (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
-          dvdt_aux = dvdt_aux + dpdy/rho0 + (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
-          dwdt_aux = dwdt_aux + dpdz/rho0 + (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
+          dudt_aux = dudt_aux + dpdx/rho0 - (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
+          dvdt_aux = dvdt_aux + dpdy/rho0 - (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
+          dwdt_aux = dwdt_aux + dpdz/rho0 - (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
 #else
           dudt_aux = dudt_aux + dpdx/rhoxp
           dvdt_aux = dvdt_aux + dpdy/rhoyp
@@ -1090,9 +1090,9 @@ module mod_mom
           dvdt_aux = dvdt_aux + bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
           dwdt_aux = dwdt_aux + bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-          dudt_aux = dudt_aux + dpdx/rho0 + (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
-          dvdt_aux = dvdt_aux + dpdy/rho0 + (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
-          dwdt_aux = dwdt_aux + dpdz/rho0 + (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
+          dudt_aux = dudt_aux + dpdx/rho0 - (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
+          dvdt_aux = dvdt_aux + dpdy/rho0 - (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
+          dwdt_aux = dwdt_aux + dpdz/rho0 - (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
 #else
           dudt_aux = dudt_aux + dpdx/rhoxp
           dvdt_aux = dvdt_aux + dpdy/rhoyp
