@@ -1,0 +1,49 @@
+&dns
+ng(1:3) = 64, 2, 128
+l(1:3)  = 1., 0.03125, 2.
+gtype = 1, gr = 0.
+cfl = 0.95, dtmin = 5.e-4
+is_solve_ns = T
+inivel = 'zer'
+is_wallturb = F
+nstep = 6000, time_max = 3., tw_max = 0.1
+stop_type(1:3) = T, T, F
+restart = F, is_overwrite_save = T, nsaves_max = 0
+icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 500, isave = 2000
+cbcvel(0:1,1:3,1) = 'D','D',  'P','P',  'D','D'
+cbcvel(0:1,1:3,2) = 'N','N',  'P','P',  'D','D'
+cbcvel(0:1,1:3,3) = 'N','N',  'P','P',  'D','D'
+cbcpre(0:1,1:3)   = 'N','N',  'P','P',  'N','N'
+bcvel(0:1,1:3,1) =  0.,0.,   0.,0.,   0.,0.
+bcvel(0:1,1:3,2) =  0.,0.,   0.,0.,   0.,0.
+bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
+bcpre(0:1,1:3)   =  0.,0.,   0.,0.,   0.,0.
+bforce(1:3) = 0., 0., 0.
+gacc(1:3) = 0., 0., -0.98
+dims(1:2) = 0, 0
+
+&scalar
+inisca          = 'zer'
+cbcsca(0:1,1:3) = 'N','N',  'P','P',  'N','N'
+bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+\
+
+&two_fluid
+inipsi          = 'bu2'
+cbcpsi(0:1,1:3) = 'N','N',  'P','P',  'N','N'
+bcpsi(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+rho12(1:2)      = 1000.,100.
+mu12(1:2)       = 10.,1.
+sigma           = 24.5
+ka12(1:2)       = 0.001,0.001
+cp12(1:2)       = 1., 1.
+beta12(1:2)     = 1., 1.
+acdi_gam_factor = 1.
+acdi_eps_factor = 1.
+\
+
+&cudecomp
+cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
+cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
+cudecomp_is_t_in_place = F
+\
