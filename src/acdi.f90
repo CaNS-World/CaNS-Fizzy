@@ -155,7 +155,7 @@ module mod_acdi
           rn_11 = 0.5*(normx(i,j,k)+normx(i+1,j,k))/(sqrt((0.5*(normx(i,j,k)+normx(i+1,j,k)))**2+ &
                  (0.5*(normy(i,j,k)+normy(i+1,j,k)))**2+(0.5*(normz(i,j,k)+normz(i+1,j,k)))**2)+eps)
           rn_02 = 0.5*(normy(i,j-1,k)+normy(i,j,k))/(sqrt((0.5*(normx(i,j-1,k)+normx(i,j,k)))**2+ &
-                 (0.5*(normy(i,j-1,k)+normy(i,j,k)))**2+(0.5*(normz(i-1,j,k)+normz(i,j,k)))**2)+eps)
+                 (0.5*(normy(i,j-1,k)+normy(i,j,k)))**2+(0.5*(normz(i,j-1,k)+normz(i,j,k)))**2)+eps)
           rn_12 = 0.5*(normy(i,j,k)+normy(i,j+1,k))/(sqrt((0.5*(normx(i,j,k)+normx(i,j+1,k)))**2+ &
                  (0.5*(normy(i,j,k)+normy(i,j+1,k)))**2+(0.5*(normz(i,j,k)+normz(i,j+1,k)))**2)+eps)
           rn_03 = 0.5*(normz(i,j,k-1)*wghtmp+normz(i,j,k)*wghtmm)/(sqrt((0.5*(normx(i,j,k-1)*wghtmp+normx(i,j,k)*wghtmm))**2+ &

@@ -10,7 +10,7 @@ module mod_fillps
   private
   public fillps
   contains
-  subroutine fillps(n,dli,dzfi,dti,u,v,w,p)
+  subroutine fillps(n,dli,dzfi,dti,rho0,u,v,w,p)
     !
     !  fill the right-hand side of the Poisson equation for the correction pressure.
     !
@@ -25,6 +25,7 @@ module mod_fillps
     real(rp), intent(in ), dimension(3 ) :: dli
     real(rp), intent(in ), dimension(0:) :: dzfi
     real(rp), intent(in ) :: dti
+    real(rp), intent(in ) :: rho0
     real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(out), dimension(0:,0:,0:) :: p
     real(rp) :: dtidxi,dtidyi!,dtidzi
@@ -39,11 +40,11 @@ module mod_fillps
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          p(i,j,k) = ( &
-                      (w(i,j,k)-w(i,j,k-1))*dti*dzfi(k) + &
-                      (v(i,j,k)-v(i,j-1,k))*dtidyi      + &
-                      (u(i,j,k)-u(i-1,j,k))*dtidxi        &
-                     )
+          p(i,j,k) = rho0*( &
+                           (w(i,j,k)-w(i,j,k-1))*dti*dzfi(k) + &
+                           (v(i,j,k)-v(i,j-1,k))*dtidyi      + &
+                           (u(i,j,k)-u(i-1,j,k))*dtidxi        &
+                          )
         end do
       end do
     end do

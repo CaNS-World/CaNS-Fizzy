@@ -357,9 +357,8 @@ program cans
 #endif
     if(.not.is_solve_ns) then
       call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc wait
-      !$acc update device(u,v,w,p)
+      !$acc update device(u,v,w,p) async(1)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
     else
       rho_av = 0.
@@ -370,11 +369,10 @@ program cans
             bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
             p,pp,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-      !$acc kernels
+      !$acc kernels async(1)
       pp(:,:,:) = p(:,:,:)
       !$acc end kernels
-      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,pp)
-      call fillps(n,dli,dzfi,dti,u,v,w,p)
+      call fillps(n,dli,dzfi,dti,rho0,u,v,w,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
       call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
       call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
@@ -407,7 +405,7 @@ program cans
       if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
-      dt  = min(cfl*dtmax,dtmin)
+      dt = min(cfl*dtmax,dtmin)
       if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
       if(dtmax < small) then
         if(myid == 0) print*, 'ERROR: time step is too small.'
