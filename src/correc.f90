@@ -27,7 +27,7 @@ module mod_correc
     real(rp) :: rhop,rho,drho
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
-    rhop = 1.
+    rhop = rho0
     !
     !factor = rkcoeffab(rkiter)*dt
     !
