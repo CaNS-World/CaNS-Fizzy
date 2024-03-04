@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-def test_ldc():
+def test_dht():
     import numpy as np
     from read_single_field_binary import read_single_field_binary
     #
@@ -20,5 +20,4 @@ def test_ldc():
     nusselt_ref = 8.8252
     np.testing.assert_allclose([nusselt], [nusselt_ref], rtol=1.e-2, atol=1.e-2)
 if __name__ == "__main__":
-    test_ldc()
-    print("Passed!")
+    test_dht()
