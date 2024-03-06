@@ -202,7 +202,9 @@ module mod_two_fluid
       is_sphere = .true.
     case('bu2')
       call read_sphere_file('spheres.in',spheres,nspheres)
-      is_dim(:) = [.true. ,.false.,.true.] ! cylinder
+      !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder
+      is_dim(:) = [.true. ,.false.,.true. ] ! cylinder
+      !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder
       is_sphere = .true.
     case('bu1')
       call read_sphere_file('spheres.in',spheres,nspheres)

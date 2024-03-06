@@ -20,8 +20,8 @@ module mod_solver_vc
     !
     ! hypre solver parameter hard-coded for now
     !
-    integer , parameter  :: maxiter  = 50
-    real(rp), parameter  :: maxerror = 1.e-3
+    integer , parameter  :: maxiter  = 1000
+    real(rp), parameter  :: maxerror = 1.e-9
     integer , parameter  :: stype    = HYPRESolverSMG
     type(hypre_solver_t) :: asolver
     !

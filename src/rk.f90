@@ -6,7 +6,7 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_mom  , only: mom_xyz_ad,mom_xyz_oth
+  use mod_mom  , only: mom_xyz_adr,mom_xyz_oth
   use mod_utils, only: swap
   use mod_types
   implicit none
@@ -15,9 +15,9 @@ module mod_rk
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
-                p,pp,u,v,w)
+                p,pp,rglrx,rglry,rglrz,u,v,w)
     !
-    ! low-storage 3rd-order Runge-Kutta scheme
+    ! Adams-Bashforth or low-storage 3rd-order Runge-Kutta scheme
     ! for time integration of the momentum equations.
     !
     implicit none
@@ -31,6 +31,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
     real(rp), intent(in   ), dimension(0:,0:,0:) :: psi,kappa,s,p,pp
+    real(rp), dimension(0:,0:,0:), intent(in )   :: rglrx,rglry,rglrz
     real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
     real(rp), target     , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
                                                                   dudtrko_t,dvdtrko_t,dwdtrko_t
@@ -60,9 +61,9 @@ module mod_rk
       dwdtrko => dwdtrko_t
     end if
     !
-    ! advection and diffusion terms
+    ! advectioni, diffusion and regularization terms
     !
-    call mom_xyz_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,rho12,mu12,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_adr(n,dli,dzci,dzfi,rho12,mu12,rglrx,rglry,rglrz,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
     !
     if(is_first) then ! use Euler forward
       !$acc kernels
@@ -92,7 +93,7 @@ module mod_rk
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n(1),n(2),n(3),dli(1),dli(2),dzci,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+    call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                      p,pp,psi,kappa,s,dudtrk,dvdtrk,dwdtrk)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
@@ -111,7 +112,7 @@ module mod_rk
                      ssource,rho12,ka12,cp12,psi,u,v,w,s)
     use mod_scal, only: scal_ad
     !
-    ! low-storage 3rd-order Runge-Kutta scheme
+    ! Adams-Bashfroth or low-storage 3rd-order Runge-Kutta scheme
     ! for time integration of the scalar field.
     !
     ! n.b.: since we leverage the `save` attribute for dsdtrk*, this subroutine only supports
@@ -172,7 +173,7 @@ module mod_rk
     use mod_acdi     , only: acdi_transport_pf
     use mod_two_fluid, only: clip_field
     !
-    ! low-storage 3rd-order Runge-Kutta scheme
+    ! Adams-Bashforth or low-storage 3rd-order Runge-Kutta scheme
     ! for time integration of the phase field (actually Adams-Bashforth).
     !
     implicit none

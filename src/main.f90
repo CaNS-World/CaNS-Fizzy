@@ -65,7 +65,7 @@ program cans
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv
+  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv,acdi_cmpt_rglr
   use mod_two_fluid      , only: init2fl
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
@@ -129,7 +129,7 @@ program cans
   !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz
+  real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz,rglrx,rglry,rglrz
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -177,6 +177,7 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
+  allocate(rglrx,rglry,rglrz,mold=u)
   allocate(psi,kappa,normx,normy,normz,mold=pp)
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
@@ -277,7 +278,7 @@ program cans
     istep = 0
     time = 0.
     !$acc update self(zc,dzc,dzf)
-    call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
+    call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
@@ -356,7 +357,7 @@ program cans
     call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
     if(.not.is_solve_ns) then
-      call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(1),mu12(1),bforce,is_wallturb,time,u,v,w,p)
+      call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
       !$acc wait
       !$acc update device(u,v,w,p) async(1)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
@@ -365,9 +366,11 @@ program cans
       if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
       end if
+      call acdi_cmpt_rglr(n,dli,dzci,dzfi,gam,seps,normx,normy,normz,psi,rglrx,rglry,rglrz) ! maybe I need to store and use the old rglr instead
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,rglrx,rglry,rglrz)
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
             bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
-            p,pp,u,v,w)
+            p,pp,rglrx,rglry,rglrz,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc kernels async(1)
       pp(:,:,:) = p(:,:,:)

@@ -11,7 +11,7 @@ module mod_acdi
   use mod_param , only: eps
   implicit none
   private
-  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_norm_curv
+  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_norm_curv,acdi_cmpt_rglr,acdi_cmpt_phi
   contains
   subroutine acdi_set_epsilon(dl,dzfi,seps_factor,seps)
     !
@@ -90,15 +90,16 @@ module mod_acdi
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
+      !
+      ! weights along the stretched grid direction
+      !
+      wghtpp = dzci(k)/dzfi(k+1)
+      wghtpm = dzci(k)/dzfi(k)
+      wghtmp = dzci(k-1)/dzfi(k)
+      wghtmm = dzci(k-1)/dzfi(k-1)
+      !
       do j=1,n(2)
         do i=1,n(1)
-          !
-          ! weights along the stretched grid direction
-          !
-          wghtpp = dzci(k)/dzfi(k+1)
-          wghtpm = dzci(k)/dzfi(k)
-          wghtmp = dzci(k-1)/dzfi(k)
-          wghtmm = dzci(k-1)/dzfi(k-1)
           !
           ! advection term
           !
@@ -209,6 +210,14 @@ module mod_acdi
     !
     !$acc parallel loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
     do k=1,n(3)
+      !
+      ! weights along the stretched grid direction
+      !
+      wghtpp = dzci(k)/dzfi(k+1)
+      wghtpm = dzci(k)/dzfi(k)
+      wghtmp = dzci(k-1)/dzfi(k)
+      wghtmm = dzci(k-1)/dzfi(k-1)
+      !
       do j=1,n(2)
         do i=1,n(1)
           !
@@ -239,11 +248,6 @@ module mod_acdi
           phipmp = seps*log((psi(i+1,j-1,k+1)+eps)/(1.-psi(i+1,j-1,k+1)+eps))
           phipcp = seps*log((psi(i+1,j  ,k+1)+eps)/(1.-psi(i+1,j  ,k+1)+eps))
           phippp = seps*log((psi(i+1,j+1,k+1)+eps)/(1.-psi(i+1,j+1,k+1)+eps))
-          !
-          wghtpp = dzci(k)/dzfi(k+1)
-          wghtpm = dzci(k)/dzfi(k)
-          wghtmp = dzci(k-1)/dzfi(k)
-          wghtmm = dzci(k-1)/dzfi(k-1)
           !
           mx(1) = 0.25*((phipcc+phippc-phiccc-phicpc)*wghtpp+(phipcp+phippp-phiccp-phicpp)*wghtpm)*dli(1)
           mx(2) = 0.25*((phipcc+phipmc-phiccc-phicmc)*wghtpp+(phipcp+phipmp-phiccp-phicmp)*wghtpm)*dli(1)
@@ -299,6 +303,75 @@ module mod_acdi
       end do
     end do
   end subroutine acdi_cmpt_norm_curv
+  !
+  subroutine acdi_cmpt_rglr(n,dli,dzci,dzfi,gam,seps,normx,normy,normz,psi,rglrx,rglry,rglrz)
+    !
+    ! compute the components of the interface regularization vector (staggered like the velocity)
+    !
+    implicit none
+    integer , intent(in), dimension(3)  :: n
+    real(rp), intent(in), dimension(3)  :: dli
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in)                :: gam,seps
+    real(rp), intent(in ), dimension(0:,0:,0:) :: normx,normy,normz
+    real(rp), intent(in ), dimension(0:,0:,0:) :: psi
+    real(rp), intent(out), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
+    integer :: i,j,k
+    real(rp) :: dxi,dyi
+    real(rp) :: sepsi
+    real(rp) :: wghtpp,wghtpm,wghtmp,wghtmm
+    real(rp) :: diffx,diffy,diffz,sharpx,sharpy,sharpz
+    real(rp) :: phiccc,phicpc,phipcc,phiccp
+    real(rp) :: rn_11,rn_12,rn_13
+    !
+    dxi = dli(1)
+    dyi = dli(2)
+    sepsi = 1./seps
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n(3)
+      !
+      ! weights along the stretched grid direction
+      !
+      wghtpp = dzci(k)/dzfi(k+1)
+      wghtpm = dzci(k)/dzfi(k)
+      wghtmp = dzci(k-1)/dzfi(k)
+      wghtmm = dzci(k-1)/dzfi(k-1)
+      !
+      do j=1,n(2)
+        do i=1,n(1)
+          !
+          ! diffusion term
+          !
+          diffx = gam*seps*(psi(i+1,j,k)-psi(i,j,k))*dxi
+          diffy = gam*seps*(psi(i,j+1,k)-psi(i,j,k))*dyi
+          diffz = gam*seps*(psi(i,j,k+1)-psi(i,j,k))*dzci(k)
+          !
+          ! sharpening term
+          !
+          phiccc = seps*log((psi(i  ,j  ,k  )+eps)/(1.-psi(i  ,j  ,k  )+eps))
+          phicpc = seps*log((psi(i  ,j+1,k  )+eps)/(1.-psi(i  ,j+1,k  )+eps))
+          phipcc = seps*log((psi(i+1,j  ,k  )+eps)/(1.-psi(i+1,j  ,k  )+eps))
+          phiccp = seps*log((psi(i  ,j  ,k+1)+eps)/(1.-psi(i  ,j  ,k+1)+eps))
+          !
+          rn_11 = 0.5*(normx(i,j,k)+normx(i+1,j,k))/(sqrt((0.5*(normx(i,j,k)+normx(i+1,j,k)))**2+ &
+                 (0.5*(normy(i,j,k)+normy(i+1,j,k)))**2+(0.5*(normz(i,j,k)+normz(i+1,j,k)))**2)+eps)
+          rn_12 = 0.5*(normy(i,j,k)+normy(i,j+1,k))/(sqrt((0.5*(normx(i,j,k)+normx(i,j+1,k)))**2+ &
+                 (0.5*(normy(i,j,k)+normy(i,j+1,k)))**2+(0.5*(normz(i,j,k)+normz(i,j+1,k)))**2)+eps)
+          rn_13 = 0.5*(normz(i,j,k)*wghtpp+normz(i,j,k+1)*wghtpm)/(sqrt((0.5*(normx(i,j,k)*wghtpp+normx(i,j,k+1)*wghtpm))**2+ &
+                 (0.5*(normy(i,j,k)*wghtpp+normy(i,j,k+1)*wghtpm))**2+(0.5*(normz(i,j,k)*wghtpp+normz(i,j,k+1)*wghtpm))**2)+eps)
+          !  
+          sharpx = 0.25*gam*((1.-(tanh(0.25*(phipcc       +phiccc       )*sepsi))**2)*rn_11)
+          sharpy = 0.25*gam*((1.-(tanh(0.25*(phicpc       +phiccc       )*sepsi))**2)*rn_12)
+          sharpz = 0.25*gam*((1.-(tanh(0.25*(phiccp*wghtpm+phiccc*wghtpp)*sepsi))**2)*rn_13)
+          !
+          rglrx(i,j,k) = diffx-sharpx
+          rglry(i,j,k) = diffy-sharpy
+          rglrz(i,j,k) = diffz-sharpz
+        end do
+      end do
+    end do
+  end subroutine acdi_cmpt_rglr
   !
   pure elemental real(rp) function acdi_cmpt_phi(psi,seps) result(phi)
     use mod_param, only:eps
