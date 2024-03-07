@@ -90,16 +90,15 @@ module mod_acdi
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
-      !
-      ! weights along the stretched grid direction
-      !
-      wghtpp = dzci(k)/dzfi(k+1)
-      wghtpm = dzci(k)/dzfi(k)
-      wghtmp = dzci(k-1)/dzfi(k)
-      wghtmm = dzci(k-1)/dzfi(k-1)
-      !
       do j=1,n(2)
         do i=1,n(1)
+          !
+          ! weights along the stretched grid direction
+          !
+          wghtpp = dzci(k)/dzfi(k+1)
+          wghtpm = dzci(k)/dzfi(k)
+          wghtmp = dzci(k-1)/dzfi(k)
+          wghtmm = dzci(k-1)/dzfi(k-1)
           !
           ! advection term
           !
@@ -210,16 +209,15 @@ module mod_acdi
     !
     !$acc parallel loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
     do k=1,n(3)
-      !
-      ! weights along the stretched grid direction
-      !
-      wghtpp = dzci(k)/dzfi(k+1)
-      wghtpm = dzci(k)/dzfi(k)
-      wghtmp = dzci(k-1)/dzfi(k)
-      wghtmm = dzci(k-1)/dzfi(k-1)
-      !
       do j=1,n(2)
         do i=1,n(1)
+          !
+          ! weights along the stretched grid direction
+          !
+          wghtpp = dzci(k)/dzfi(k+1)
+          wghtpm = dzci(k)/dzfi(k)
+          wghtmp = dzci(k-1)/dzfi(k)
+          wghtmm = dzci(k-1)/dzfi(k-1)
           !
           phimmm = seps*log((psi(i-1,j-1,k-1)+eps)/(1.-psi(i-1,j-1,k-1)+eps))
           phimcm = seps*log((psi(i-1,j  ,k-1)+eps)/(1.-psi(i-1,j  ,k-1)+eps))
@@ -330,16 +328,15 @@ module mod_acdi
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
-      !
-      ! weights along the stretched grid direction
-      !
-      wghtpp = dzci(k)/dzfi(k+1)
-      wghtpm = dzci(k)/dzfi(k)
-      wghtmp = dzci(k-1)/dzfi(k)
-      wghtmm = dzci(k-1)/dzfi(k-1)
-      !
       do j=1,n(2)
         do i=1,n(1)
+          !
+          ! weights along the stretched grid direction
+          !
+          wghtpp = dzci(k)/dzfi(k+1)
+          wghtpm = dzci(k)/dzfi(k)
+          wghtmp = dzci(k-1)/dzfi(k)
+          wghtmm = dzci(k-1)/dzfi(k-1)
           !
           ! diffusion term
           !

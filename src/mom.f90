@@ -559,16 +559,16 @@ module mod_mom
     !
     !$acc parallel loop collapse(3) default(present) private(uuip,uuim,uvjp,uvjm,uwkp,uwkm) async(1)
     do k=1,n(3)
-      !
-      ! weights along the stretched grid direction
-      !
-      wghtpp = dzci(k)/dzfi(k+1)
-      wghtpm = dzci(k)/dzfi(k)
-      wghtmp = dzci(k-1)/dzfi(k)
-      wghtmm = dzci(k-1)/dzfi(k-1)
-      !
       do j=1,n(2)
         do i=1,n(1)
+          !
+          ! weights along the stretched grid direction
+          !
+          wghtpp = dzci(k)/dzfi(k+1)
+          wghtpm = dzci(k)/dzfi(k)
+          wghtmp = dzci(k-1)/dzfi(k)
+          wghtmm = dzci(k-1)/dzfi(k-1)
+          !
           u_ccm = u(i  ,j  ,k-1)
           u_pcm = u(i+1,j  ,k-1)
           u_cpm = u(i  ,j+1,k-1)
@@ -806,16 +806,16 @@ module mod_mom
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
-      !
-      ! weights along the stretched grid direction
-      !
-      wghtpp = dzci(k)/dzfi(k+1)
-      wghtpm = dzci(k)/dzfi(k)
-      wghtmp = dzci(k-1)/dzfi(k)
-      wghtmm = dzci(k-1)/dzfi(k-1)
-      !
       do j=1,n(2)
         do i=1,n(1)
+          !
+          ! weights along the stretched grid direction
+          !
+          wghtpp = dzci(k)/dzfi(k+1)
+          wghtpm = dzci(k)/dzfi(k)
+          wghtmp = dzci(k-1)/dzfi(k)
+          wghtmm = dzci(k-1)/dzfi(k-1)
+          !
           p_ccc = p(i  ,j  ,k  )
           p_pcc = p(i+1,j  ,k  )
           p_cpc = p(i  ,j+1,k  )
