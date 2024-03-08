@@ -545,6 +545,9 @@ module mod_mom
                 w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp, &
                 dzci_c,dzci_m,dzfi_c,dzfi_p, &
                 psixp,psiyp,psizp
+    real(rp) :: rglrx_mcc,rglrx_ccc,rglrx_pcc,rglrx_mpc,rglrx_cpc,rglrx_mcp,rglrx_ccp, &
+                rglry_cmc,rglry_ccc,rglry_cpc,rglry_pmc,rglry_pcc,rglry_cmp,rglry_ccp, &
+                rglrz_ccm,rglrz_ccc,rglrz_ccp,rglrz_pcm,rglrz_pcc,rglrz_cpm,rglrz_cpc
     real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
@@ -627,6 +630,30 @@ module mod_mom
           c_cpp = psi(i  ,j+1,k+1)
           c_ppc = psi(i+1,j+1,k  )
           c_pcp = psi(i+1,j  ,k+1)
+          !
+          rglrx_mcc = rglrx(i-1,j  ,k  )
+          rglrx_ccc = rglrx(i  ,j  ,k  )
+          rglrx_pcc = rglrx(i+1,j  ,k  )
+          rglrx_mpc = rglrx(i-1,j+1,k  )
+          rglrx_cpc = rglrx(i  ,j+1,k  )
+          rglrx_mcp = rglrx(i-1,j  ,k+1)
+          rglrx_ccp = rglrx(i  ,j  ,k+1)
+          !
+          rglry_cmc = rglry(i  ,j-1,k  )  
+          rglry_ccc = rglry(i  ,j  ,k  ) 
+          rglry_cpc = rglry(i  ,j+1,k  ) 
+          rglry_pmc = rglry(i+1,j-1,k  )
+          rglry_pcc = rglry(i+1,j  ,k  )
+          rglry_cmp = rglry(i  ,j-1,k+1)
+          rglry_ccp = rglry(i  ,j  ,k+1)
+          !
+          rglrz_ccm = rglrz(i  ,j  ,k-1)
+          rglrz_ccc = rglrz(i  ,j  ,k  )
+          rglrz_ccp = rglrz(i  ,j  ,k+1)
+          rglrz_pcm = rglrz(i+1,j  ,k-1)
+          rglrz_pcc = rglrz(i+1,j  ,k  )
+          rglrz_cpm = rglrz(i  ,j+1,k-1)
+          rglrz_cpc = rglrz(i  ,j+1,k  )
           !
           dzci_c = dzci(k  )
           dzci_m = dzci(k-1)
@@ -730,32 +757,32 @@ module mod_mom
           !
           ! interface regularization momentum transport
           !
-          rxup = 0.25*drho*(rglrx(i  ,j  ,k  )+rglrx(i+1,j  ,k  ))*(u_ccc       +u_pcc       )
-          rxum = 0.25*drho*(rglrx(i-1,j  ,k  )+rglrx(i  ,j  ,k  ))*(u_mcc       +u_ccc       )
-          ryup = 0.25*drho*(rglry(i  ,j  ,k  )+rglry(i+1,j  ,k  ))*(u_ccc       +u_cpc       )
-          ryum = 0.25*drho*(rglry(i  ,j-1,k  )+rglry(i+1,j-1,k  ))*(u_cmc       +u_ccc       )
-          rzup = 0.25*drho*(rglrz(i  ,j  ,k  )+rglrz(i+1,j  ,k  ))*(u_ccc*wghtpp+u_ccp*wghtpm)
-          rzum = 0.25*drho*(rglrz(i  ,j  ,k-1)+rglrz(i+1,j  ,k-1))*(u_ccm*wghtmp+u_ccc*wghtmm)
+          rxup = 0.25*drho*(rglrx_ccc+rglrx_pcc)*(u_ccc       +u_pcc       )
+          rxum = 0.25*drho*(rglrx_mcc+rglrx_ccc)*(u_mcc       +u_ccc       )
+          ryup = 0.25*drho*(rglry_ccc+rglry_pcc)*(u_ccc       +u_cpc       )
+          ryum = 0.25*drho*(rglry_cmc+rglry_pmc)*(u_cmc       +u_ccc       )
+          rzup = 0.25*drho*(rglrz_ccc+rglrz_pcc)*(u_ccc*wghtpp+u_ccp*wghtpm)
+          rzum = 0.25*drho*(rglrz_ccm+rglrz_pcm)*(u_ccm*wghtmp+u_ccc*wghtmm)
           dudt_aux = dudt_aux + dxi*(   rxup-rxum)/rhoxp + &
                                 dyi*(   ryup-ryum)/rhoxp + &
                                 dzfi_c*(rzup-rzum)/rhoxp
           !
-          rxvp = 0.25*drho*(rglrx(i  ,j  ,k  )+rglrx(i  ,j+1,k  ))*(v_ccc       +v_pcc       )
-          rxvm = 0.25*drho*(rglrx(i-1,j  ,k  )+rglrx(i-1,j+1,k  ))*(v_mcc       +v_ccc       )
-          ryvp = 0.25*drho*(rglry(i  ,j  ,k  )+rglry(i  ,j+1,k  ))*(v_ccc       +v_cpc       )
-          ryvm = 0.25*drho*(rglry(i  ,j-1,k  )+rglry(i  ,j  ,k  ))*(v_cmc       +v_ccc       )
-          rzvp = 0.25*drho*(rglrz(i  ,j  ,k  )+rglrz(i  ,j+1,k  ))*(v_ccc*wghtpp+v_ccp*wghtpm)
-          rzvm = 0.25*drho*(rglrz(i  ,j  ,k-1)+rglrz(i  ,j+1,k-1))*(v_ccm*wghtmp+v_ccc*wghtmm)
+          rxvp = 0.25*drho*(rglrx_ccc+rglrx_cpc)*(v_ccc       +v_pcc       )
+          rxvm = 0.25*drho*(rglrx_mcc+rglrx_mpc)*(v_mcc       +v_ccc       )
+          ryvp = 0.25*drho*(rglry_ccc+rglry_cpc)*(v_ccc       +v_cpc       )
+          ryvm = 0.25*drho*(rglry_cmc+rglry_ccc)*(v_cmc       +v_ccc       )
+          rzvp = 0.25*drho*(rglrz_ccc+rglrz_cpc)*(v_ccc*wghtpp+v_ccp*wghtpm)
+          rzvm = 0.25*drho*(rglrz_ccm+rglrz_cpm)*(v_ccm*wghtmp+v_ccc*wghtmm)
           dvdt_aux = dvdt_aux + dxi*(   rxvp-rxvm)/rhoyp + &
                                 dyi*(   ryvp-ryvm)/rhoyp + &
                                 dzfi_c*(rzvp-rzvm)/rhoyp
           !
-          rxwp = 0.25*drho*(rglrx(i  ,j  ,k  )*wghtpp+rglrx(i  ,j  ,k+1)*wghtpm)*(w_ccc+w_pcc)
-          rxwm = 0.25*drho*(rglrx(i-1,j  ,k  )*wghtpp+rglrx(i-1,j  ,k+1)*wghtpm)*(w_mcc+w_ccc)
-          rywp = 0.25*drho*(rglry(i  ,j  ,k  )*wghtpp+rglry(i  ,j  ,k+1)*wghtpm)*(w_ccc+w_cpc)
-          rywm = 0.25*drho*(rglry(i  ,j-1,k  )*wghtpp+rglry(i  ,j-1,k+1)*wghtpm)*(w_cmc+w_ccc)
-          rzwp = 0.25*drho*(rglrz(i  ,j  ,k  )       +rglrz(i  ,j  ,k+1)       )*(w_ccc+w_ccp)
-          rzwm = 0.25*drho*(rglrz(i  ,j  ,k-1)       +rglrz(i  ,j  ,k  )       )*(w_ccm+w_ccc)
+          rxwp = 0.25*drho*(rglrx_ccc*wghtpp+rglrx_ccp*wghtpm)*(w_ccc+w_pcc)
+          rxwm = 0.25*drho*(rglrx_mcc*wghtpp+rglrx_mcp*wghtpm)*(w_mcc+w_ccc)
+          rywp = 0.25*drho*(rglry_ccc*wghtpp+rglry_ccp*wghtpm)*(w_ccc+w_cpc)
+          rywm = 0.25*drho*(rglry_cmc*wghtpp+rglry_cmp*wghtpm)*(w_cmc+w_ccc)
+          rzwp = 0.25*drho*(rglrz_ccc       +rglrz_ccp       )*(w_ccc+w_ccp)
+          rzwm = 0.25*drho*(rglrz_ccm       +rglrz_ccc       )*(w_ccm+w_ccc)
           dwdt_aux = dwdt_aux + dxi*(   rxwp-rxwm)/rhozp + &
                                 dyi*(   rywp-rywm)/rhozp + &
                                 dzci_c*(rzwp-rzwm)/rhozp
