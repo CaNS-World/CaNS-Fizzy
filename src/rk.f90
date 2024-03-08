@@ -61,7 +61,7 @@ module mod_rk
       dwdtrko => dwdtrko_t
     end if
     !
-    ! advectioni, diffusion and regularization terms
+    ! advection, diffusion and regularization terms
     !
     call mom_xyz_adr(n,dli,dzci,dzfi,rho12,mu12,rglrx,rglry,rglrz,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
     !
