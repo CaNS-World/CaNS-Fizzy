@@ -738,7 +738,7 @@ module mod_mom
           rzum = 0.25*drho*(rglrz(i  ,j  ,k-1)+rglrz(i+1,j  ,k-1))*(u_ccm*wghtmp+u_ccc*wghtmm)
           dudt_aux = dudt_aux + dxi*(   rxup-rxum)/rhoxp + &
                                 dyi*(   ryup-ryum)/rhoxp + &
-                                dzfi_c*(rxup-rzum)/rhoxp
+                                dzfi_c*(rzup-rzum)/rhoxp
           !
           rxvp = 0.25*drho*(rglrx(i  ,j  ,k  )+rglrx(i  ,j+1,k  ))*(v_ccc       +v_pcc       )
           rxvm = 0.25*drho*(rglrx(i-1,j  ,k  )+rglrx(i-1,j+1,k  ))*(v_mcc       +v_ccc       )
