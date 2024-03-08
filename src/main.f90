@@ -345,7 +345,8 @@ program cans
     !
     ! Phase field update
     !
-    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi)
+    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,rglrx,rglry,rglrz)
+    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,rglrx,rglry,rglrz)
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
     call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
@@ -366,8 +367,8 @@ program cans
       if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
       end if
-      call acdi_cmpt_rglr(n,dli,dzci,dzfi,gam,seps,normx,normy,normz,psi,rglrx,rglry,rglrz) ! maybe I need to store and use the old rglr instead
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,rglrx,rglry,rglrz)
+      !call acdi_cmpt_rglr(n,dli,dzci,dzfi,gam,seps,normx,normy,normz,psi,rglrx,rglry,rglrz) ! maybe I need to store and use the old rglr instead
+      !call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,rglrx,rglry,rglrz)
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
             bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
             p,pp,rglrx,rglry,rglrz,u,v,w)

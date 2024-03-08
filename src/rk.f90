@@ -169,7 +169,7 @@ module mod_rk
     call swap(dsdtrk,dsdtrko)
   end subroutine rk_scal
   !
-  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi)
+  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,rglrx,rglry,rglrz)
     use mod_acdi     , only: acdi_transport_pf
     use mod_two_fluid, only: clip_field
     !
@@ -186,6 +186,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
+    real(rp), intent(out), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
@@ -201,7 +202,7 @@ module mod_rk
       dpsidtrk  => dpsidtrk_t
       dpsidtrko => dpsidtrko_t
     end if
-    call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidtrk)
+    call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidtrk,rglrx,rglry,rglrz)
     if(is_first) then ! use Euler forward
       !$acc kernels
       dpsidtrko(:,:,:) = dpsidtrk(:,:,:)

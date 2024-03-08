@@ -61,7 +61,7 @@ module mod_acdi
     gam = sqrt(velmax)*gam_factor
   end subroutine acdi_set_gamma
   !
-  subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidt)
+  subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidt,rglrx,rglry,rglrz)
     !
     !
     !
@@ -74,13 +74,16 @@ module mod_acdi
     real(rp), intent(in), dimension(0:,0:,0:) :: normx,normy,normz
     real(rp), dimension(0:,0:,0:), intent(inout) :: psi
     real(rp), dimension(:,:,:), intent(out) :: dpsidt
+    real(rp), intent(out), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
     integer :: i,j,k
     real(rp) :: dxi,dyi
     real(rp) :: sepsi
     real(rp) :: wghtpp,wghtpm,wghtmp,wghtmm
-    real(rp) :: adv,diff,sharp
+    real(rp) :: adv,diff,sharp,rglr
     real(rp) :: upsiip,upsiim,vpsijp,vpsijm,wpsikp,wpsikm
     real(rp) :: dpsidxp,dpsidxm,dpsidyp,dpsidym,dpsidzp,dpsidzm
+    real(rp) :: sharpxp,sharpxm,sharpyp,sharpym,sharpzp,sharpzm
+    real(rp) :: rglrxp,rglrxm,rglryp,rglrym,rglrzp,rglrzm
     real(rp) :: phiccm,phimcc,phicmc,phiccc,phicpc,phipcc,phiccp
     real(rp) :: rn_01,rn_11,rn_02,rn_12,rn_03,rn_13
     !
@@ -112,13 +115,13 @@ module mod_acdi
           !
           ! diffusion term
           !
-          dpsidxp = (psi(i+1,j,k)-psi(i  ,j,k))*dxi
-          dpsidxm = (psi(i  ,j,k)-psi(i-1,j,k))*dxi
-          dpsidyp = (psi(i,j+1,k)-psi(i,j  ,k))*dyi
-          dpsidym = (psi(i,j  ,k)-psi(i,j-1,k))*dyi
-          dpsidzp = (psi(i,j,k+1)-psi(i,j,k  ))*dzci(k  )
-          dpsidzm = (psi(i,j,k  )-psi(i,j,k-1))*dzci(k-1)
-          diff    = gam*seps*( (dpsidxp-dpsidxm)*dxi + (dpsidyp-dpsidym)*dyi + (dpsidzp-dpsidzm)*dzfi(k) )
+          dpsidxp = gam*seps*(psi(i+1,j,k)-psi(i  ,j,k))*dxi
+          dpsidxm = gam*seps*(psi(i  ,j,k)-psi(i-1,j,k))*dxi
+          dpsidyp = gam*seps*(psi(i,j+1,k)-psi(i,j  ,k))*dyi
+          dpsidym = gam*seps*(psi(i,j  ,k)-psi(i,j-1,k))*dyi
+          dpsidzp = gam*seps*(psi(i,j,k+1)-psi(i,j,k  ))*dzci(k  )
+          dpsidzm = gam*seps*(psi(i,j,k  )-psi(i,j,k-1))*dzci(k-1)
+          diff    = (dpsidxp-dpsidxm)*dxi + (dpsidyp-dpsidym)*dyi + (dpsidzp-dpsidzm)*dzfi(k)
           !
           ! sharpening term
           !
@@ -170,9 +173,30 @@ module mod_acdi
                   0.25*gam*( (1.-(tanh(0.25*(phiccp*wghtpm+phiccc*wghtpp)*sepsi))**2)*rn_13 - &
                              (1.-(tanh(0.25*(phiccc*wghtmm+phiccm*wghtmp)*sepsi))**2)*rn_03 )*dzfi(k)
           !
+          sharpxp = 0.25*gam*((1.-(tanh(0.25*(phipcc       +phiccc       )*sepsi))**2)*rn_11)
+          sharpxm = 0.25*gam*((1.-(tanh(0.25*(phiccc       +phimcc       )*sepsi))**2)*rn_01)
+          sharpyp = 0.25*gam*((1.-(tanh(0.25*(phicpc       +phiccc       )*sepsi))**2)*rn_12)
+          sharpym = 0.25*gam*((1.-(tanh(0.25*(phiccc       +phicmc       )*sepsi))**2)*rn_02)
+          sharpzp = 0.25*gam*((1.-(tanh(0.25*(phiccp*wghtpm+phiccc*wghtpp)*sepsi))**2)*rn_13)
+          sharpzm = 0.25*gam*((1.-(tanh(0.25*(phiccc*wghtmm+phiccm*wghtmp)*sepsi))**2)*rn_03)
+          !
+          rglrxp = dpsidxp - sharpxp
+          rglrxm = dpsidxm - sharpxm
+          rglryp = dpsidyp - sharpyp
+          rglrym = dpsidym - sharpym
+          rglrzp = dpsidzp - sharpzp
+          rglrzm = dpsidzm - sharpzm
+          !
+          rglrx(i,j,k) = rglrxp
+          rglry(i,j,k) = rglryp
+          rglrz(i,j,k) = rglrzp
+          !
+          rglr = (rglrxp-rglrxm)*dxi + (rglryp-rglrym)*dyi + (rglrzp-rglrzm)*dzfi(k)
+          !
           ! full transport
           !
-          dpsidt(i,j,k) = -adv+diff-sharp
+          !!!dpsidt(i,j,k) = -adv+diff-sharp
+          dpsidt(i,j,k) = -adv+rglr
         end do
       end do
     end do
