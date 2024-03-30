@@ -9,7 +9,7 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_adr,mom_xyz_oth
+  public mom_xyz_ad,mom_xyz_oth
   contains
   !
   subroutine momx_a(nx,ny,nz,dxi,dyi,dzfi,u,v,w,dudt)
@@ -274,7 +274,7 @@ module mod_mom
           rhop = rho + drho*0.5*(psi(i+1,j,k)+psi(i,j,k))
           dpdl = (p(i+1,j,k)-p(i,j,k))*dxi
           !
-          dudt(i,j,k) = dudt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
+          dudt(i,j,k) = dudt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) &
 #if defined(_CONSTANT_COEFFS_POISSON)
                         -dpdl/rho0 - (1./rhop-1./rho0)*( ((1.+dt_r)*p(i+1,j,k)-dt_r*(pp(i+1,j,k))) - &
                                                          ((1.+dt_r)*p(i  ,j,k)-dt_r*(pp(i  ,j,k))) &
@@ -307,7 +307,7 @@ module mod_mom
           rhop = rho + drho*0.5*(psi(i,j+1,k)+psi(i,j,k))
           dpdl = (p(i,j+1,k)-p(i,j,k))*dyi
           !
-          dvdt(i,j,k) = dvdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
+          dvdt(i,j,k) = dvdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) &
 #if defined(_CONSTANT_COEFFS_POISSON)
                         -dpdl/rho0 - (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j+1,k)-dt_r*(pp(i,j+1,k))) - &
                                                          ((1.+dt_r)*p(i,j  ,k)-dt_r*(pp(i,j  ,k))) &
@@ -341,7 +341,7 @@ module mod_mom
           rhop = rho + drho*0.5*(psi(i,j,k+1)+psi(i,j,k))
           dpdl = (p(i,j,k+1)-p(i,j,k))*dzci(k)
           !
-          dwdt(i,j,k) = dwdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) + &
+          dwdt(i,j,k) = dwdt(i,j,k) + bforce/rhop + gacc*(1.-rho_av/rhop) &
 #if defined(_CONSTANT_COEFFS_POISSON)
                         -dpdl/rho0 - (1./rhop-1./rho0)*( ((1.+dt_r)*p(i,j,k+1)-dt_r*(pp(i,j,k+1))) - &
                                                          ((1.+dt_r)*p(i,j,k  )-dt_r*(pp(i,j,k  ))) &
@@ -525,29 +525,28 @@ module mod_mom
     end do
   end subroutine momz_buoy
   !
-  subroutine mom_xyz_adr(n,dli,dzci,dzfi,rho12,mu12,rglrx,rglry,rglrz, &
+  subroutine mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rglrx,acdi_rglry,acdi_rglrz, &
                          u,v,w,psi,dudt,dvdt,dwdt)
     implicit none
-    integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in), dimension(2) :: rho12,mu12
-    real(rp), dimension(0:,0:,0:), intent(in ) :: u,v,w,psi
-    real(rp), dimension(0:,0:,0:), intent(in ) :: rglrx,rglry,rglrz
-    real(rp), dimension( :, :, :), intent(out) :: dudt,dvdt,dwdt
+    integer , intent(in ), dimension(3) :: n
+    real(rp), intent(in ), dimension(3) :: dli
+    real(rp), intent(in ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in ), dimension(2) :: rho12,mu12
+    real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w,psi
+    real(rp), intent(in ), dimension(0:,0:,0:) :: acdi_rglrx,acdi_rglry,acdi_rglrz
+    real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
     real(rp) :: dxi,dyi
-    real(rp) :: wghtpp,wghtpm,wghtmp,wghtmm
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
                 u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp, &
                 v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp, &
                 w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp, &
+                rglrx_mcc,rglrx_ccc,rglrx_pcc,rglrx_mpc,rglrx_cpc,rglrx_mcp,rglrx_ccp, &
+                rglry_cmc,rglry_ccc,rglry_cpc,rglry_pmc,rglry_pcc,rglry_cmp,rglry_ccp, &
+                rglrz_ccm,rglrz_ccc,rglrz_ccp,rglrz_pcm,rglrz_pcc,rglrz_cpm,rglrz_cpc, &
                 dzci_c,dzci_m,dzfi_c,dzfi_p, &
                 psixp,psiyp,psizp
-    real(rp) :: rglrx_mcc,rglrx_ccc,rglrx_pcc,rglrx_mpc,rglrx_cpc,rglrx_mcp,rglrx_ccp, &
-                rglry_cmc,rglry_ccc,rglry_cpc,rglry_pmc,rglry_pcc,rglry_cmp,rglry_ccp, &
-                rglrz_ccm,rglrz_ccc,rglrz_ccp,rglrz_pcm,rglrz_pcc,rglrz_cpm,rglrz_cpc
     real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
@@ -560,18 +559,14 @@ module mod_mom
     dxi = dli(1)
     dyi = dli(2)
     !
-    !$acc parallel loop collapse(3) default(present) private(uuip,uuim,uvjp,uvjm,uwkp,uwkm) async(1)
+    !
+    ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
+    !                                        all scalars should be firstprivate/private
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          !
-          ! weights along the stretched grid direction
-          !
-          wghtpp = dzci(k)/dzfi(k+1)
-          wghtpm = dzci(k)/dzfi(k)
-          wghtmp = dzci(k-1)/dzfi(k)
-          wghtmm = dzci(k-1)/dzfi(k-1)
-          !
           u_ccm = u(i  ,j  ,k-1)
           u_pcm = u(i+1,j  ,k-1)
           u_cpm = u(i  ,j+1,k-1)
@@ -631,29 +626,29 @@ module mod_mom
           c_ppc = psi(i+1,j+1,k  )
           c_pcp = psi(i+1,j  ,k+1)
           !
-          rglrx_mcc = rglrx(i-1,j  ,k  )
-          rglrx_ccc = rglrx(i  ,j  ,k  )
-          rglrx_pcc = rglrx(i+1,j  ,k  )
-          rglrx_mpc = rglrx(i-1,j+1,k  )
-          rglrx_cpc = rglrx(i  ,j+1,k  )
-          rglrx_mcp = rglrx(i-1,j  ,k+1)
-          rglrx_ccp = rglrx(i  ,j  ,k+1)
+          rglrx_mcc = acdi_rglrx(i-1,j  ,k  )
+          rglrx_ccc = acdi_rglrx(i  ,j  ,k  )
+          rglrx_pcc = acdi_rglrx(i+1,j  ,k  )
+          rglrx_mpc = acdi_rglrx(i-1,j+1,k  )
+          rglrx_cpc = acdi_rglrx(i  ,j+1,k  )
+          rglrx_mcp = acdi_rglrx(i-1,j  ,k+1)
+          rglrx_ccp = acdi_rglrx(i  ,j  ,k+1)
           !
-          rglry_cmc = rglry(i  ,j-1,k  )  
-          rglry_ccc = rglry(i  ,j  ,k  ) 
-          rglry_cpc = rglry(i  ,j+1,k  ) 
-          rglry_pmc = rglry(i+1,j-1,k  )
-          rglry_pcc = rglry(i+1,j  ,k  )
-          rglry_cmp = rglry(i  ,j-1,k+1)
-          rglry_ccp = rglry(i  ,j  ,k+1)
+          rglry_cmc = acdi_rglry(i  ,j-1,k  )
+          rglry_ccc = acdi_rglry(i  ,j  ,k  )
+          rglry_cpc = acdi_rglry(i  ,j+1,k  )
+          rglry_pmc = acdi_rglry(i+1,j-1,k  )
+          rglry_pcc = acdi_rglry(i+1,j  ,k  )
+          rglry_cmp = acdi_rglry(i  ,j-1,k+1)
+          rglry_ccp = acdi_rglry(i  ,j  ,k+1)
           !
-          rglrz_ccm = rglrz(i  ,j  ,k-1)
-          rglrz_ccc = rglrz(i  ,j  ,k  )
-          rglrz_ccp = rglrz(i  ,j  ,k+1)
-          rglrz_pcm = rglrz(i+1,j  ,k-1)
-          rglrz_pcc = rglrz(i+1,j  ,k  )
-          rglrz_cpm = rglrz(i  ,j+1,k-1)
-          rglrz_cpc = rglrz(i  ,j+1,k  )
+          rglrz_ccm = acdi_rglrz(i  ,j  ,k-1)
+          rglrz_ccc = acdi_rglrz(i  ,j  ,k  )
+          rglrz_ccp = acdi_rglrz(i  ,j  ,k+1)
+          rglrz_pcm = acdi_rglrz(i+1,j  ,k-1)
+          rglrz_pcc = acdi_rglrz(i+1,j  ,k  )
+          rglrz_cpm = acdi_rglrz(i  ,j+1,k-1)
+          rglrz_cpc = acdi_rglrz(i  ,j+1,k  )
           !
           dzci_c = dzci(k  )
           dzci_m = dzci(k-1)
@@ -662,30 +657,30 @@ module mod_mom
           !
           psixp = 0.5*(c_pcc+c_ccc)
           psiyp = 0.5*(c_cpc+c_ccc)
-          psizp = 0.5*(c_ccp*wghtpm+c_ccc*wghtpp)
+          psizp = 0.5*(c_ccp+c_ccc)
           !
           ! advection
           !
-          uuip  = 0.25*(u_ccc       +u_pcc       )*(u_pcc+u_ccc)
-          uuim  = 0.25*(u_ccc       +u_mcc       )*(u_mcc+u_ccc)
-          uvjp  = 0.25*(u_ccc       +u_cpc       )*(v_pcc+v_ccc)
-          uvjm  = 0.25*(u_ccc       +u_cmc       )*(v_pmc+v_cmc)
-          uwkp  = 0.25*(u_ccc*wghtpp+u_ccp*wghtpm)*(w_pcc+w_ccc)
-          uwkm  = 0.25*(u_ccc*wghtmm+u_ccm*wghtmp)*(w_pcm+w_ccm)
+          uuip  = 0.25*(u_ccc+u_pcc)*(u_pcc+u_ccc)
+          uuim  = 0.25*(u_ccc+u_mcc)*(u_mcc+u_ccc)
+          uvjp  = 0.25*(u_ccc+u_cpc)*(v_pcc+v_ccc)
+          uvjm  = 0.25*(u_ccc+u_cmc)*(v_pmc+v_cmc)
+          uwkp  = 0.25*(u_ccc+u_ccp)*(w_pcc+w_ccc)
+          uwkm  = 0.25*(u_ccc+u_ccm)*(w_pcm+w_ccm)
           dudt_aux = dxi*( -uuip + uuim ) + dyi*( -uvjp + uvjm ) + dzfi_c*( -uwkp + uwkm )
           !
-          uvip  = 0.25*(v_ccc       +v_pcc       )*(u_ccc+u_cpc)
-          uvim  = 0.25*(v_ccc       +v_mcc       )*(u_mcc+u_mpc)
-          vvjp  = 0.25*(v_ccc       +v_cpc       )*(v_ccc+v_cpc)
-          vvjm  = 0.25*(v_ccc       +v_cmc       )*(v_ccc+v_cmc)
-          wvkp  = 0.25*(v_ccc*wghtpp+v_ccp*wghtpm)*(w_ccc+w_cpc)
-          wvkm  = 0.25*(v_ccc*wghtmm+v_ccm*wghtmp)*(w_ccm+w_cpm)
+          uvip  = 0.25*(v_ccc+v_pcc)*(u_ccc+u_cpc)
+          uvim  = 0.25*(v_ccc+v_mcc)*(u_mcc+u_mpc)
+          vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)
+          vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)
+          wvkp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)
+          wvkm  = 0.25*(v_ccc+v_ccm)*(w_ccm+w_cpm)
           dvdt_aux = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
           !
-          uwip  = 0.25*(w_ccc+w_pcc)*(u_ccc*wghtpp+u_ccp*wghtpm)
-          uwim  = 0.25*(w_ccc+w_mcc)*(u_mcc*wghtpp+u_mcp*wghtpm)
-          vwjp  = 0.25*(w_ccc+w_cpc)*(v_ccc*wghtpp+v_ccp*wghtpm)
-          vwjm  = 0.25*(w_ccc+w_cmc)*(v_cmc*wghtpp+v_cmp*wghtpm)
+          uwip  = 0.25*(w_ccc+w_pcc)*(u_ccc+u_ccp)
+          uwim  = 0.25*(w_ccc+w_mcc)*(u_mcc+u_mcp)
+          vwjp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)
+          vwjm  = 0.25*(w_ccc+w_cmc)*(v_cmc+v_cmp)
           wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)
           wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)
           dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
@@ -706,8 +701,8 @@ module mod_mom
           muxm = mu + dmu*c_ccc
           muyp = mu + dmu*0.25*(c_ccc+c_cpc+c_ppc+c_pcc)
           muym = mu + dmu*0.25*(c_ccc+c_cmc+c_pmc+c_pcc)
-          muzp = mu + dmu*0.25*((c_ccc+c_pcc)*wghtpp+(c_ccp+c_pcp)*wghtpm)
-          muzm = mu + dmu*0.25*((c_ccc+c_pcc)*wghtmm+(c_ccm+c_pcm)*wghtmp)
+          muzp = mu + dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
+          muzm = mu + dmu*0.25*(c_ccc+c_pcc+c_ccm+c_pcm)
           rhoxp = rho + drho*psixp
           dudt_aux = dudt_aux + dxi*(   (dudxp+dudxp)*muxp-(dudxm+dudxm)*muxm)/rhoxp + &
                                 dyi*(   (dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym)/rhoxp + &
@@ -727,8 +722,8 @@ module mod_mom
           muxm = mu + dmu*0.25*(c_ccc+c_mcc+c_mpc+c_cpc)
           muyp = mu + dmu*c_cpc
           muym = mu + dmu*c_ccc
-          muzp = mu + dmu*0.25*((c_ccc+c_cpc)*wghtpp+(c_cpp+c_ccp)*wghtpm)
-          muzm = mu + dmu*0.25*((c_ccc+c_cpc)*wghtmm+(c_cpm+c_ccm)*wghtmp)
+          muzp = mu + dmu*0.25*(c_ccc+c_cpc+c_cpp+c_ccp)
+          muzm = mu + dmu*0.25*(c_ccc+c_cpc+c_cpm+c_ccm)
           rhoyp = rho + drho*psiyp
           dvdt_aux = dvdt_aux + dxi*(   (dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm)/rhoyp + &
                                 dyi*(   (dvdyp+dvdyp)*muyp-(dvdym+dvdym)*muym)/rhoyp + &
@@ -744,10 +739,10 @@ module mod_mom
           dvdzm = (v_cmp-v_cmc)*dzci_c
           dwdzp = (w_ccp-w_ccc)*dzfi_p
           dwdzm = (w_ccc-w_ccm)*dzfi_c
-          muxp = mu + dmu*0.25*((c_ccc+c_pcc)*wghtpp+(c_ccp+c_pcp)*wghtpm)
-          muxm = mu + dmu*0.25*((c_ccc+c_mcc)*wghtpp+(c_ccp+c_mcp)*wghtpm)
-          muyp = mu + dmu*0.25*((c_ccc+c_cpc)*wghtpp+(c_ccp+c_cpp)*wghtpm)
-          muym = mu + dmu*0.25*((c_ccc+c_cmc)*wghtpp+(c_ccp+c_cmp)*wghtpm)
+          muxp = mu + dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
+          muxm = mu + dmu*0.25*(c_ccc+c_mcc+c_ccp+c_mcp)
+          muyp = mu + dmu*0.25*(c_ccc+c_cpc+c_ccp+c_cpp)
+          muym = mu + dmu*0.25*(c_ccc+c_cmc+c_ccp+c_cmp)
           muzp = mu + dmu*c_ccp
           muzm = mu + dmu*c_ccc
           rhozp = rho + drho*psizp
@@ -755,34 +750,34 @@ module mod_mom
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/rhozp + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)/rhozp
           !
-          ! interface regularization momentum transport
+          ! acdi interface regularization term
           !
-          rxup = 0.25*drho*(rglrx_ccc+rglrx_pcc)*(u_ccc       +u_pcc       )
-          rxum = 0.25*drho*(rglrx_mcc+rglrx_ccc)*(u_mcc       +u_ccc       )
-          ryup = 0.25*drho*(rglry_ccc+rglry_pcc)*(u_ccc       +u_cpc       )
-          ryum = 0.25*drho*(rglry_cmc+rglry_pmc)*(u_cmc       +u_ccc       )
-          rzup = 0.25*drho*(rglrz_ccc+rglrz_pcc)*(u_ccc*wghtpp+u_ccp*wghtpm)
-          rzum = 0.25*drho*(rglrz_ccm+rglrz_pcm)*(u_ccm*wghtmp+u_ccc*wghtmm)
+          rxup = 0.25*drho*(rglrx_ccc+rglrx_pcc)*(u_ccc+u_pcc)
+          rxum = 0.25*drho*(rglrx_mcc+rglrx_ccc)*(u_mcc+u_ccc)
+          ryup = 0.25*drho*(rglry_ccc+rglry_pcc)*(u_ccc+u_cpc)
+          ryum = 0.25*drho*(rglry_cmc+rglry_pmc)*(u_cmc+u_ccc)
+          rzup = 0.25*drho*(rglrz_ccc+rglrz_pcc)*(u_ccc+u_ccp)
+          rzum = 0.25*drho*(rglrz_ccm+rglrz_pcm)*(u_ccm+u_ccc)
           dudt_aux = dudt_aux + dxi*(   rxup-rxum)/rhoxp + &
                                 dyi*(   ryup-ryum)/rhoxp + &
                                 dzfi_c*(rzup-rzum)/rhoxp
           !
-          rxvp = 0.25*drho*(rglrx_ccc+rglrx_cpc)*(v_ccc       +v_pcc       )
-          rxvm = 0.25*drho*(rglrx_mcc+rglrx_mpc)*(v_mcc       +v_ccc       )
-          ryvp = 0.25*drho*(rglry_ccc+rglry_cpc)*(v_ccc       +v_cpc       )
-          ryvm = 0.25*drho*(rglry_cmc+rglry_ccc)*(v_cmc       +v_ccc       )
-          rzvp = 0.25*drho*(rglrz_ccc+rglrz_cpc)*(v_ccc*wghtpp+v_ccp*wghtpm)
-          rzvm = 0.25*drho*(rglrz_ccm+rglrz_cpm)*(v_ccm*wghtmp+v_ccc*wghtmm)
+          rxvp = 0.25*drho*(rglrx_ccc+rglrx_cpc)*(v_ccc+v_pcc)
+          rxvm = 0.25*drho*(rglrx_mcc+rglrx_mpc)*(v_mcc+v_ccc)
+          ryvp = 0.25*drho*(rglry_ccc+rglry_cpc)*(v_ccc+v_cpc)
+          ryvm = 0.25*drho*(rglry_cmc+rglry_ccc)*(v_cmc+v_ccc)
+          rzvp = 0.25*drho*(rglrz_ccc+rglrz_cpc)*(v_ccc+v_ccp)
+          rzvm = 0.25*drho*(rglrz_ccm+rglrz_cpm)*(v_ccm+v_ccc)
           dvdt_aux = dvdt_aux + dxi*(   rxvp-rxvm)/rhoyp + &
                                 dyi*(   ryvp-ryvm)/rhoyp + &
                                 dzfi_c*(rzvp-rzvm)/rhoyp
           !
-          rxwp = 0.25*drho*(rglrx_ccc*wghtpp+rglrx_ccp*wghtpm)*(w_ccc+w_pcc)
-          rxwm = 0.25*drho*(rglrx_mcc*wghtpp+rglrx_mcp*wghtpm)*(w_mcc+w_ccc)
-          rywp = 0.25*drho*(rglry_ccc*wghtpp+rglry_ccp*wghtpm)*(w_ccc+w_cpc)
-          rywm = 0.25*drho*(rglry_cmc*wghtpp+rglry_cmp*wghtpm)*(w_cmc+w_ccc)
-          rzwp = 0.25*drho*(rglrz_ccc       +rglrz_ccp       )*(w_ccc+w_ccp)
-          rzwm = 0.25*drho*(rglrz_ccm       +rglrz_ccc       )*(w_ccm+w_ccc)
+          rxwp = 0.25*drho*(rglrx_ccc+rglrx_ccp)*(w_ccc+w_pcc)
+          rxwm = 0.25*drho*(rglrx_mcc+rglrx_mcp)*(w_mcc+w_ccc)
+          rywp = 0.25*drho*(rglry_ccc+rglry_ccp)*(w_ccc+w_cpc)
+          rywm = 0.25*drho*(rglry_cmc+rglry_cmp)*(w_cmc+w_ccc)
+          rzwp = 0.25*drho*(rglrz_ccc+rglrz_ccp)*(w_ccc+w_ccp)
+          rzwm = 0.25*drho*(rglrz_ccm+rglrz_ccc)*(w_ccm+w_ccc)
           dwdt_aux = dwdt_aux + dxi*(   rxwp-rxwm)/rhozp + &
                                 dyi*(   rywp-rywm)/rhozp + &
                                 dzci_c*(rzwp-rzwm)/rhozp
@@ -793,25 +788,24 @@ module mod_mom
         end do
       end do
     end do
-  end subroutine mom_xyz_adr
+  end subroutine mom_xyz_ad
   !
   subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,pp,psi,kappa,s,dudt,dvdt,dwdt)
     implicit none
-    integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in) :: dt_r
-    real(rp), intent(in), dimension(2) :: rho12,beta12
-    real(rp), intent(in), dimension(3) :: bforce,gacc
-    real(rp), intent(in) :: sigma
-    real(rp), intent(in) :: rho0,rho_av
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: p,pp,psi,kappa,s
-    real(rp), dimension( :, :, :), intent(inout) :: dudt,dvdt,dwdt
+    integer , intent(in   ), dimension(3) :: n
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ) :: dt_r
+    real(rp), intent(in   ), dimension(2) :: rho12,beta12
+    real(rp), intent(in   ), dimension(3) :: bforce,gacc
+    real(rp), intent(in   ) :: sigma
+    real(rp), intent(in   ) :: rho0,rho_av
+    real(rp), intent(in   ), dimension(0:,0:,0:):: p,pp,psi,kappa,s
+    real(rp), intent(inout), dimension( :, :, :):: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
     real(rp) :: dxi,dyi
-    real(rp) :: wghtpp,wghtpm,wghtmp,wghtmm
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
                 p_ccc,p_pcc,p_cpc,p_ccp, &
                 q_ccc,q_pcc,q_cpc,q_ccp, &
@@ -823,7 +817,7 @@ module mod_mom
     real(rp) :: rhoxp,rhoyp,rhozp,dpdx,dpdy,dpdz,kappaxp,kappayp,kappazp,factorxp,factoryp,factorzp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
-    rho      = rho12(2); drho = rho12(1)-rho12(2)
+    rho     = rho12(2); drho = rho12(1)-rho12(2)
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)- rho12(2)*beta12(2)
     dxi = dli(1)
     dyi = dli(2)
@@ -835,24 +829,16 @@ module mod_mom
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          !
-          ! weights along the stretched grid direction
-          !
-          wghtpp = dzci(k)/dzfi(k+1)
-          wghtpm = dzci(k)/dzfi(k)
-          wghtmp = dzci(k-1)/dzfi(k)
-          wghtmm = dzci(k-1)/dzfi(k-1)
-          !
           p_ccc = p(i  ,j  ,k  )
           p_pcc = p(i+1,j  ,k  )
           p_cpc = p(i  ,j+1,k  )
           p_ccp = p(i  ,j  ,k+1)
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
-          q_ccc = (1.+dt_r)*p(i  ,j  ,k  )-dt_r*pp(i  ,j  ,k  )
-          q_pcc = (1.+dt_r)*p(i+1,j  ,k  )-dt_r*pp(i+1,j  ,k  )
-          q_cpc = (1.+dt_r)*p(i  ,j+1,k  )-dt_r*pp(i  ,j+1,k  )
-          q_ccp = (1.+dt_r)*p(i  ,j  ,k+1)-dt_r*pp(i  ,j  ,k+1)
+          q_ccc = (1.+dt_r)*p_ccc-dt_r*pp(i  ,j  ,k  )
+          q_pcc = (1.+dt_r)*p_pcc-dt_r*pp(i+1,j  ,k  )
+          q_cpc = (1.+dt_r)*p_cpc-dt_r*pp(i  ,j+1,k  )
+          q_ccp = (1.+dt_r)*p_ccp-dt_r*pp(i  ,j  ,k+1)
 #endif
           !
 #if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
@@ -883,7 +869,7 @@ module mod_mom
           !
           psixp = 0.5*(c_pcc+c_ccc)
           psiyp = 0.5*(c_cpc+c_ccc)
-          psizp = 0.5*(c_ccp*wghtpm+c_ccc*wghtpp)
+          psizp = 0.5*(c_ccp+c_ccc)
           !
           rhoxp = rho + drho*psixp
           rhoyp = rho + drho*psiyp
@@ -909,9 +895,9 @@ module mod_mom
           !
           ! surface tension
           !
-          kappaxp = 0.5*(k_pcc       +k_ccc       )
-          kappayp = 0.5*(k_cpc       +k_ccc       )
-          kappazp = 0.5*(k_ccp*wghtpm+k_ccc*wghtpp)
+          kappaxp = 0.5*(k_pcc+k_ccc)
+          kappayp = 0.5*(k_cpc+k_ccc)
+          kappazp = 0.5*(k_ccp+k_ccc)
           dudt_aux = dudt_aux + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp
           dvdt_aux = dvdt_aux + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp
           dwdt_aux = dwdt_aux + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rhozp
@@ -922,9 +908,9 @@ module mod_mom
           factorxp = rhobeta + drhobeta*psixp
           factoryp = rhobeta + drhobeta*psiyp
           factorzp = rhobeta + drhobeta*psizp
-          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc       +s_ccc       )/rhoxp
-          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc       +s_ccc       )/rhoyp
-          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp*wghtpm+s_ccc*wghtpp)/rhozp
+          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)/rhoxp
+          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)/rhoyp
+          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)/rhozp
 #endif
           dudt(i,j,k) = dudt_aux
           dvdt(i,j,k) = dvdt_aux
@@ -937,16 +923,16 @@ module mod_mom
   subroutine mom_xyz_all(nx,ny,nz,dxi,dyi,dzci,dzfi,dt_r,rho12,mu12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          u,v,w,p,pp,psi,kappa,s,dudt,dvdt,dwdt)
     implicit none
-    integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in) :: dt_r
-    real(rp), intent(in), dimension(2) :: rho12,mu12,beta12
-    real(rp), intent(in), dimension(3) :: bforce,gacc
-    real(rp), intent(in) :: sigma
-    real(rp), intent(in) :: rho0,rho_av
-    real(rp), dimension(0:,0:,0:), intent(in ) :: u,v,w,p,pp,psi,kappa,s
-    real(rp), dimension( :, :, :), intent(out) :: dudt,dvdt,dwdt
+    integer , intent(in ) :: nx,ny,nz
+    real(rp), intent(in ) :: dxi,dyi
+    real(rp), intent(in ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in ) :: dt_r
+    real(rp), intent(in ), dimension(2) :: rho12,mu12,beta12
+    real(rp), intent(in ), dimension(3) :: bforce,gacc
+    real(rp), intent(in ) :: sigma
+    real(rp), intent(in ) :: rho0,rho_av
+    real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w,p,pp,psi,kappa,s
+    real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &

@@ -32,7 +32,7 @@ module mod_forcing
     !
     select case(ftype)
     case(FTYPE_ABC)
-      !$acc parallel loop collapse(3) default(present), private(xxc,yyc,zzc)
+      !$acc parallel loop collapse(3) default(present), private(xxc,yyc,zzc) async(1)
       do k=lo(3),hi(3)
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
@@ -46,7 +46,7 @@ module mod_forcing
         enddo
       enddo
     case default ! FTYPE_TAYLOR_GREEN
-      !$acc parallel loop collapse(3) default(present), private(xxc,yyc,zzc,xxf,yyf,zzf)
+      !$acc parallel loop collapse(3) default(present), private(xxc,yyc,zzc,xxf,yyf,zzf) async(1)
       do k=lo(3),hi(3)
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)

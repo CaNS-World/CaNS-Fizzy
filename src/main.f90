@@ -65,7 +65,7 @@ program cans
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv,acdi_cmpt_rglr
+  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv
   use mod_two_fluid      , only: init2fl
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
@@ -129,7 +129,8 @@ program cans
   !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz,rglrx,rglry,rglrz
+  real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz, &
+                                             acdi_rgx,acdi_rgy,acdi_rgz
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -177,8 +178,8 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(rglrx,rglry,rglrz,mold=u)
   allocate(psi,kappa,normx,normy,normz,mold=pp)
+  allocate(acdi_rgx,acdi_rgy,acdi_rgz,mold=pp)
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -302,7 +303,8 @@ program cans
   !$acc enter data copyin(s)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
-  !$acc enter data copyin(psi) create(kappa)
+  !$acc enter data copyin(psi) create(kappa,normx,normy,normz)
+  !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
@@ -343,10 +345,10 @@ program cans
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
     tm_coeff(:) = [2.+dt/dto,-dt/dto]/2.
     !
-    ! Phase field update
+    ! phase field update
     !
-    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,rglrx,rglry,rglrz)
-    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,rglrx,rglry,rglrz)
+    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
+    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
     call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
     call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
@@ -367,11 +369,9 @@ program cans
       if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
       end if
-      !call acdi_cmpt_rglr(n,dli,dzci,dzfi,gam,seps,normx,normy,normz,psi,rglrx,rglry,rglrz) ! maybe I need to store and use the old rglr instead
-      !call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,rglrx,rglry,rglrz)
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
-            bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
-            p,pp,rglrx,rglry,rglrz,u,v,w)
+              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp, &
+              acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc kernels async(1)
       pp(:,:,:) = p(:,:,:)
@@ -403,10 +403,10 @@ program cans
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
     dto = dt
-    if(mod(istep,icheck) == 0) then
-      if(myid == 0) print*, 'Calculating maximum velocity to set ACDI gamma parameter...'
+    if(mod(istep,1) == 0) then
       call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
-      if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
+    end if
+    if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
       dt = min(cfl*dtmax,dtmin)

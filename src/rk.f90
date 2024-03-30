@@ -6,7 +6,7 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_mom  , only: mom_xyz_adr,mom_xyz_oth
+  use mod_mom  , only: mom_xyz_ad,mom_xyz_oth
   use mod_utils, only: swap
   use mod_types
   implicit none
@@ -14,11 +14,10 @@ module mod_rk
   public rk,rk_scal,rk_2fl
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
-                p,pp,rglrx,rglry,rglrz,u,v,w)
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp, &
+                acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
     !
-    ! Adams-Bashforth or low-storage 3rd-order Runge-Kutta scheme
-    ! for time integration of the momentum equations.
+    ! Adams-Bashforth scheme for time integration of the momentum equations
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
@@ -31,12 +30,12 @@ module mod_rk
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
     real(rp), intent(in   ), dimension(0:,0:,0:) :: psi,kappa,s,p,pp
-    real(rp), dimension(0:,0:,0:), intent(in )   :: rglrx,rglry,rglrz
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: acdi_rgx,acdi_rgy,acdi_rgz
     real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
-    real(rp), target     , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
-                                                                  dudtrko_t,dvdtrko_t,dwdtrko_t
-    real(rp), pointer    , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
-                                                                  dudtrko  ,dvdtrko  ,dwdtrko
+    real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
+                                                                    dudtrko_t,dvdtrko_t,dwdtrko_t
+    real(rp), pointer      , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
+                                                                    dudtrko  ,dvdtrko  ,dwdtrko
     logical, save :: is_first = .true.
     real(rp) :: factor1,factor2,factor12,dt_r
     integer :: i,j,k
@@ -63,10 +62,10 @@ module mod_rk
     !
     ! advection, diffusion and regularization terms
     !
-    call mom_xyz_adr(n,dli,dzci,dzfi,rho12,mu12,rglrx,rglry,rglrz,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rgx,acdi_rgy,acdi_rgz,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
     !
     if(is_first) then ! use Euler forward
-      !$acc kernels
+      !$acc kernels default(present) async(1)
       dudtrko(:,:,:) = dudtrk(:,:,:)
       dvdtrko(:,:,:) = dvdtrk(:,:,:)
       dwdtrko(:,:,:) = dwdtrk(:,:,:)
@@ -112,13 +111,7 @@ module mod_rk
                      ssource,rho12,ka12,cp12,psi,u,v,w,s)
     use mod_scal, only: scal_ad
     !
-    ! Adams-Bashfroth or low-storage 3rd-order Runge-Kutta scheme
-    ! for time integration of the scalar field.
-    !
-    ! n.b.: since we leverage the `save` attribute for dsdtrk*, this subroutine only supports
-    !       transport of a single scalar; extension to n arbtritrary scalars could be done,
-    !       e.g., using a loop through an array of scalar derived types, with an ASSOCIATE
-    !       statement to keep the same piece of code to for each scalar
+    ! Adams-Bashfroth scheme for time integration of the scalar field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
@@ -150,7 +143,7 @@ module mod_rk
     end if
     call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ssource,ka12,rhocp12,psi,u,v,w,s,dsdtrk)
     if(is_first) then ! use Euler forward
-      !$acc kernels
+      !$acc kernels default(present) async(1)
       dsdtrko(:,:,:) = dsdtrk(:,:,:)
       !$acc end kernels
       is_first = .false.
@@ -173,8 +166,7 @@ module mod_rk
     use mod_acdi     , only: acdi_transport_pf
     use mod_two_fluid, only: clip_field
     !
-    ! Adams-Bashforth or low-storage 3rd-order Runge-Kutta scheme
-    ! for time integration of the phase field (actually Adams-Bashforth).
+    ! Adams-Bashforth scheme for time integration of the phase field
     !
     implicit none
     logical , parameter :: is_cmpt_wallflux = .false.
@@ -204,13 +196,12 @@ module mod_rk
     end if
     call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidtrk,rglrx,rglry,rglrz)
     if(is_first) then ! use Euler forward
-      !$acc kernels
+      !$acc kernels default(present) async(1)
       dpsidtrko(:,:,:) = dpsidtrk(:,:,:)
       !$acc end kernels
       is_first = .false.
     end if
     !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
