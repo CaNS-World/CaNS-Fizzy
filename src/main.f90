@@ -160,8 +160,6 @@ program cans
   pp(:,:,:) = 0._rp
   allocate(psio  ,mold=pp)
   allocate(kappao,mold=pp)
-  psio(:,:,:)   = 0._rp
-  kappao(:,:,:) = 0._rp
 #endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
@@ -312,7 +310,7 @@ program cans
 #endif
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz)
   !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz)
-  !$acc enter data copyin(psio,kappao)
+  !$acc enter data create(psio,kappao)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
@@ -355,6 +353,12 @@ program cans
     !
     ! phase field update
     !
+#if defined(_CONSTANT_COEFFS_POISSON)
+      !$acc kernels async(1)
+      psio(:,:,:)   = psi(:,:,:)
+      kappao(:,:,:) = kappa(:,:,:)
+      !$acc end kernels
+#endif
     call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
     call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
     call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
@@ -382,11 +386,7 @@ program cans
               acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc kernels async(1)
-      pp(:,:,:)     = p(:,:,:)
-#if defined(_CONSTANT_COEFFS_POISSON)
-      psio(:,:,:)   = psi(:,:,:)
-      kappao(:,:,:) = kappa(:,:,:)
-#endif
+      pp(:,:,:) = p(:,:,:)
       !$acc end kernels
       call fillps(n,dli,dzfi,dti,rho0,u,v,w,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
