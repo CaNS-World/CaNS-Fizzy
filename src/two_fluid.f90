@@ -51,7 +51,7 @@ module mod_two_fluid
     nh3 = nh(3)
     rmin = minmax(1); rmax = minmax(2)
     !
-    !$acc parallel loop collapse(3) default(present) private(rmin,rmax) async(1)
+    !$acc parallel loop collapse(3) default(present) firstprivate(rmin,rmax) async(1)
     do concurrent(k=1-nh3:n3+nh3,j=1-nh2:n2+nh2,i=1-nh1:n1+nh1)
       p(i,j,k) = min(max(rmin,p(i,j,k)),rmax)
     end do
