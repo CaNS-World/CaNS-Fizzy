@@ -142,6 +142,7 @@ contains
     itemp  = product(n(:))*rp_size
     itotal = itotal + itemp*5
     itotal = itotal + itemp*2 ! time marching array dpsidtrk_t, dpsidtrko_t
+    itotal = itotal + itemp*2 ! psio and kappao for surface tension extrapolation
 #if defined(_SCALAR)
     itotal = itotal + itemp*1
     itotal = itotal + itemp*2 ! time marching array dsdtrk_t, dsdtrko_t
