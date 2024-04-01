@@ -178,7 +178,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
+    real(rp), intent(out  ), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
