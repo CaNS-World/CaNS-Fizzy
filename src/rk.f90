@@ -14,7 +14,7 @@ module mod_rk
   public rk,rk_scal,rk_2fl
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp, &
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,psio,kappao,s,p,pp, &
                 acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
     !
     ! Adams-Bashforth scheme for time integration of the momentum equations
@@ -29,7 +29,7 @@ module mod_rk
     real(rp), intent(in   )                :: sigma,rho_av
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: psi,kappa,s,p,pp
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: psi,kappa,psio,kappao,s,p,pp
     real(rp), intent(in   ), dimension(0:,0:,0:) :: acdi_rgx,acdi_rgy,acdi_rgz
     real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
     real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
@@ -93,7 +93,7 @@ module mod_rk
     ! pressure, surface tension, and buoyancy terms
     !
     call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                     p,pp,psi,kappa,s,dudtrk,dvdtrk,dwdtrk)
+                     p,pp,psi,kappa,psio,kappao,s,dudtrk,dvdtrk,dwdtrk)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)

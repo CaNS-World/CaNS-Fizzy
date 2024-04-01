@@ -791,7 +791,7 @@ module mod_mom
   end subroutine mom_xyz_ad
   !
   subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,pp,psi,kappa,s,dudt,dvdt,dwdt)
+                         p,pp,psi,kappa,psio,kappao,s,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
@@ -801,7 +801,7 @@ module mod_mom
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
-    real(rp), intent(in   ), dimension(0:,0:,0:):: p,pp,psi,kappa,s
+    real(rp), intent(in   ), dimension(0:,0:,0:):: p,pp,psi,kappa,psio,kappao,s
     real(rp), intent(inout), dimension( :, :, :):: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
@@ -811,10 +811,14 @@ module mod_mom
                 q_ccc,q_pcc,q_cpc,q_ccp, &
                 s_ccc,s_pcc,s_cpc,s_ccp, &
                 k_ccc,k_pcc,k_cpc,k_ccp, &
+                l_ccc,l_pcc,l_cpc,l_ccp, &
+                d_ccc,d_pcc,d_cpc,d_ccp, &
                 bforcex,bforcey,bforcez,gaccx,gaccy,gaccz, &
                 dzci_c,dzci_m,dzfi_c,dzfi_p, &
                 psixp,psiyp,psizp
-    real(rp) :: rhoxp,rhoyp,rhozp,dpdx,dpdy,dpdz,kappaxp,kappayp,kappazp,factorxp,factoryp,factorzp
+    real(rp) :: rhoxp,rhoyp,rhozp,dpdx,dpdy,dpdz, &
+                kappaxp,kappayp,kappazp,lappaxp,lappayp,lappazp, &
+                factorxp,factoryp,factorzp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
     rho     = rho12(2); drho = rho12(1)-rho12(2)
@@ -857,6 +861,16 @@ module mod_mom
           c_pcc = psi(i+1,j  ,k  )
           c_cpc = psi(i  ,j+1,k  )
           c_ccp = psi(i  ,j  ,k+1)
+#if defined(_CONSTANT_COEFFS_POISSON)
+          l_ccc = (1.+dt_r)*k_ccc-dt_r*kappao(i  ,j  ,k  )
+          l_pcc = (1.+dt_r)*k_pcc-dt_r*kappao(i+1,j  ,k  )
+          l_cpc = (1.+dt_r)*k_cpc-dt_r*kappao(i  ,j+1,k  )
+          l_ccp = (1.+dt_r)*k_ccp-dt_r*kappao(i  ,j  ,k+1)
+          d_ccc = (1.+dt_r)*c_ccc-dt_r*psio(i  ,j  ,k  )
+          d_pcc = (1.+dt_r)*c_pcc-dt_r*psio(i+1,j  ,k  )
+          d_cpc = (1.+dt_r)*c_cpc-dt_r*psio(i  ,j+1,k  )
+          d_ccp = (1.+dt_r)*c_ccp-dt_r*psio(i  ,j  ,k+1)
+#endif
           !
           bforcex = bforce(1)
           bforcey = bforce(2)
@@ -875,7 +889,7 @@ module mod_mom
           rhoyp = rho + drho*psiyp
           rhozp = rho + drho*psizp
           !
-          ! pressure gradient
+          ! pressure gradient and surface tension
           !
           dpdx = (p_pcc-p_ccc)*dxi
           dpdy = (p_cpc-p_ccc)*dyi
@@ -883,24 +897,27 @@ module mod_mom
           dudt_aux = bforcex/rhoxp + gaccx*(1.-rho_av/rhoxp)
           dvdt_aux = bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
           dwdt_aux = bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
+          kappaxp = 0.5*(k_pcc+k_ccc)
+          kappayp = 0.5*(k_cpc+k_ccc)
+          kappazp = 0.5*(k_ccp+k_ccc)
 #if defined(_CONSTANT_COEFFS_POISSON)
-          dudt_aux = dudt_aux - dpdx/rho0 - (1./rhoxp-1./rho0)*(q_pcc-q_ccc)*dxi
-          dvdt_aux = dvdt_aux - dpdy/rho0 - (1./rhoyp-1./rho0)*(q_cpc-q_ccc)*dyi
-          dwdt_aux = dwdt_aux - dpdz/rho0 - (1./rhozp-1./rho0)*(q_ccp-q_ccc)*dzci_c
+          lappaxp = 0.5*(l_pcc+l_ccc)
+          lappayp = 0.5*(l_cpc+l_ccc)
+          lappazp = 0.5*(l_ccp+l_ccc)
+          dudt_aux = dudt_aux - dpdx/rho0 + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rho0 + &
+                                (1./rhoxp-1./rho0)*(-(q_pcc-q_ccc)*dxi    + sigma*lappaxp*(d_pcc-d_ccc)*dxi)
+          dvdt_aux = dvdt_aux - dpdy/rho0 + sigma*kappayp*(c_cpc-c_ccc)*dyi/rho0 + &
+                                (1./rhoyp-1./rho0)*(-(q_cpc-q_ccc)*dyi    + sigma*lappayp*(d_cpc-d_ccc)*dyi)
+          dwdt_aux = dwdt_aux - dpdz/rho0 + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rho0 + &
+                                (1./rhozp-1./rho0)*(-(q_ccp-q_ccc)*dzci_c + sigma*lappazp*(d_ccp-d_ccc)*dzci_c)
 #else
-          dudt_aux = dudt_aux - dpdx/rhoxp
-          dvdt_aux = dvdt_aux - dpdy/rhoyp
-          dwdt_aux = dwdt_aux - dpdz/rhozp
+          dudt_aux = dudt_aux - dpdx/rhoxp + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp
+          dvdt_aux = dvdt_aux - dpdy/rhoyp + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp
+          dwdt_aux = dwdt_aux - dpdz/rhozp + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rhozp
 #endif
           !
           ! surface tension
           !
-          kappaxp = 0.5*(k_pcc+k_ccc)
-          kappayp = 0.5*(k_cpc+k_ccc)
-          kappazp = 0.5*(k_ccp+k_ccc)
-          dudt_aux = dudt_aux + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp
-          dvdt_aux = dvdt_aux + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp
-          dwdt_aux = dwdt_aux + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rhozp
           !
           ! buoyancy
           !

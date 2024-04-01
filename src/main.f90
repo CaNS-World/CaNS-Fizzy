@@ -131,6 +131,7 @@ program cans
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz, &
                                              acdi_rgx,acdi_rgy,acdi_rgz
+  real(rp), allocatable, dimension(:,:,:) :: psio,kappao
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -155,6 +156,12 @@ program cans
 #if !defined(_CONSTANT_COEFFS_POISSON)
   allocate(po,mold=pp)
   po(:,:,:) = 0._rp
+#else
+  pp(:,:,:) = 0._rp
+  allocate(psio  ,mold=pp)
+  allocate(kappao,mold=pp)
+  psio(:,:,:)   = 0._rp
+  kappao(:,:,:) = 0._rp
 #endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
@@ -296,7 +303,7 @@ program cans
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
-  !$acc enter data copyin(u,v,w,p) create(pp)
+  !$acc enter data copyin(u,v,w,p) copyin(pp)
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_SCALAR)
@@ -305,6 +312,7 @@ program cans
 #endif
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz)
   !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz)
+  !$acc enter data copyin(psio,kappao)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
@@ -370,11 +378,15 @@ program cans
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
       end if
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
-              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp, &
+              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,psio,kappao,s,p,pp, &
               acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc kernels async(1)
-      pp(:,:,:) = p(:,:,:)
+      pp(:,:,:)     = p(:,:,:)
+#if defined(_CONSTANT_COEFFS_POISSON)
+      psio(:,:,:)   = psi(:,:,:)
+      kappao(:,:,:) = kappa(:,:,:)
+#endif
       !$acc end kernels
       call fillps(n,dli,dzfi,dti,rho0,u,v,w,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
