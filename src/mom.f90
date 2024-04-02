@@ -791,7 +791,7 @@ module mod_mom
   end subroutine mom_xyz_ad
   !
   subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,pp,psi,kappa,psio,kappao,s,dudt,dvdt,dwdt)
+                         p,pp,psi,kappa,s,psio,kappao,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
@@ -801,8 +801,9 @@ module mod_mom
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
-    real(rp), intent(in   ), dimension(0:,0:,0:):: p,pp,psi,kappa,psio,kappao,s
-    real(rp), intent(inout), dimension( :, :, :):: dudt,dvdt,dwdt
+    real(rp), intent(in   ), dimension(0:,0:,0:)    :: p,pp,psi,kappa,s
+    real(rp), intent(in   ), dimension(0:,0:,0:,1:) :: psio,kappao
+    real(rp), intent(inout), dimension( :, :, :)    :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
     real(rp) :: dxi,dyi
@@ -862,14 +863,14 @@ module mod_mom
           c_cpc = psi(i  ,j+1,k  )
           c_ccp = psi(i  ,j  ,k+1) 
 #if defined(_CONSTANT_COEFFS_POISSON)
-          l_ccc = (1.+dt_r)*k_ccc-dt_r*kappao(i  ,j  ,k  )
-          l_pcc = (1.+dt_r)*k_pcc-dt_r*kappao(i+1,j  ,k  )
-          l_cpc = (1.+dt_r)*k_cpc-dt_r*kappao(i  ,j+1,k  )
-          l_ccp = (1.+dt_r)*k_ccp-dt_r*kappao(i  ,j  ,k+1)
-          d_ccc = (1.+dt_r)*c_ccc-dt_r*psio(i  ,j  ,k  )
-          d_pcc = (1.+dt_r)*c_pcc-dt_r*psio(i+1,j  ,k  )
-          d_cpc = (1.+dt_r)*c_cpc-dt_r*psio(i  ,j+1,k  )
-          d_ccp = (1.+dt_r)*c_ccp-dt_r*psio(i  ,j  ,k+1)
+          l_ccc = (1.+dt_r)*kappao(i  ,j  ,k  ,1)-dt_r*kappao(i  ,j  ,k  ,2)
+          l_pcc = (1.+dt_r)*kappao(i+1,j  ,k  ,1)-dt_r*kappao(i+1,j  ,k  ,2)
+          l_cpc = (1.+dt_r)*kappao(i  ,j+1,k  ,1)-dt_r*kappao(i  ,j+1,k  ,2)
+          l_ccp = (1.+dt_r)*kappao(i  ,j  ,k+1,1)-dt_r*kappao(i  ,j  ,k+1,2)
+          d_ccc = (1.+dt_r)*psio(i  ,j  ,k  ,1)-dt_r*psio(i  ,j  ,k  ,2)
+          d_pcc = (1.+dt_r)*psio(i+1,j  ,k  ,1)-dt_r*psio(i+1,j  ,k  ,2)
+          d_cpc = (1.+dt_r)*psio(i  ,j+1,k  ,1)-dt_r*psio(i  ,j+1,k  ,2)
+          d_ccp = (1.+dt_r)*psio(i  ,j  ,k+1,1)-dt_r*psio(i  ,j  ,k+1,2)
 #endif
           !
           bforcex = bforce(1)
@@ -904,21 +905,12 @@ module mod_mom
           lappaxp = 0.5*(l_pcc+l_ccc)
           lappayp = 0.5*(l_cpc+l_ccc)
           lappazp = 0.5*(l_ccp+l_ccc)
-#if 0
           dudt_aux = dudt_aux - dpdx/rho0 + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rho0 + &
                                 (1./rhoxp-1./rho0)*(-(q_pcc-q_ccc)*dxi    + sigma*lappaxp*(d_pcc-d_ccc)*dxi)
           dvdt_aux = dvdt_aux - dpdy/rho0 + sigma*kappayp*(c_cpc-c_ccc)*dyi/rho0 + &
                                 (1./rhoyp-1./rho0)*(-(q_cpc-q_ccc)*dyi    + sigma*lappayp*(d_cpc-d_ccc)*dyi)
           dwdt_aux = dwdt_aux - dpdz/rho0 + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rho0 + &
                                 (1./rhozp-1./rho0)*(-(q_ccp-q_ccc)*dzci_c + sigma*lappazp*(d_ccp-d_ccc)*dzci_c)
-#else
-          dudt_aux = dudt_aux - dpdx/rho0 + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp + &
-                                (1./rhoxp-1./rho0)*(-(q_pcc-q_ccc)*dxi   )
-          dvdt_aux = dvdt_aux - dpdy/rho0 + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp + &
-                                (1./rhoyp-1./rho0)*(-(q_cpc-q_ccc)*dyi   )
-          dwdt_aux = dwdt_aux - dpdz/rho0 + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rhozp + &
-                                (1./rhozp-1./rho0)*(-(q_ccp-q_ccc)*dzci_c)
-#endif
 #else
           dudt_aux = dudt_aux - dpdx/rhoxp + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp
           dvdt_aux = dvdt_aux - dpdy/rhoyp + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp

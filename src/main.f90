@@ -131,7 +131,7 @@ program cans
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz, &
                                              acdi_rgx,acdi_rgy,acdi_rgz
-  real(rp), allocatable, dimension(:,:,:) :: psio,kappao
+  real(rp), allocatable, dimension(:,:,:,:) :: psio,kappao
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -158,8 +158,8 @@ program cans
   po(:,:,:) = 0._rp
 #else
   pp(:,:,:) = 0._rp
-  allocate(psio  ,mold=pp)
-  allocate(kappao,mold=pp)
+  allocate(psio(  0:n(1)+1,0:n(2)+1,0:n(3)+1,2) ,&
+           kappao(0:n(1)+1,0:n(2)+1,0:n(3)+1,2))
 #endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
@@ -319,6 +319,13 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
+  !$acc kernels async(1)
+  psio(:,:,:,1)    = psi(:,:,:)
+  kappao(:,:,:,1)  = kappa(:,:,:)
+  psio(:,:,:,2)    = psio(:,:,:,1)
+  kappao(:,:,:,2)  = kappao(:,:,:,1)
+  !$acc end kernels
+  !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
   !
@@ -354,10 +361,12 @@ program cans
     ! phase field update
     !
 #if defined(_CONSTANT_COEFFS_POISSON)
-      !$acc kernels async(1)
-      psio(:,:,:)   = psi(:,:,:)
-      kappao(:,:,:) = kappa(:,:,:)
-      !$acc end kernels
+    !$acc kernels async(1)
+    psio(:,:,:,2)   = psio(:,:,:,1)
+    kappao(:,:,:,2) = kappao(:,:,:,1)
+    psio(:,:,:,1)   = psi(:,:,:)
+    kappao(:,:,:,1) = kappa(:,:,:)
+    !$acc end kernels
 #endif
     call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
     call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
@@ -382,7 +391,7 @@ program cans
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
       end if
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
-              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,psio,kappao,s,p,pp, &
+              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio,kappao, &
               acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc kernels async(1)
