@@ -860,7 +860,7 @@ module mod_mom
           c_ccc = psi(i  ,j  ,k  )
           c_pcc = psi(i+1,j  ,k  )
           c_cpc = psi(i  ,j+1,k  )
-          c_ccp = psi(i  ,j  ,k+1)
+          c_ccp = psi(i  ,j  ,k+1) 
 #if defined(_CONSTANT_COEFFS_POISSON)
           l_ccc = (1.+dt_r)*k_ccc-dt_r*kappao(i  ,j  ,k  )
           l_pcc = (1.+dt_r)*k_pcc-dt_r*kappao(i+1,j  ,k  )
@@ -904,6 +904,7 @@ module mod_mom
           lappaxp = 0.5*(l_pcc+l_ccc)
           lappayp = 0.5*(l_cpc+l_ccc)
           lappazp = 0.5*(l_ccp+l_ccc)
+#if 0
           dudt_aux = dudt_aux - dpdx/rho0 + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rho0 + &
                                 (1./rhoxp-1./rho0)*(-(q_pcc-q_ccc)*dxi    + sigma*lappaxp*(d_pcc-d_ccc)*dxi)
           dvdt_aux = dvdt_aux - dpdy/rho0 + sigma*kappayp*(c_cpc-c_ccc)*dyi/rho0 + &
@@ -911,13 +912,18 @@ module mod_mom
           dwdt_aux = dwdt_aux - dpdz/rho0 + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rho0 + &
                                 (1./rhozp-1./rho0)*(-(q_ccp-q_ccc)*dzci_c + sigma*lappazp*(d_ccp-d_ccc)*dzci_c)
 #else
+          dudt_aux = dudt_aux - dpdx/rho0 + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp + &
+                                (1./rhoxp-1./rho0)*(-(q_pcc-q_ccc)*dxi   )
+          dvdt_aux = dvdt_aux - dpdy/rho0 + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp + &
+                                (1./rhoyp-1./rho0)*(-(q_cpc-q_ccc)*dyi   )
+          dwdt_aux = dwdt_aux - dpdz/rho0 + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rhozp + &
+                                (1./rhozp-1./rho0)*(-(q_ccp-q_ccc)*dzci_c)
+#endif
+#else
           dudt_aux = dudt_aux - dpdx/rhoxp + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp
           dvdt_aux = dvdt_aux - dpdy/rhoyp + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp
           dwdt_aux = dwdt_aux - dpdz/rhozp + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rhozp
 #endif
-          !
-          ! surface tension
-          !
           !
           ! buoyancy
           !
