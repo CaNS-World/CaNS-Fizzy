@@ -301,7 +301,8 @@ program cans
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
-  !$acc enter data copyin(u,v,w,p) copyin(pp)
+  !$acc enter data copyin(u,v,w,p) copyin(pp) async
+  !$acc wait
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_SCALAR)
@@ -382,7 +383,7 @@ program cans
 #endif
     if(.not.is_solve_ns) then
       call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
-      !$acc wait
+      !$acc wait(1)
       !$acc update device(u,v,w,p) async(1)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
     else
