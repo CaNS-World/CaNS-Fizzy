@@ -241,7 +241,7 @@ program cans
   grid_vol_ratio_c(:) = dl(1)*dl(2)*dzc(:)/(l(1)*l(2)*l(3))
   grid_vol_ratio_f(:) = dl(1)*dl(2)*dzf(:)/(l(1)*l(2)*l(3))
   !$acc end kernels
-  !$acc update self(dzci,dzfi) async
+  !$acc update self(zc,zf,dzc,dzf,dzci,dzfi) async
   !$acc exit data copyout(zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
   !$acc wait
   !
