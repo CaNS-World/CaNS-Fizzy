@@ -52,7 +52,7 @@ program cans
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
                                  is_solve_ns, &
-                                 cfl,dtmin, &
+                                 cfl,dtmin,dt_f, &
                                  inivel,inisca,inipsi, &
                                  is_wallturb, &
                                  dims, &
@@ -339,7 +339,7 @@ program cans
 #include "out3d.h90"
   !
   call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
-  dt = min(cfl*dtmax,dtmin)
+  dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
   if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
   dto = dt
   dti = 1./dt
@@ -431,7 +431,7 @@ program cans
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
-      dt = min(cfl*dtmax,dtmin)
+      dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
       if(dtmax < small) then
         if(myid == 0) print*, 'ERROR: time step is too small.'
