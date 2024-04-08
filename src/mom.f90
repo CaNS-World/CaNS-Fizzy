@@ -812,14 +812,18 @@ module mod_mom
                 q_ccc,q_pcc,q_cpc,q_ccp, &
                 s_ccc,s_pcc,s_cpc,s_ccp, &
                 k_ccc,k_pcc,k_cpc,k_ccp, &
-                l_ccc,l_pcc,l_cpc,l_ccp, &
-                d_ccc,d_pcc,d_cpc,d_ccp, &
                 bforcex,bforcey,bforcez,gaccx,gaccy,gaccz, &
                 dzci_c,dzci_m,dzfi_c,dzfi_p, &
                 psixp,psiyp,psizp
-    real(rp) :: rhoxp,rhoyp,rhozp,dpdx,dpdy,dpdz, &
-                kappaxp,kappayp,kappazp,lappaxp,lappayp,lappazp, &
-                factorxp,factoryp,factorzp
+    real(rp) :: rhoxp,rhoyp,rhozp, &
+                kappaxp,kappayp,kappazp, &
+                factorxp,factoryp,factorzp, &
+                dpdx  ,dpdy  ,dpdz  , &
+                dpdx_e,dpdy_e,dpdz_e, &
+                surfx  ,surfy  ,surfz  , &
+                surfx_1,surfy_1,surfz_1, &
+                surfx_2,surfy_2,surfz_2, &
+                surfx_e,surfy_e,surfz_e
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
     rho     = rho12(2); drho = rho12(1)-rho12(2)
@@ -834,6 +838,8 @@ module mod_mom
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
+          dzci_c = dzci(k  )
+          !
           p_ccc = p(i  ,j  ,k  )
           p_pcc = p(i+1,j  ,k  )
           p_cpc = p(i  ,j+1,k  )
@@ -853,6 +859,39 @@ module mod_mom
           s_ccp = s(i  ,j  ,k+1)
 #endif
           !
+#if defined(_CONSTANT_COEFFS_POISSON)
+          k_ccc = kappao(i  ,j  ,k  ,1)
+          k_pcc = kappao(i+1,j  ,k  ,1)
+          k_cpc = kappao(i  ,j+1,k  ,1)
+          k_ccp = kappao(i  ,j  ,k+1,1)
+          c_ccc = psio(i  ,j  ,k  ,1)
+          c_pcc = psio(i+1,j  ,k  ,1)
+          c_cpc = psio(i  ,j+1,k  ,1)
+          c_ccp = psio(i  ,j  ,k+1,1)
+          kappaxp = 0.5*(k_pcc+k_ccc)
+          kappayp = 0.5*(k_cpc+k_ccc)
+          kappazp = 0.5*(k_ccp+k_ccc)
+          surfx_1 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
+          surfy_1 = sigma*kappayp*(c_cpc-c_ccc)*dyi
+          surfz_1 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
+          k_ccc = kappao(i  ,j  ,k  ,2)
+          k_pcc = kappao(i+1,j  ,k  ,2)
+          k_cpc = kappao(i  ,j+1,k  ,2)
+          k_ccp = kappao(i  ,j  ,k+1,2)
+          c_ccc = psio(i  ,j  ,k  ,2)
+          c_pcc = psio(i+1,j  ,k  ,2)
+          c_cpc = psio(i  ,j+1,k  ,2)
+          c_ccp = psio(i  ,j  ,k+1,2)
+          kappaxp = 0.5*(k_pcc+k_ccc)
+          kappayp = 0.5*(k_cpc+k_ccc)
+          kappazp = 0.5*(k_ccp+k_ccc)
+          surfx_2 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
+          surfy_2 = sigma*kappayp*(c_cpc-c_ccc)*dyi
+          surfz_2 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
+          surfx_e = ((1.+dt_r)*surfx_1-dt_r*surfx_2)
+          surfy_e = ((1.+dt_r)*surfy_1-dt_r*surfy_2)
+          surfz_e = ((1.+dt_r)*surfz_1-dt_r*surfz_2)
+#endif
           k_ccc = kappa(i  ,j  ,k  )
           k_pcc = kappa(i+1,j  ,k  )
           k_cpc = kappa(i  ,j+1,k  )
@@ -862,16 +901,6 @@ module mod_mom
           c_pcc = psi(i+1,j  ,k  )
           c_cpc = psi(i  ,j+1,k  )
           c_ccp = psi(i  ,j  ,k+1) 
-#if defined(_CONSTANT_COEFFS_POISSON)
-          l_ccc = (1.+dt_r)*kappao(i  ,j  ,k  ,1)-dt_r*kappao(i  ,j  ,k  ,2)
-          l_pcc = (1.+dt_r)*kappao(i+1,j  ,k  ,1)-dt_r*kappao(i+1,j  ,k  ,2)
-          l_cpc = (1.+dt_r)*kappao(i  ,j+1,k  ,1)-dt_r*kappao(i  ,j+1,k  ,2)
-          l_ccp = (1.+dt_r)*kappao(i  ,j  ,k+1,1)-dt_r*kappao(i  ,j  ,k+1,2)
-          d_ccc = (1.+dt_r)*psio(i  ,j  ,k  ,1)-dt_r*psio(i  ,j  ,k  ,2)
-          d_pcc = (1.+dt_r)*psio(i+1,j  ,k  ,1)-dt_r*psio(i+1,j  ,k  ,2)
-          d_cpc = (1.+dt_r)*psio(i  ,j+1,k  ,1)-dt_r*psio(i  ,j+1,k  ,2)
-          d_ccp = (1.+dt_r)*psio(i  ,j  ,k+1,1)-dt_r*psio(i  ,j  ,k+1,2)
-#endif
           !
           bforcex = bforce(1)
           bforcey = bforce(2)
@@ -879,8 +908,6 @@ module mod_mom
           gaccx = gacc(1)
           gaccy = gacc(2)
           gaccz = gacc(3)
-          !
-          dzci_c = dzci(k  )
           !
           psixp = 0.5*(c_pcc+c_ccc)
           psiyp = 0.5*(c_cpc+c_ccc)
@@ -898,23 +925,24 @@ module mod_mom
           dudt_aux = bforcex/rhoxp + gaccx*(1.-rho_av/rhoxp)
           dvdt_aux = bforcey/rhoyp + gaccy*(1.-rho_av/rhoyp)
           dwdt_aux = bforcez/rhozp + gaccz*(1.-rho_av/rhozp)
+          !
           kappaxp = 0.5*(k_pcc+k_ccc)
           kappayp = 0.5*(k_cpc+k_ccc)
           kappazp = 0.5*(k_ccp+k_ccc)
+          surfx   = sigma*kappaxp*(c_pcc-c_ccc)*dxi
+          surfy   = sigma*kappayp*(c_cpc-c_ccc)*dyi
+          surfz   = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
 #if defined(_CONSTANT_COEFFS_POISSON)
-          lappaxp = 0.5*(l_pcc+l_ccc)
-          lappayp = 0.5*(l_cpc+l_ccc)
-          lappazp = 0.5*(l_ccp+l_ccc)
-          dudt_aux = dudt_aux - dpdx/rho0 + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rho0 + &
-                                (1./rhoxp-1./rho0)*(-(q_pcc-q_ccc)*dxi    + sigma*lappaxp*(d_pcc-d_ccc)*dxi)
-          dvdt_aux = dvdt_aux - dpdy/rho0 + sigma*kappayp*(c_cpc-c_ccc)*dyi/rho0 + &
-                                (1./rhoyp-1./rho0)*(-(q_cpc-q_ccc)*dyi    + sigma*lappayp*(d_cpc-d_ccc)*dyi)
-          dwdt_aux = dwdt_aux - dpdz/rho0 + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rho0 + &
-                                (1./rhozp-1./rho0)*(-(q_ccp-q_ccc)*dzci_c + sigma*lappazp*(d_ccp-d_ccc)*dzci_c)
+          dpdx_e = (q_pcc-q_ccc)*dxi
+          dpdy_e = (q_cpc-q_ccc)*dyi
+          dpdz_e = (q_ccp-q_ccc)*dzci_c
+          dudt_aux = dudt_aux + (-dpdx + surfx)/rho0 + (1./rhoxp-1./rho0)*(-dpdx_e + surfx_e)
+          dvdt_aux = dvdt_aux + (-dpdy + surfy)/rho0 + (1./rhoyp-1./rho0)*(-dpdy_e + surfy_e)
+          dwdt_aux = dwdt_aux + (-dpdz + surfz)/rho0 + (1./rhozp-1./rho0)*(-dpdz_e + surfz_e)
 #else
-          dudt_aux = dudt_aux - dpdx/rhoxp + sigma*kappaxp*(c_pcc-c_ccc)*dxi/rhoxp
-          dvdt_aux = dvdt_aux - dpdy/rhoyp + sigma*kappayp*(c_cpc-c_ccc)*dyi/rhoyp
-          dwdt_aux = dwdt_aux - dpdz/rhozp + sigma*kappazp*(c_ccp-c_ccc)*dzci_c/rhozp
+          dudt_aux = dudt_aux + (-dpdx + surfx)/rhoxp
+          dvdt_aux = dvdt_aux + (-dpdy + surfy)/rhoyp
+          dwdt_aux = dwdt_aux + (-dpdz + surfz)/rhozp
 #endif
           !
           ! buoyancy
