@@ -320,12 +320,14 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
+#if defined(_CONSTANT_COEFFS_POISSON)
   !$acc kernels async(1)
   psio(:,:,:,1)    = psi(:,:,:)
   kappao(:,:,:,1)  = kappa(:,:,:)
   psio(:,:,:,2)    = psio(:,:,:,1)
   kappao(:,:,:,2)  = kappao(:,:,:,1)
   !$acc end kernels
+#endif
   !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
