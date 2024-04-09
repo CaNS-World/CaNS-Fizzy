@@ -626,6 +626,7 @@ module mod_mom
           c_ppc = psi(i+1,j+1,k  )
           c_pcp = psi(i+1,j  ,k+1)
           !
+#if defined(_ACDI_REGULARIZATION_TERM)
           rglrx_mcc = acdi_rglrx(i-1,j  ,k  )
           rglrx_ccc = acdi_rglrx(i  ,j  ,k  )
           rglrx_pcc = acdi_rglrx(i+1,j  ,k  )
@@ -649,6 +650,7 @@ module mod_mom
           rglrz_pcc = acdi_rglrz(i+1,j  ,k  )
           rglrz_cpm = acdi_rglrz(i  ,j+1,k-1)
           rglrz_cpc = acdi_rglrz(i  ,j+1,k  )
+#endif
           !
           dzci_c = dzci(k  )
           dzci_m = dzci(k-1)
@@ -749,7 +751,7 @@ module mod_mom
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/rhozp + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/rhozp + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)/rhozp
-#if 0
+#if defined(_ACDI_REGULARIZATION_TERM)
           !
           ! acdi interface regularization term
           ! (WIP: to be validated)
