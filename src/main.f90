@@ -52,7 +52,7 @@ program cans
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
                                  is_solve_ns,is_track_interface, &
-                                 cfl,dtmin,dt_f &
+                                 cfl,dtmin,dt_f, &
                                  inivel,inisca,inipsi, &
                                  is_wallturb, &
                                  dims, &
