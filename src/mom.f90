@@ -749,8 +749,10 @@ module mod_mom
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/rhozp + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/rhozp + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)/rhozp
+#if 0
           !
           ! acdi interface regularization term
+          ! (WIP: to be validated)
           !
           rxup = 0.25*drho*(rglrx_ccc+rglrx_pcc)*(u_ccc+u_pcc)
           rxum = 0.25*drho*(rglrx_mcc+rglrx_ccc)*(u_mcc+u_ccc)
@@ -781,6 +783,7 @@ module mod_mom
           dwdt_aux = dwdt_aux + dxi*(   rxwp-rxwm)/rhozp + &
                                 dyi*(   rywp-rywm)/rhozp + &
                                 dzci_c*(rzwp-rzwm)/rhozp
+#endif
           !
           dudt(i,j,k) = dudt_aux
           dvdt(i,j,k) = dvdt_aux
