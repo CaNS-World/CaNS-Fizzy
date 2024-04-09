@@ -51,7 +51,7 @@ program cans
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
-                                 is_solve_ns, &
+                                 is_solve_ns,is_track_interface, &
                                  cfl,dtmin, &
                                  inivel,inisca,inipsi, &
                                  is_wallturb, &
@@ -371,14 +371,16 @@ program cans
     kappao(:,:,:,1) = kappa(:,:,:)
     !$acc end kernels
 #endif
-    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
-    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-    call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
-    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+    if(is_track_interface) then
+      call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+      call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
+      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+    end if
 #if defined(_SCALAR)
     call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
     call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
