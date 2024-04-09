@@ -871,9 +871,9 @@ module mod_mom
           kappaxp = 0.5*(k_pcc+k_ccc)
           kappayp = 0.5*(k_cpc+k_ccc)
           kappazp = 0.5*(k_ccp+k_ccc)
-          surfx_1 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
-          surfy_1 = sigma*kappayp*(c_cpc-c_ccc)*dyi
-          surfz_1 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
+          surfx_2 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
+          surfy_2 = sigma*kappayp*(c_cpc-c_ccc)*dyi
+          surfz_2 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
           k_ccc = kappao(i  ,j  ,k  ,1)
           k_pcc = kappao(i+1,j  ,k  ,1)
           k_cpc = kappao(i  ,j+1,k  ,1)
@@ -885,9 +885,9 @@ module mod_mom
           kappaxp = 0.5*(k_pcc+k_ccc)
           kappayp = 0.5*(k_cpc+k_ccc)
           kappazp = 0.5*(k_ccp+k_ccc)
-          surfx_2 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
-          surfy_2 = sigma*kappayp*(c_cpc-c_ccc)*dyi
-          surfz_2 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
+          surfx_1 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
+          surfy_1 = sigma*kappayp*(c_cpc-c_ccc)*dyi
+          surfz_1 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
           surfx_e = ((1.+dt_r)*surfx_1-dt_r*surfx_2)
           surfy_e = ((1.+dt_r)*surfy_1-dt_r*surfy_2)
           surfz_e = ((1.+dt_r)*surfz_1-dt_r*surfz_2)
