@@ -27,7 +27,7 @@ integer , protected, dimension(3) :: ng
 real(rp), protected, dimension(3) :: l
 integer , protected :: gtype
 real(rp), protected :: gr
-real(rp), protected :: cfl,dtmin
+real(rp), protected :: cfl,dtmin,dt_f
 logical , protected :: is_solve_ns,is_track_interface
 !
 character(len=100), protected :: inivel,inisca
@@ -86,7 +86,7 @@ contains
                   ng, &
                   l, &
                   gtype,gr, &
-                  cfl,dtmin, &
+                  cfl,dtmin,dt_f, &
                   is_solve_ns,is_track_interface, &
                   inivel, &
                   is_wallturb, &
