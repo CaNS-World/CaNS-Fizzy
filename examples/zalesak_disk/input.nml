@@ -5,7 +5,7 @@ gtype = 1, gr = 0.
 cfl = 0.95, dtmin = 2.5e-5, dt_f = -1.
 is_solve_ns = F
 inivel = 'roy'
-is_wallturb = F
+is_wallturb = F, is_track_interface = T
 nstep = 100000, time_max = 5., tw_max = 0.1
 stop_type(1:3) = T, T, F
 restart = F, is_overwrite_save = T, nsaves_max = 0
