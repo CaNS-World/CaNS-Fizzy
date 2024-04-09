@@ -900,7 +900,7 @@ module mod_mom
           c_ccc = psi(i  ,j  ,k  )
           c_pcc = psi(i+1,j  ,k  )
           c_cpc = psi(i  ,j+1,k  )
-          c_ccp = psi(i  ,j  ,k+1) 
+          c_ccp = psi(i  ,j  ,k+1)
           !
           bforcex = bforce(1)
           bforcey = bforce(2)
