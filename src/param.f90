@@ -111,7 +111,35 @@ contains
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
                        cudecomp_h_comm_backend,cudecomp_is_h_enable_nccl,cudecomp_is_h_enable_nvshmem
 #endif
-    rho0 = 1.
+    !
+    ! set-up default parameters
+    !
+    ng(:) = [128,128,128]
+    l(:)  = [1. ,1. ,1. ]
+    gtype = 1; gr = 0.
+    cfl = 0.95; dtmin = 1.e9; dt_f = -1.
+    is_solve_ns = .true.; is_track_interface = .true.
+    inivel = 'zer'
+    is_wallturb = .false.; is_forced_hit = .false.
+    nstep = 1000; time_max = 1.; tw_max = 0.5
+    stop_type = [.true.,.false.,.false.]
+    restart = .false.; is_overwrite_save = .true.; nsaves_max = 0
+    icheck = 10; iout0d = 10; iout1d = 100; iout2d = 1000; iout3d = 500; isave = 1000
+    cbcvel(:,:,:) = 'P'; cbcpre(:,:) = 'P'; bcvel(:,:,:) = 0.; bcpre(:,:) = 0.
+    bforce(:) = 0.; gacc(:) = 0
+    dims(:) = 0
+    !
+    inisca = 'zer'
+    cbcsca(:,:) = 'P'; bcsca(:,:) = 0.
+    !
+    inipsi = 'uni'
+    cbcpsi(:,:) = 'P'; bcpsi(:,:) = 0.
+    sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
+    ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
+    acdi_gam_factor = 1.; acdi_eps_factor = 0.51
+    !
+    ! read input file
+    !
     open(newunit=iunit,file='input.nml',status='old',action='read',iostat=ierr)
       if( ierr == 0 ) then
         read(iunit,nml=dns,iostat=ierr)
@@ -129,6 +157,7 @@ contains
     !
     dl(:) = l(:)/(1.*ng(:))
     dli(:) = dl(:)**(-1)
+    rho0 = 1.
 #if defined(_CONSTANT_COEFFS_POISSON)
     rho0 = minval(rho12(:))
 #endif
