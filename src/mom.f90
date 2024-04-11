@@ -4,6 +4,7 @@
 ! SPDX-License-Identifier: MIT
 !
 ! -
+#define _ACDI_REGULARIZATION_TERM
 module mod_mom
   use mpi
   use mod_types
@@ -807,7 +808,7 @@ module mod_mom
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
     real(rp), intent(in   ), dimension(0:,0:,0:)    :: p,pp,psi,kappa,s
-    real(rp), intent(in   ), dimension(0:,0:,0:,1:) :: psio,kappao
+    real(rp), intent(in   ), dimension(0:,0:,0:,1:), optional :: psio,kappao
     real(rp), intent(inout), dimension( :, :, :)    :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
@@ -825,10 +826,12 @@ module mod_mom
                 factorxp,factoryp,factorzp, &
                 dpdx  ,dpdy  ,dpdz  , &
                 dpdx_e,dpdy_e,dpdz_e, &
-                surfx  ,surfy  ,surfz  , &
-                surfx_1,surfy_1,surfz_1, &
+                surfx  ,surfy  ,surfz
+#if defined(_SURF_TEN_EXTRAPL)
+    real(rp) :: surfx_1,surfy_1,surfz_1, &
                 surfx_2,surfy_2,surfz_2, &
                 surfx_e,surfy_e,surfz_e
+#endif
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
     rho     = rho12(2); drho = rho12(1)-rho12(2)
@@ -865,6 +868,7 @@ module mod_mom
 #endif
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
+#if defined(_SURF_TEN_EXTRAPL)
           k_ccc = kappao(i  ,j  ,k  ,2)
           k_pcc = kappao(i+1,j  ,k  ,2)
           k_cpc = kappao(i  ,j+1,k  ,2)
@@ -896,6 +900,7 @@ module mod_mom
           surfx_e = ((1.+dt_r)*surfx_1-dt_r*surfx_2)
           surfy_e = ((1.+dt_r)*surfy_1-dt_r*surfy_2)
           surfz_e = ((1.+dt_r)*surfz_1-dt_r*surfz_2)
+#endif
 #endif
           k_ccc = kappa(i  ,j  ,k  )
           k_pcc = kappa(i+1,j  ,k  )
@@ -941,9 +946,15 @@ module mod_mom
           dpdx_e = (q_pcc-q_ccc)*dxi
           dpdy_e = (q_cpc-q_ccc)*dyi
           dpdz_e = (q_ccp-q_ccc)*dzci_c
+#if defined(_SURF_TEN_EXTRAPL)
           dudt_aux = dudt_aux + (-dpdx + surfx)/rho0 + (1./rhoxp-1./rho0)*(-dpdx_e + surfx_e)
           dvdt_aux = dvdt_aux + (-dpdy + surfy)/rho0 + (1./rhoyp-1./rho0)*(-dpdy_e + surfy_e)
           dwdt_aux = dwdt_aux + (-dpdz + surfz)/rho0 + (1./rhozp-1./rho0)*(-dpdz_e + surfz_e)
+#else
+          dudt_aux = dudt_aux - 0.*dpdx/rho0 + surfx/rhoxp - 0.*(1./rhoxp-1./rho0)*dpdx_e
+          dvdt_aux = dvdt_aux - 0.*dpdy/rho0 + surfy/rhoyp - 0.*(1./rhoyp-1./rho0)*dpdy_e
+          dwdt_aux = dwdt_aux - 0.*dpdz/rho0 + surfz/rhozp - 0.*(1./rhozp-1./rho0)*dpdz_e
+#endif
 #else
           dudt_aux = dudt_aux + (-dpdx + surfx)/rhoxp
           dvdt_aux = dvdt_aux + (-dpdy + surfy)/rhoyp
