@@ -15,7 +15,7 @@ module mod_forcing
     implicit none
     integer, parameter :: FTYPE_ABC          = 1, &
                           FTYPE_TAYLOR_GREEN = 2
-    real(rp), parameter :: a = 1._rp, b = 1._rp, c = 1._rp, k0 = 1
+    real(rp), parameter :: a = 1._rp, b = 1._rp, c = 1._rp, k0 = 2
     integer , intent(in) :: ftype
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in) :: alpha,dt

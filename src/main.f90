@@ -39,6 +39,7 @@ program cans
   use mod_correc         , only: correc
   use mod_fft            , only: fftini,fftend
   use mod_fillps         , only: fillps
+  use mod_forcing        , only: lscale_forcing
   use mod_initflow       , only: initflow,initscal
   use mod_initgrid       , only: initgrid
   use mod_initmpi        , only: initmpi
@@ -54,7 +55,7 @@ program cans
                                  is_solve_ns,is_track_interface, &
                                  cfl,dtmin,dt_f, &
                                  inivel,inisca,inipsi, &
-                                 is_wallturb, &
+                                 is_wallturb,is_forced_hit, &
                                  dims, &
                                  gtype,gr, &
                                  bforce, &
@@ -398,6 +399,9 @@ program cans
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
               bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio,kappao, &
               acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
+      if(is_forced_hit) then
+        call lscale_forcing(2,lo,hi,0.5_rp,dt,l,dl,zc,zf,u,v,w)
+      end if
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc kernels async(1)
       pp(:,:,:) = p(:,:,:)

@@ -31,7 +31,7 @@ real(rp), protected :: cfl,dtmin,dt_f
 logical , protected :: is_solve_ns,is_track_interface
 !
 character(len=100), protected :: inivel,inisca
-logical, protected :: is_wallturb
+logical, protected :: is_wallturb,is_forced_hit
 !
 integer , protected :: nstep
 real(rp), protected :: time_max,tw_max
@@ -89,7 +89,7 @@ contains
                   cfl,dtmin,dt_f, &
                   is_solve_ns,is_track_interface, &
                   inivel, &
-                  is_wallturb, &
+                  is_wallturb,is_forced_hit, &
                   nstep,time_max,tw_max, &
                   stop_type, &
                   restart,is_overwrite_save,nsaves_max, &

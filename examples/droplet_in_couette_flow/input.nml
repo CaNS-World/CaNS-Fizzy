@@ -3,9 +3,9 @@ ng(1:3) = 128, 128, 64
 l(1:3) = 2., 2., 1.
 gtype = 1, gr = 0.
 cfl = 0.45, dtmin = 1.e9
-is_solve_ns = T
+is_solve_ns = T, is_track_interface = T
 inivel = 'cou'
-is_wallturb = F
+is_wallturb = F, is_forced_hit = F
 nstep = 50000, time_max = 5., tw_max = 0.1
 stop_type(1:3) = T, F, F
 restart = F, is_overwrite_save = T, nsaves_max = 2
