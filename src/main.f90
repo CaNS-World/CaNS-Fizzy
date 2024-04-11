@@ -158,7 +158,7 @@ program cans
   po(:,:,:) = 0._rp
 #else
   pp(:,:,:) = 0._rp
-#if defined(_SURF_TEN_EXTRAPL)
+#if defined(_SURFACE_TENSION_SPLITTING)
   allocate(psio(  0:n(1)+1,0:n(2)+1,0:n(3)+1,2) ,&
            kappao(0:n(1)+1,0:n(2)+1,0:n(3)+1,2))
 #endif
@@ -323,7 +323,7 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
 #if defined(_CONSTANT_COEFFS_POISSON)
-#if defined(_SURF_TEN_EXTRAPL)
+#if defined(_SURFACE_TENSION_SPLITTING)
   !$acc kernels async(1)
   psio(:,:,:,1)    = psi(:,:,:)
   kappao(:,:,:,1)  = kappa(:,:,:)
@@ -368,7 +368,7 @@ program cans
     ! phase field update
     !
 #if defined(_CONSTANT_COEFFS_POISSON)
-#if defined(_SURF_TEN_EXTRAPL)
+#if defined(_SURFACE_TENSION_SPLITTING)
     !$acc kernels async(1)
     psio(:,:,:,2)   = psio(:,:,:,1)
     kappao(:,:,:,2) = kappao(:,:,:,1)

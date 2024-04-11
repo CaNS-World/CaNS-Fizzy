@@ -827,7 +827,7 @@ module mod_mom
                 dpdx  ,dpdy  ,dpdz  , &
                 dpdx_e,dpdy_e,dpdz_e, &
                 surfx  ,surfy  ,surfz
-#if defined(_SURF_TEN_EXTRAPL)
+#if defined(_SURFACE_TENSION_SPLITTING)
     real(rp) :: surfx_1,surfy_1,surfz_1, &
                 surfx_2,surfy_2,surfz_2, &
                 surfx_e,surfy_e,surfz_e
@@ -868,7 +868,7 @@ module mod_mom
 #endif
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
-#if defined(_SURF_TEN_EXTRAPL)
+#if defined(_SURFACE_TENSION_SPLITTING)
           k_ccc = kappao(i  ,j  ,k  ,2)
           k_pcc = kappao(i+1,j  ,k  ,2)
           k_cpc = kappao(i  ,j+1,k  ,2)
@@ -946,7 +946,7 @@ module mod_mom
           dpdx_e = (q_pcc-q_ccc)*dxi
           dpdy_e = (q_cpc-q_ccc)*dyi
           dpdz_e = (q_ccp-q_ccc)*dzci_c
-#if defined(_SURF_TEN_EXTRAPL)
+#if defined(_SURFACE_TENSION_SPLITTING)
           dudt_aux = dudt_aux + (-dpdx + surfx)/rho0 + (1./rhoxp-1./rho0)*(-dpdx_e + surfx_e)
           dvdt_aux = dvdt_aux + (-dpdy + surfy)/rho0 + (1./rhoyp-1./rho0)*(-dpdy_e + surfy_e)
           dwdt_aux = dwdt_aux + (-dpdz + surfz)/rho0 + (1./rhozp-1./rho0)*(-dpdz_e + surfz_e)
