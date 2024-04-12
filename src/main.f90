@@ -158,8 +158,10 @@ program cans
   po(:,:,:) = 0._rp
 #else
   pp(:,:,:) = 0._rp
+#if defined(_SURFACE_TENSION_SPLITTING)
   allocate(psio(  0:n(1)+1,0:n(2)+1,0:n(3)+1,2) ,&
            kappao(0:n(1)+1,0:n(2)+1,0:n(3)+1,2))
+#endif
 #endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
@@ -321,12 +323,14 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
 #if defined(_CONSTANT_COEFFS_POISSON)
+#if defined(_SURFACE_TENSION_SPLITTING)
   !$acc kernels async(1)
   psio(:,:,:,1)    = psi(:,:,:)
   kappao(:,:,:,1)  = kappa(:,:,:)
   psio(:,:,:,2)    = psio(:,:,:,1)
   kappao(:,:,:,2)  = kappao(:,:,:,1)
   !$acc end kernels
+#endif
 #endif
   !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
@@ -364,12 +368,14 @@ program cans
     ! phase field update
     !
 #if defined(_CONSTANT_COEFFS_POISSON)
+#if defined(_SURFACE_TENSION_SPLITTING)
     !$acc kernels async(1)
     psio(:,:,:,2)   = psio(:,:,:,1)
     kappao(:,:,:,2) = kappao(:,:,:,1)
     psio(:,:,:,1)   = psi(:,:,:)
     kappao(:,:,:,1) = kappa(:,:,:)
     !$acc end kernels
+#endif
 #endif
     if(is_track_interface) then
       call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
