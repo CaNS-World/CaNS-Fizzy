@@ -14,11 +14,10 @@ module mod_rk
   public rk,rk_scal,rk_2fl
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s, &
-                p,pp,u,v,w)
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio,kappao, &
+                acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
     !
-    ! low-storage 3rd-order Runge-Kutta scheme
-    ! for time integration of the momentum equations.
+    ! Adams-Bashforth scheme for time integration of the momentum equations
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
@@ -30,12 +29,14 @@ module mod_rk
     real(rp), intent(in   )                :: sigma,rho_av
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: psi,kappa,s,p,pp
-    real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
-    real(rp), target     , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
-                                                                  dudtrko_t,dvdtrko_t,dwdtrko_t
-    real(rp), pointer    , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
-                                                                  dudtrko  ,dvdtrko  ,dwdtrko
+    real(rp), intent(in   ), dimension(0:,0:,0:)    :: psi,kappa,s,p,pp
+    real(rp), intent(in   ), dimension(0:,0:,0:,1:) :: psio,kappao
+    real(rp), intent(in   ), dimension(0:,0:,0:)    :: acdi_rgx,acdi_rgy,acdi_rgz
+    real(rp), intent(inout), dimension(0:,0:,0:)    :: u,v,w
+    real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
+                                                                    dudtrko_t,dvdtrko_t,dwdtrko_t
+    real(rp), pointer      , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
+                                                                    dudtrko  ,dvdtrko  ,dwdtrko
     logical, save :: is_first = .true.
     real(rp) :: factor1,factor2,factor12,dt_r
     integer :: i,j,k
@@ -60,12 +61,12 @@ module mod_rk
       dwdtrko => dwdtrko_t
     end if
     !
-    ! advection and diffusion terms
+    ! advection, diffusion and regularization terms
     !
-    call mom_xyz_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,rho12,mu12,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rgx,acdi_rgy,acdi_rgz,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
     !
     if(is_first) then ! use Euler forward
-      !$acc kernels
+      !$acc kernels default(present) async(1)
       dudtrko(:,:,:) = dudtrk(:,:,:)
       dvdtrko(:,:,:) = dvdtrk(:,:,:)
       dwdtrko(:,:,:) = dwdtrk(:,:,:)
@@ -92,8 +93,8 @@ module mod_rk
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n(1),n(2),n(3),dli(1),dli(2),dzci,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                     p,pp,psi,kappa,s,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+                     p,pp,psi,kappa,s,psio,kappao,dudtrk,dvdtrk,dwdtrk)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -111,13 +112,7 @@ module mod_rk
                      ssource,rho12,ka12,cp12,psi,u,v,w,s)
     use mod_scal, only: scal_ad
     !
-    ! low-storage 3rd-order Runge-Kutta scheme
-    ! for time integration of the scalar field.
-    !
-    ! n.b.: since we leverage the `save` attribute for dsdtrk*, this subroutine only supports
-    !       transport of a single scalar; extension to n arbtritrary scalars could be done,
-    !       e.g., using a loop through an array of scalar derived types, with an ASSOCIATE
-    !       statement to keep the same piece of code to for each scalar
+    ! Adams-Bashfroth scheme for time integration of the scalar field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
@@ -149,7 +144,7 @@ module mod_rk
     end if
     call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ssource,ka12,rhocp12,psi,u,v,w,s,dsdtrk)
     if(is_first) then ! use Euler forward
-      !$acc kernels
+      !$acc kernels default(present) async(1)
       dsdtrko(:,:,:) = dsdtrk(:,:,:)
       !$acc end kernels
       is_first = .false.
@@ -168,12 +163,11 @@ module mod_rk
     call swap(dsdtrk,dsdtrko)
   end subroutine rk_scal
   !
-  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi)
+  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,rglrx,rglry,rglrz)
     use mod_acdi     , only: acdi_transport_pf
     use mod_two_fluid, only: clip_field
     !
-    ! low-storage 3rd-order Runge-Kutta scheme
-    ! for time integration of the phase field (actually Adams-Bashforth).
+    ! Adams-Bashforth scheme for time integration of the phase field
     !
     implicit none
     logical , parameter :: is_cmpt_wallflux = .false.
@@ -185,6 +179,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
+    real(rp), intent(out  ), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
@@ -200,15 +195,14 @@ module mod_rk
       dpsidtrk  => dpsidtrk_t
       dpsidtrko => dpsidtrko_t
     end if
-    call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidtrk)
+    call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidtrk,rglrx,rglry,rglrz)
     if(is_first) then ! use Euler forward
-      !$acc kernels
+      !$acc kernels default(present) async(1)
       dpsidtrko(:,:,:) = dpsidtrk(:,:,:)
       !$acc end kernels
       is_first = .false.
     end if
     !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
