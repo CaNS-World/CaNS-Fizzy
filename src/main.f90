@@ -39,6 +39,7 @@ program cans
   use mod_correc         , only: correc
   use mod_fft            , only: fftini,fftend
   use mod_fillps         , only: fillps
+  use mod_forcing        , only: lscale_forcing
   use mod_initflow       , only: initflow,initscal
   use mod_initgrid       , only: initgrid
   use mod_initmpi        , only: initmpi
@@ -51,10 +52,10 @@ program cans
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
-                                 is_solve_ns, &
-                                 cfl,dtmin, &
+                                 is_solve_ns,is_track_interface, &
+                                 cfl,dtmin,dt_f, &
                                  inivel,inisca,inipsi, &
-                                 is_wallturb, &
+                                 is_wallturb,is_forced_hit, &
                                  dims, &
                                  gtype,gr, &
                                  bforce, &
@@ -131,6 +132,7 @@ program cans
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz, &
                                              acdi_rgx,acdi_rgy,acdi_rgz
+  real(rp), allocatable, dimension(:,:,:,:) :: psio,kappao
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -155,6 +157,12 @@ program cans
 #if !defined(_CONSTANT_COEFFS_POISSON)
   allocate(po,mold=pp)
   po(:,:,:) = 0._rp
+#else
+  pp(:,:,:) = 0._rp
+#if defined(_SURFACE_TENSION_SPLITTING)
+  allocate(psio(  0:n(1)+1,0:n(2)+1,0:n(3)+1,2) ,&
+           kappao(0:n(1)+1,0:n(2)+1,0:n(3)+1,2))
+#endif
 #endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
@@ -236,7 +244,7 @@ program cans
   grid_vol_ratio_c(:) = dl(1)*dl(2)*dzc(:)/(l(1)*l(2)*l(3))
   grid_vol_ratio_f(:) = dl(1)*dl(2)*dzf(:)/(l(1)*l(2)*l(3))
   !$acc end kernels
-  !$acc update self(dzci,dzfi) async
+  !$acc update self(zc,zf,dzc,dzf,dzci,dzfi) async
   !$acc exit data copyout(zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
   !$acc wait
   !
@@ -296,7 +304,8 @@ program cans
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
-  !$acc enter data copyin(u,v,w,p) create(pp)
+  !$acc enter data copyin(u,v,w,p) copyin(pp) async
+  !$acc wait
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_SCALAR)
@@ -305,6 +314,7 @@ program cans
 #endif
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz)
   !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz)
+  !$acc enter data create(psio,kappao)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
@@ -313,8 +323,19 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
+#if defined(_CONSTANT_COEFFS_POISSON)
+#if defined(_SURFACE_TENSION_SPLITTING)
+  !$acc kernels async(1)
+  psio(:,:,:,1)    = psi(:,:,:)
+  kappao(:,:,:,1)  = kappa(:,:,:)
+  psio(:,:,:,2)    = psio(:,:,:,1)
+  kappao(:,:,:,2)  = kappao(:,:,:,1)
+  !$acc end kernels
+#endif
+#endif
+  !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
-  if(myid == 0) print*, 'Gamma = ', gam, 'Epsilon = ', seps
+  if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
   !
   ! post-process and write initial condition
   !
@@ -325,8 +346,8 @@ program cans
 #include "out3d.h90"
   !
   call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
-  dt = min(cfl*dtmax,dtmin)
-  if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
+  dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
+  if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
   dto = dt
   dti = 1./dt
   kill = .false.
@@ -347,21 +368,33 @@ program cans
     !
     ! phase field update
     !
-    call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
-    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-    call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
-    call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-    call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+#if defined(_CONSTANT_COEFFS_POISSON)
+#if defined(_SURFACE_TENSION_SPLITTING)
+    !$acc kernels async(1)
+    psio(:,:,:,2)   = psio(:,:,:,1)
+    kappao(:,:,:,2) = kappao(:,:,:,1)
+    psio(:,:,:,1)   = psi(:,:,:)
+    kappao(:,:,:,1) = kappa(:,:,:)
+    !$acc end kernels
+#endif
+#endif
+    if(is_track_interface) then
+      call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+      call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
+      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+    end if
 #if defined(_SCALAR)
     call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
     call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
     if(.not.is_solve_ns) then
       call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
-      !$acc wait
+      !$acc wait(1)
       !$acc update device(u,v,w,p) async(1)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
     else
@@ -370,8 +403,11 @@ program cans
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
       end if
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
-              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp, &
+              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio,kappao, &
               acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
+      if(is_forced_hit) then
+        call lscale_forcing(2,lo,hi,0.5_rp,dt,l,dl,zc,zf,u,v,w)
+      end if
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       !$acc kernels async(1)
       pp(:,:,:) = p(:,:,:)
@@ -409,8 +445,8 @@ program cans
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
-      dt = min(cfl*dtmax,dtmin)
-      if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ',dt
+      dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
+      if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
       if(dtmax < small) then
         if(myid == 0) print*, 'ERROR: time step is too small.'
         if(myid == 0) print*, 'Aborting...'
