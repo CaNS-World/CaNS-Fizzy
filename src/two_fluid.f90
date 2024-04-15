@@ -330,7 +330,11 @@ module mod_two_fluid
               end do
               sdist = sdistmin
               psi_aux = smooth_step_tanh(sdist,seps)
-              psi(i,j,k) = max(psi(i,j,k),psi_aux)
+              if (q == 1) then
+                psi(i,j,k) = max(psi(i,j,k),psi_aux)
+              else
+                psi(i,j,k) = min(psi(i,j,k),psi_aux)
+              end if
             end do
           end do
         end do
