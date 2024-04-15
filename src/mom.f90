@@ -21,23 +21,23 @@ module mod_mom
     real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     integer :: i,j,k
-    real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
+    real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm
     !
-    !$acc parallel loop collapse(3) default(present) private(uuip,uuim,uvjp,uvjm,uwkp,uwkm) async(1)
+    !$acc parallel loop collapse(3) default(present) private(uuip,uuim,vujp,vujm,wukp,wukm) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          uuip  = 0.25*( u(i,j,k)+u(i+1,j,k) )*( u(i+1,j  ,k  )+u(i,j  ,k  ) )
-          uuim  = 0.25*( u(i,j,k)+u(i-1,j,k) )*( u(i-1,j  ,k  )+u(i,j  ,k  ) )
-          uvjp  = 0.25*( u(i,j,k)+u(i,j+1,k) )*( v(i+1,j  ,k  )+v(i,j  ,k  ) )
-          uvjm  = 0.25*( u(i,j,k)+u(i,j-1,k) )*( v(i+1,j-1,k  )+v(i,j-1,k  ) )
-          uwkp  = 0.25*( u(i,j,k)+u(i,j,k+1) )*( w(i+1,j  ,k  )+w(i,j  ,k  ) )
-          uwkm  = 0.25*( u(i,j,k)+u(i,j,k-1) )*( w(i+1,j  ,k-1)+w(i,j  ,k-1) )
+          uuip  = 0.25*( u(i+1,j  ,k  )+u(i,j  ,k  ) )*( u(i,j,k)+u(i+1,j,k) )
+          uuim  = 0.25*( u(i-1,j  ,k  )+u(i,j  ,k  ) )*( u(i,j,k)+u(i-1,j,k) )
+          vujp  = 0.25*( v(i+1,j  ,k  )+v(i,j  ,k  ) )*( u(i,j,k)+u(i,j+1,k) )
+          vujm  = 0.25*( v(i+1,j-1,k  )+v(i,j-1,k  ) )*( u(i,j,k)+u(i,j-1,k) )
+          wukp  = 0.25*( w(i+1,j  ,k  )+w(i,j  ,k  ) )*( u(i,j,k)+u(i,j,k+1) )
+          wukm  = 0.25*( w(i+1,j  ,k-1)+w(i,j  ,k-1) )*( u(i,j,k)+u(i,j,k-1) )
           !
           dudt(i,j,k) = dudt(i,j,k) + &
                         dxi*(     -uuip + uuim ) + &
-                        dyi*(     -uvjp + uvjm ) + &
-                        dzfi(k)*( -uwkp + uwkm )
+                        dyi*(     -vujp + vujm ) + &
+                        dzfi(k)*( -wukp + wukm )
         end do
       end do
     end do
@@ -57,12 +57,12 @@ module mod_mom
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          uvip  = 0.25*( v(i,j,k)+v(i+1,j,k) )*( u(i  ,j,k  )+u(i  ,j+1,k  ) )
-          uvim  = 0.25*( v(i,j,k)+v(i-1,j,k) )*( u(i-1,j,k  )+u(i-1,j+1,k  ) )
-          vvjp  = 0.25*( v(i,j,k)+v(i,j+1,k) )*( v(i  ,j,k  )+v(i  ,j+1,k  ) )
-          vvjm  = 0.25*( v(i,j,k)+v(i,j-1,k) )*( v(i  ,j,k  )+v(i  ,j-1,k  ) )
-          wvkp  = 0.25*( v(i,j,k)+v(i,j,k+1) )*( w(i  ,j,k  )+w(i  ,j+1,k  ) )
-          wvkm  = 0.25*( v(i,j,k)+v(i,j,k-1) )*( w(i  ,j,k-1)+w(i  ,j+1,k-1) )
+          uvip  = 0.25*( u(i  ,j,k  )+u(i  ,j+1,k  ) )*( v(i,j,k)+v(i+1,j,k) )
+          uvim  = 0.25*( u(i-1,j,k  )+u(i-1,j+1,k  ) )*( v(i,j,k)+v(i-1,j,k) )
+          vvjp  = 0.25*( v(i  ,j,k  )+v(i  ,j+1,k  ) )*( v(i,j,k)+v(i,j+1,k) )
+          vvjm  = 0.25*( v(i  ,j,k  )+v(i  ,j-1,k  ) )*( v(i,j,k)+v(i,j-1,k) )
+          wvkp  = 0.25*( w(i  ,j,k  )+w(i  ,j+1,k  ) )*( v(i,j,k)+v(i,j,k+1) )
+          wvkm  = 0.25*( w(i  ,j,k-1)+w(i  ,j+1,k-1) )*( v(i,j,k)+v(i,j,k-1) )
           !
           dvdt(i,j,k) = dvdt(i,j,k) + &
                         dxi*(     -uvip + uvim ) + &
@@ -87,12 +87,12 @@ module mod_mom
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          uwip  = 0.25*( w(i,j,k)+w(i+1,j,k) )*( u(i  ,j  ,k)+u(i  ,j  ,k+1) )
-          uwim  = 0.25*( w(i,j,k)+w(i-1,j,k) )*( u(i-1,j  ,k)+u(i-1,j  ,k+1) )
-          vwjp  = 0.25*( w(i,j,k)+w(i,j+1,k) )*( v(i  ,j  ,k)+v(i  ,j  ,k+1) )
-          vwjm  = 0.25*( w(i,j,k)+w(i,j-1,k) )*( v(i  ,j-1,k)+v(i  ,j-1,k+1) )
-          wwkp  = 0.25*( w(i,j,k)+w(i,j,k+1) )*( w(i  ,j  ,k)+w(i  ,j  ,k+1) )
-          wwkm  = 0.25*( w(i,j,k)+w(i,j,k-1) )*( w(i  ,j  ,k)+w(i  ,j  ,k-1) )
+          uwip  = 0.25*( u(i  ,j  ,k)+u(i  ,j  ,k+1) )*( w(i,j,k)+w(i+1,j,k) )
+          uwim  = 0.25*( u(i-1,j  ,k)+u(i-1,j  ,k+1) )*( w(i,j,k)+w(i-1,j,k) )
+          vwjp  = 0.25*( v(i  ,j  ,k)+v(i  ,j  ,k+1) )*( w(i,j,k)+w(i,j+1,k) )
+          vwjm  = 0.25*( v(i  ,j-1,k)+v(i  ,j-1,k+1) )*( w(i,j,k)+w(i,j-1,k) )
+          wwkp  = 0.25*( w(i  ,j  ,k)+w(i  ,j  ,k+1) )*( w(i,j,k)+w(i,j,k+1) )
+          wwkm  = 0.25*( w(i  ,j  ,k)+w(i  ,j  ,k-1) )*( w(i,j,k)+w(i,j,k-1) )
           !
           dwdt(i,j,k) = dwdt(i,j,k) + &
                         dxi*(     -uwip + uwim ) + &
@@ -548,7 +548,7 @@ module mod_mom
                 rglrz_ccm,rglrz_ccc,rglrz_ccp,rglrz_pcm,rglrz_pcc,rglrz_cpm,rglrz_cpc, &
                 dzci_c,dzci_m,dzfi_c,dzfi_p, &
                 psixp,psiyp,psizp
-    real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
+    real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rxup,rxum,ryup,ryum,rzup,rzum,rxvp,rxvm,ryvp,ryvm,rzvp,rzvm,rxwp,rxwm,rywp,rywm,rzwp,rzwm
@@ -664,26 +664,26 @@ module mod_mom
           !
           ! advection
           !
-          uuip  = 0.25*(u_ccc+u_pcc)*(u_pcc+u_ccc)
-          uuim  = 0.25*(u_ccc+u_mcc)*(u_mcc+u_ccc)
-          uvjp  = 0.25*(u_ccc+u_cpc)*(v_pcc+v_ccc)
-          uvjm  = 0.25*(u_ccc+u_cmc)*(v_pmc+v_cmc)
-          uwkp  = 0.25*(u_ccc+u_ccp)*(w_pcc+w_ccc)
-          uwkm  = 0.25*(u_ccc+u_ccm)*(w_pcm+w_ccm)
-          dudt_aux = dxi*( -uuip + uuim ) + dyi*( -uvjp + uvjm ) + dzfi_c*( -uwkp + uwkm )
+          uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)
+          uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)
+          vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)
+          vujm  = 0.25*(v_pmc+v_cmc)*(u_ccc+u_cmc)
+          wukp  = 0.25*(w_pcc+w_ccc)*(u_ccc+u_ccp)
+          wukm  = 0.25*(w_pcm+w_ccm)*(u_ccc+u_ccm)
+          dudt_aux = dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm )
           !
-          uvip  = 0.25*(v_ccc+v_pcc)*(u_ccc+u_cpc)
-          uvim  = 0.25*(v_ccc+v_mcc)*(u_mcc+u_mpc)
+          uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)
+          uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)
           vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)
           vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)
-          wvkp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)
-          wvkm  = 0.25*(v_ccc+v_ccm)*(w_ccm+w_cpm)
+          wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)
+          wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccc+v_ccm)
           dvdt_aux = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
           !
-          uwip  = 0.25*(w_ccc+w_pcc)*(u_ccc+u_ccp)
-          uwim  = 0.25*(w_ccc+w_mcc)*(u_mcc+u_mcp)
-          vwjp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)
-          vwjm  = 0.25*(w_ccc+w_cmc)*(v_cmc+v_cmp)
+          uwip  = 0.25*(u_ccc+u_ccp)*(w_ccc+w_pcc)
+          uwim  = 0.25*(u_mcc+u_mcp)*(w_ccc+w_mcc)
+          vwjp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)
+          vwjm  = 0.25*(v_cmc+v_cmp)*(w_ccc+w_cmc)
           wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)
           wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)
           dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
