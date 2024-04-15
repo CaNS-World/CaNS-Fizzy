@@ -1,19 +1,19 @@
 &dns
-ng(1:3) = 256, 2,  256
+ng(1:3) = 256, 2, 256
 l(1:3)  = 1., 0.0078125, 1.
 gtype = 1, gr = 0.
-cfl = 0.95, dtmin = 2.5e-4, dt_f = -1.
+cfl = 0.95, dtmin = 1e-4, dt_f = -1.
 is_solve_ns = F, is_track_interface = T
-inivel = 'voy'
+inivel = 'uni'
 is_wallturb = F, is_forced_hit = F
-nstep = 100000, time_max = 4., tw_max = 0.1
+nstep = 100000, time_max = 5., tw_max = 0.1
 stop_type(1:3) = T, T, F
 restart = F, is_overwrite_save = T, nsaves_max = 0
-icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 500, isave = 5000
-cbcvel(0:1,1:3,1) = 'D','D',  'P','P',  'D','D'
-cbcvel(0:1,1:3,2) = 'D','D',  'P','P',  'D','D'
-cbcvel(0:1,1:3,3) = 'D','D',  'P','P',  'D','D'
-cbcpre(0:1,1:3)   = 'N','N',  'P','P',  'N','N'
+icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 100, isave = 5000
+cbcvel(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
+cbcvel(0:1,1:3,2) = 'P','P',  'P','P',  'P','P'
+cbcvel(0:1,1:3,3) = 'P','P',  'P','P',  'P','P'
+cbcpre(0:1,1:3)   = 'P','P',  'P','P',  'P','P'
 bcvel(0:1,1:3,1) =  0.,0.,   0.,0.,   0.,0.
 bcvel(0:1,1:3,2) =  0.,0.,   0.,0.,   0.,0.
 bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
@@ -24,14 +24,14 @@ dims(1:2) = 0, 0
 \
 
 &scalar
-inisca          = 'dht'
-cbcsca(0:1,1:3) = 'N','N',  'P','P',  'N','N'
+inisca          = 'zer'
+cbcsca(0:1,1:3) = 'P','P',  'P','P',  'P','P'
 bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
 \
 
 &two_fluid
 inipsi          = 'bu2'
-cbcpsi(0:1,1:3) = 'N','N',  'P','P',  'N','N'
+cbcpsi(0:1,1:3) = 'P','P',  'P','P',  'P','P'
 bcpsi(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
 rho12(1:2)      = 1., 1.
 mu12(1:2)       = 100., 100.
@@ -40,7 +40,7 @@ ka12(1:2)       = 0., 0.
 cp12(1:2)       = 0., 0.
 beta12(1:2)     = 0., 0.
 acdi_gam_factor = 1.
-acdi_eps_factor = 1.0
+acdi_eps_factor = 1.
 \
 
 &cudecomp

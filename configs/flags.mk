@@ -135,6 +135,10 @@ ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),1)
 DEFINES += -D_CONSTANT_COEFFS_POISSON
 endif
 
+ifeq ($(strip $(SURFACE_TENSION_SPLITTING)),1)
+DEFINES += -D_SURFACE_TENSION_SPLITTING
+endif
+
 ifeq ($(strip $(OPENMP)),1)
 ifeq      ($(strip $(FCOMP)),GNU)
 override FFLAGS += -fopenmp

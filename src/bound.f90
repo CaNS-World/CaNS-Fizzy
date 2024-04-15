@@ -306,7 +306,7 @@ module mod_bound
         if(is_bound(0,1)) then
           n(:) = shape(u) - 2*1
           i = 0
-          !$acc parallel loop collapse(2) default(present)
+          !$acc parallel loop collapse(2) default(present) async(1)
           do k=1,n(3)
             do j=1,n(2)
               u(i,j,k) = vel2d(j,k)
@@ -317,7 +317,7 @@ module mod_bound
         if(is_bound(0,2)) then
           n(:) = shape(v) - 2*1
           j = 0
-          !$acc parallel loop collapse(2) default(present)
+          !$acc parallel loop collapse(2) default(present) async(1)
           do k=1,n(3)
             do i=1,n(1)
               v(i,j,k) = vel2d(i,k)
@@ -328,7 +328,7 @@ module mod_bound
         if(is_bound(0,3)) then
           n(:) = shape(w) - 2*1
           k = 0
-          !$acc parallel loop collapse(2) default(present)
+          !$acc parallel loop collapse(2) default(present) async(1)
           do j=1,n(2)
             do i=1,n(1)
               w(i,j,k) = vel2d(i,j)

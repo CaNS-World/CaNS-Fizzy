@@ -115,31 +115,16 @@ contains
       itemp1 = sum(itemp1_(:))   ! rhs
       itemp2 = product(n_z(1:2)) ! lambdaxy
       itemp3 = n_z(3)*3          ! a,b,c
-#if   !defined(_IMPDIFF)
       !
       ! rhsbp, lambdaxyp, ap,bp,cp
       !
       itotal = itotal + itemp1*rp_size                + itemp2*rp_size   + itemp3*rp_size
-#elif  defined(_IMPDIFF_1D)
-      !
-      ! rhsbp,rhsb[u,v,w,buf]%z, lambdaxyp, a?,b?,c? [p,u,v,w,buf]
-      !
-      itotal = itotal + (itemp1+itemp1_(3)*4)*rp_size + itemp2*rp_size   + itemp3*rp_size*5
-#else
-      !
-      ! rhsbp,rhsb[u,v,w,buf]%[x,y,z], lambdaxy[p,u,v,w], (a?,b?,c?)[p,u,v,w,buf]
-      !
-      itotal = itotal + itemp1*rp_size*(1+4)          + itemp2*rp_size*5 + itemp3*rp_size*5
-#endif
     end block
     !
     ! 4. prediction velocity arrays arrays d[u,v,w]dtrk_t, d[u,v,w]dtrko_t
     !
     itemp  = product(n(:))*rp_size
     itotal = itotal + itemp*6
-#if defined(_IMPDIFF)
-    itotal = itotal + itemp*3
-#endif
     !
     ! 5. transpose & FFT buffer arrays, halo buffer arrays, and solver arrays
     !    taken directly from `mod_common_cudecomp`
@@ -151,6 +136,17 @@ contains
               storage_size(pz_aux_1    ,i8)*size(pz_aux_1    ) + storage_size(pz_aux_2    ,i8)*size(pz_aux_2    )
       itotal = itotal + itemp/8
     end block
+    !
+    ! 6. scalar and multiphase flow related (psi,norm[x,y,z],kappa)
+    !
+    itemp  = product(n(:))*rp_size
+    itotal = itotal + itemp*5
+    itotal = itotal + itemp*2 ! time marching array dpsidtrk_t, dpsidtrko_t
+    itotal = itotal + itemp*4 ! psio and kappao for surface tension extrapolation
+#if defined(_SCALAR)
+    itotal = itotal + itemp*1
+    itotal = itotal + itemp*2 ! time marching array dsdtrk_t, dsdtrko_t
+#endif
   end function device_memory_footprint
 #endif
 end module mod_utils
