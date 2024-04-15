@@ -191,7 +191,7 @@ module mod_two_fluid
     integer :: ierr
     !
     is_sphere = .false.
-    psi(:,:,:) = 0.
+    psi(:,:,:) = 1.
     select case(trim(inipsi))
     case('uni')
       psi(:,:,:) = 1._rp
@@ -330,11 +330,7 @@ module mod_two_fluid
               end do
               sdist = sdistmin
               psi_aux = smooth_step_tanh(sdist,seps)
-              if (q == 1) then
-                psi(i,j,k) = max(psi(i,j,k),psi_aux)
-              else
-                psi(i,j,k) = min(psi(i,j,k),psi_aux)
-              end if
+              psi(i,j,k) = min(psi(i,j,k),psi_aux)
             end do
           end do
         end do
