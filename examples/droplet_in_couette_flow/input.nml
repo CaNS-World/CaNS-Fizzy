@@ -2,7 +2,7 @@
 ng(1:3) = 128, 128, 64
 l(1:3) = 2., 2., 1.
 gtype = 1, gr = 0.
-cfl = 0.45, dtmin = 1.e9
+cfl = 0.45, dtmin = 1.e9, dt_f = -1.
 is_solve_ns = T, is_track_interface = T
 inivel = 'cou'
 is_wallturb = F, is_forced_hit = F
