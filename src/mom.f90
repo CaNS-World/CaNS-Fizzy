@@ -552,7 +552,8 @@ module mod_mom
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rxup,rxum,ryup,ryum,rzup,rzum,rxvp,rxvm,ryvp,ryvm,rzvp,rzvm,rxwp,rxwm,rywp,rywm,rzwp,rzwm
-    real(rp) :: rhoxp,rhoyp,rhozp
+    real(rp) :: rhoxp,rhoxm,rhoyp,rhoym,rhozp,rhozm
+    real(rp) :: rhox,rhoy,rhoz
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
@@ -664,29 +665,50 @@ module mod_mom
           !
           ! advection
           !
-          uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)
-          uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)
-          vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)
-          vujm  = 0.25*(v_pmc+v_cmc)*(u_ccc+u_cmc)
-          wukp  = 0.25*(w_pcc+w_ccc)*(u_ccc+u_ccp)
-          wukm  = 0.25*(w_pcm+w_ccm)*(u_ccc+u_ccm)
-          dudt_aux = dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm )
+          rhoxp = rho + drho*c_pcc
+          rhoxm = rho + drho*c_ccc
+          rhoyp = rho + 0.25*drho*(c_ccc+c_pcc+c_cpc+c_ppc)
+          rhoym = rho + 0.25*drho*(c_cmc+c_pmc+c_ccc+c_pcc)
+          rhozp = rho + 0.25*drho*(c_ccc+c_pcc+c_ccp+c_cpp)
+          rhozm = rho + 0.25*drho*(c_ccm+c_pcm+c_ccc+c_pcc)
+          rhox  = rho + drho*psixp
+          uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)*rhoxp
+          uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)*rhoxm
+          vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)*rhoyp
+          vujm  = 0.25*(v_pmc+v_cmc)*(u_ccc+u_cmc)*rhoym
+          wukp  = 0.25*(w_pcc+w_ccc)*(u_ccc+u_ccp)*rhozp
+          wukm  = 0.25*(w_pcm+w_ccm)*(u_ccc+u_ccm)*rhozm
+          dudt_aux = (dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm ))/rhox
           !
-          uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)
-          uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)
-          vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)
-          vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)
-          wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)
-          wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccc+v_ccm)
-          dvdt_aux = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
+          rhoxp = rho + 0.25*drho*(c_ccc+c_pcc+c_cpc+c_ppc)
+          rhoxm = rho + 0.25*drho*(c_mcc+c_ccc+c_mpc+c_cpc)
+          rhoyp = rho + drho*c_cpc
+          rhoym = rho + drho*c_ccc
+          rhozp = rho + 0.25*drho*(c_ccc+c_ccp+c_cpc+c_cpp)
+          rhozm = rho + 0.25*drho*(c_ccm+c_ccc+c_cpm+c_cpc)
+          rhoy  = rho + drho*psiyp
+          uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)*rhoxp
+          uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)*rhoxm
+          vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)*rhoyp
+          vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)*rhoym
+          wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)*rhozp
+          wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccc+v_ccm)*rhozm
+          dvdt_aux = (dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm ))/rhoy
           !
-          uwip  = 0.25*(u_ccc+u_ccp)*(w_ccc+w_pcc)
-          uwim  = 0.25*(u_mcc+u_mcp)*(w_ccc+w_mcc)
-          vwjp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)
-          vwjm  = 0.25*(v_cmc+v_cmp)*(w_ccc+w_cmc)
-          wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)
-          wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)
-          dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
+          rhoxp = rho + 0.25*drho*(c_ccc+c_pcc+c_ccp+c_pcp)
+          rhoxm = rho + 0.25*drho*(c_mcc+c_ccc+c_mcp+c_pcp)
+          rhoyp = rho + 0.25*drho*(c_ccc+c_cpc+c_ccp+c_cpp)
+          rhoym = rho + 0.25*drho*(c_cmc+c_ccc+c_cmp+c_ccp) 
+          rhozp = rho + drho*c_ccp
+          rhozm = rho + drho*c_ccc
+          rhoz  = rho + drho*psizp
+          uwip  = 0.25*(u_ccc+u_ccp)*(w_ccc+w_pcc)*rhoxp
+          uwim  = 0.25*(u_mcc+u_mcp)*(w_ccc+w_mcc)*rhoxm
+          vwjp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)*rhoyp
+          vwjm  = 0.25*(v_cmc+v_cmp)*(w_ccc+w_cmc)*rhoym
+          wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)*rhozp
+          wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)*rhozm
+          dwdt_aux = (dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm ))/rhoz
           !
           ! diffusion
           !
