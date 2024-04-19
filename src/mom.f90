@@ -4,7 +4,7 @@
 ! SPDX-License-Identifier: MIT
 !
 ! -
-#define _ACDI_REGULARIZATION_TERM
+!#define _ACDI_REGULARIZATION_TERM
 module mod_mom
   use mpi
   use mod_types
