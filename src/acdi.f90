@@ -74,7 +74,7 @@ module mod_acdi
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
+    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: rglrx,rglry,rglrz
     integer :: i,j,k
     real(rp) :: dxi,dyi
     real(rp) :: adv,diff,sharp,rglr
@@ -194,9 +194,11 @@ module mod_acdi
           rglr = (rglrxp-rglrxm)*dxi + (rglryp-rglrym)*dyi + (rglrzp-rglrzm)*dzfi_c
           !
           dpsidt(i,j,k) = -adv + rglr
+#if defined(_CONSERVATIVE_MOMENTUM)
           rglrx(i,j,k) = rglrxp
           rglry(i,j,k) = rglryp
           rglrz(i,j,k) = rglrzp
+#endif
         end do
       end do
     end do

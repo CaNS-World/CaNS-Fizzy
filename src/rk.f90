@@ -30,8 +30,8 @@ module mod_rk
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
     real(rp), intent(in   ), dimension(0:,0:,0:)    :: psi,kappa,s,p,pp
-    real(rp), intent(in   ), dimension(0:,0:,0:,1:) :: psio,kappao
-    real(rp), intent(in   ), dimension(0:,0:,0:)    :: acdi_rgx,acdi_rgy,acdi_rgz
+    real(rp), intent(in   ), dimension(0:,0:,0:,1:), optional :: psio,kappao
+    real(rp), intent(in   ), dimension(0:,0:,0:)   , optional :: acdi_rgx,acdi_rgy,acdi_rgz
     real(rp), intent(inout), dimension(0:,0:,0:)    :: u,v,w
     real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
                                                                     dudtrko_t,dvdtrko_t,dwdtrko_t
@@ -63,7 +63,7 @@ module mod_rk
     !
     ! advection, diffusion and regularization terms
     !
-    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rgx,acdi_rgy,acdi_rgz,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rgx,acdi_rgy,acdi_rgz,u,v,w,psi,psio(:,:,:,1),dudtrk,dvdtrk,dwdtrk)
     !
     if(is_first) then ! use Euler forward
       !$acc kernels default(present) async(1)
@@ -74,6 +74,31 @@ module mod_rk
       is_first = .false.
     end if
     !
+#if defined(_CONSERVATIVE_MOMENTUM)
+    block
+      real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p,factor_rho
+      rho = rho12(2); drho = rho12(1)-rho12(2)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            rhox_n = rho + drho*(psio(i,j,k,1)+psio(i+1,j,k,1))
+            rhoy_n = rho + drho*(psio(i,j,k,1)+psio(i,j+1,k,1))
+            rhoz_n = rho + drho*(psio(i,j,k,1)+psio(i,j,k+1,1))
+            rhox_p = rho + drho*(psi( i,j,k  )+psi( i+1,j,k  ))
+            rhoy_p = rho + drho*(psi( i,j,k  )+psi( i,j+1,k  ))
+            rhoz_p = rho + drho*(psi( i,j,k  )+psi( i,j,k+1  ))
+            factor_rho = rhox_n/rhox_p
+            u(i,j,k) = u(i,j,k)*factor_rho + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)*factor_rho
+            factor_rho = rhoy_n/rhoy_p
+            v(i,j,k) = v(i,j,k)*factor_rho + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)*factor_rho
+            factor_rho = rhoz_n/rhoz_p
+            w(i,j,k) = w(i,j,k)*factor_rho + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)*factor_rho
+          end do
+        end do
+      end do
+    end block
+#else
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
@@ -84,6 +109,7 @@ module mod_rk
         end do
       end do
     end do
+#endif
     !
     ! swap d?dtrk <-> d?dtrko
     !
@@ -179,7 +205,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out  ), dimension(0:,0:,0:) :: rglrx,rglry,rglrz
+    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: rglrx,rglry,rglrz
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.

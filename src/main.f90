@@ -187,7 +187,10 @@ program cans
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
   allocate(psi,kappa,normx,normy,normz,mold=pp)
+#if defined(_CONSERVATIVE_MOMENTUM)
   allocate(acdi_rgx,acdi_rgy,acdi_rgz,mold=pp)
+  if(.not. allocated(psio)) allocate(psio(0:n(1)+1,0:n(2)+1,0:n(3)+1,1))
+#endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -333,6 +336,11 @@ program cans
   !$acc end kernels
 #endif
 #endif
+#if defined(_CONSERVATIVE_MOMENTUM) && !defined(_SURFACE_TENSION_SPLITTING)
+  !$acc kernels async(1)
+  psio(:,:,:,1)    = psi(:,:,:)
+  !$acc end kernels
+#endif
   !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
@@ -378,9 +386,16 @@ program cans
     !$acc end kernels
 #endif
 #endif
+#if defined(_CONSERVATIVE_MOMENTUM) && !defined(_SURFACE_TENSION_SPLITTING)
+    !$acc kernels async(1)
+    psio(:,:,:,1)   = psi(:,:,:)
+    !$acc end kernels
+#endif
     if(is_track_interface) then
       call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
+#if defined(_CONSERVATIVE_MOMENTUM)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
+#endif
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
       call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
       call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
