@@ -11,7 +11,7 @@ module mod_acdi
   use mod_param , only: eps
   implicit none
   private
-  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_norm_curv,acdi_cmpt_phi
+  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi
   contains
   subroutine acdi_set_epsilon(dl,dzfi,seps_factor,seps)
     !
@@ -63,7 +63,7 @@ module mod_acdi
   !
   subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt,rglrx,rglry,rglrz)
     !
-    !
+    ! compute right-hand side of the phase field transport equation
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
@@ -210,9 +210,8 @@ module mod_acdi
     ! computes the signed-distance field phi from the smoothed volume fraction field psi
     !
     implicit none
-    !
     integer , intent(in ), dimension(3)           :: n
-    real(rp), intent(in)                          :: seps
+    real(rp), intent(in )                         :: seps
     real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
     real(rp), intent(out), dimension(0:,0:,0:)    :: phi
     real(rp) :: psi_aux
@@ -229,120 +228,6 @@ module mod_acdi
     end do
   end subroutine acdi_cmpt_phi
   !
-  subroutine acdi_cmpt_norm_curv(n,dli,dzci,dzfi,phi,kappa,normx,normy,normz)
-    !
-    ! computes the normals and curvature based on a phase field
-    ! using finite-differences based on Youngs method
-    !
-    implicit none
-    real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3) :: n
-    real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: phi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
-    real(rp) :: phimmm,phimcm,phimpm,phicmm,phiccm,phicpm,phipmm,phipcm,phippm, &
-                phimmc,phimcc,phimpc,phicmc,phiccc,phicpc,phipmc,phipcc,phippc, &
-                phimmp,phimcp,phimpp,phicmp,phiccp,phicpp,phipmp,phipcp,phippp
-    real(rp) :: norm
-    logical , save :: is_first = .true.
-    real(rp), allocatable, dimension(:), save :: mx,my,mz
-    integer  :: i,j,k,q
-    !
-    if(is_first) then
-      is_first = .false.
-      allocate(mx(8),my(8),mz(8))
-      !$acc enter data create(mx,my,mz)
-    end if
-    !
-    !$acc parallel loop collapse(3) default(present) private(mx,my,mz) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          phimmm = phi(i-1,j-1,k-1)
-          phimcm = phi(i-1,j  ,k-1)
-          phimpm = phi(i-1,j+1,k-1)
-          phicmm = phi(i  ,j-1,k-1)
-          phiccm = phi(i  ,j  ,k-1)
-          phicpm = phi(i  ,j+1,k-1)
-          phipmm = phi(i+1,j-1,k-1)
-          phipcm = phi(i+1,j  ,k-1)
-          phippm = phi(i+1,j+1,k-1)
-          phimmc = phi(i-1,j-1,k  )
-          phimcc = phi(i-1,j  ,k  )
-          phimpc = phi(i-1,j+1,k  )
-          phicmc = phi(i  ,j-1,k  )
-          phiccc = phi(i  ,j  ,k  )
-          phicpc = phi(i  ,j+1,k  )
-          phipmc = phi(i+1,j-1,k  )
-          phipcc = phi(i+1,j  ,k  )
-          phippc = phi(i+1,j+1,k  )
-          phimmp = phi(i-1,j-1,k+1)
-          phimcp = phi(i-1,j  ,k+1)
-          phimpp = phi(i-1,j+1,k+1)
-          phicmp = phi(i  ,j-1,k+1)
-          phiccp = phi(i  ,j  ,k+1)
-          phicpp = phi(i  ,j+1,k+1)
-          phipmp = phi(i+1,j-1,k+1)
-          phipcp = phi(i+1,j  ,k+1)
-          phippp = phi(i+1,j+1,k+1)
-          !
-          mx(1) = 0.25*((phipcc+phippc+phipcp+phippp)-(phiccc+phicpc+phiccp+phicpp))*dli(1)
-          mx(2) = 0.25*((phipcc+phipmc+phipcp+phipmp)-(phiccc+phicmc+phiccp+phicmp))*dli(1)
-          mx(3) = 0.25*((phipcc+phippc+phipcm+phippm)-(phiccc+phicpc+phiccm+phicpm))*dli(1)
-          mx(4) = 0.25*((phipcc+phipmc+phipcm+phipmm)-(phiccc+phicmc+phiccm+phicmm))*dli(1)
-          mx(5) = 0.25*((phiccc+phicpc+phiccp+phicpp)-(phimcc+phimpc+phimcp+phimpp))*dli(1)
-          mx(6) = 0.25*((phiccc+phicmc+phiccp+phicmp)-(phimcc+phimmc+phimcp+phimmp))*dli(1)
-          mx(7) = 0.25*((phiccc+phicpc+phiccm+phicpm)-(phimcc+phimpc+phimcm+phimpm))*dli(1)
-          mx(8) = 0.25*((phiccc+phicmc+phiccm+phicmm)-(phimcc+phimmc+phimcm+phimmm))*dli(1)
-          !
-          my(1) = 0.25*((phicpc+phippc+phicpp+phippp)-(phiccc+phipcc+phiccp+phipcp))*dli(2)
-          my(2) = 0.25*((phiccc+phipcc+phiccp+phipcp)-(phicmc+phipmc+phicmp+phipmp))*dli(2)
-          my(3) = 0.25*((phicpc+phippc+phicpm+phippm)-(phiccc+phipcc+phiccm+phipcm))*dli(2)
-          my(4) = 0.25*((phiccc+phipcc+phiccm+phipcm)-(phicmc+phipmc+phicmm+phipmm))*dli(2)
-          my(5) = 0.25*((phicpc+phimpc+phicpp+phimpp)-(phiccc+phimcc+phiccp+phimcp))*dli(2)
-          my(6) = 0.25*((phiccc+phimcc+phiccp+phimcp)-(phicmc+phimmc+phicmp+phimmp))*dli(2)
-          my(7) = 0.25*((phicpc+phimpc+phicpm+phimpm)-(phiccc+phimcc+phiccm+phimcm))*dli(2)
-          my(8) = 0.25*((phiccc+phimcc+phiccm+phimcm)-(phicmc+phimmc+phicmm+phimmm))*dli(2)
-          !
-          mz(1) = 0.25*((phiccp+phipcp+phicpp+phippp)-(phiccc+phipcc+phicpc+phippc))*dzci(k  )
-          mz(2) = 0.25*((phiccp+phipcp+phicmp+phipmp)-(phiccc+phipcc+phicmc+phipmc))*dzci(k  )
-          mz(3) = 0.25*((phiccc+phipcc+phicpc+phippc)-(phiccm+phipcm+phicpm+phippm))*dzci(k-1)
-          mz(4) = 0.25*((phiccc+phipcc+phicmc+phipmc)-(phiccm+phipcm+phicmm+phipmm))*dzci(k-1)
-          mz(5) = 0.25*((phiccp+phimcp+phicpp+phimpp)-(phiccc+phimcc+phicpc+phimpc))*dzci(k  )
-          mz(6) = 0.25*((phiccp+phimcp+phicmp+phimmp)-(phiccc+phimcc+phicmc+phimmc))*dzci(k  )
-          mz(7) = 0.25*((phiccc+phimcc+phicpc+phimpc)-(phiccm+phimcm+phicpm+phimpm))*dzci(k-1)
-          mz(8) = 0.25*((phiccc+phimcc+phicmc+phimmc)-(phiccm+phimcm+phicmm+phimmm))*dzci(k-1)
-          !
-          !$acc loop seq
-          do q=1,8
-            norm = sqrt(mx(q)**2+my(q)**2+mz(q)**2)+eps
-            mx(q) = mx(q)/norm
-            my(q) = my(q)/norm
-            mz(q) = mz(q)/norm
-          end do
-          !
-          ! compute the normal vector
-          !
-          normx(i,j,k) = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
-          normy(i,j,k) = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
-          normz(i,j,k) = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
-          norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
-          normx(i,j,k) = normx(i,j,k)/norm
-          normy(i,j,k) = normy(i,j,k)/norm
-          normz(i,j,k) = normz(i,j,k)/norm
-          !
-          ! compute the curvature
-          !
-          kappa(i,j,k) = - ( 0.25*((mx(1)+mx(2)+mx(3)+mx(4))-(mx(5)+mx(6)+mx(7)+mx(8)))*dli(1) + &
-                             0.25*((my(1)+my(3)+my(5)+my(7))-(my(2)+my(4)+my(6)+my(8)))*dli(2) + &
-                             0.25*((mz(1)+mz(2)+mz(5)+mz(6))-(mz(3)+mz(4)+mz(7)+mz(8)))*dzfi(k) )
-        end do
-      end do
-    end do
-  end subroutine acdi_cmpt_norm_curv
-  !
   pure elemental real(rp) function acdi_phi(psi,seps) result(phi)
     use mod_param, only:eps
     !$acc routine seq
@@ -350,7 +235,6 @@ module mod_acdi
     ! computes the signed-distance field phi from the smoothed volume fraction field psi
     !
     implicit none
-    !
     real(rp), intent(in) :: psi,seps
     phi = seps*log((psi+eps)/(1.-psi+eps))
   end function acdi_phi
