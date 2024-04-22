@@ -669,7 +669,7 @@ module mod_mom
           rhoxm = rho + drho*c_ccc
           rhoyp = rho + 0.25*drho*(c_ccc+c_pcc+c_cpc+c_ppc)
           rhoym = rho + 0.25*drho*(c_cmc+c_pmc+c_ccc+c_pcc)
-          rhozp = rho + 0.25*drho*(c_ccc+c_pcc+c_ccp+c_cpp)
+          rhozp = rho + 0.25*drho*(c_ccc+c_pcc+c_ccp+c_pcp)
           rhozm = rho + 0.25*drho*(c_ccm+c_pcm+c_ccc+c_pcc)
           rhox  = rho + drho*psixp
           uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)*rhoxp
