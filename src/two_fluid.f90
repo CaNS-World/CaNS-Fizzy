@@ -59,13 +59,13 @@ module mod_two_fluid
   !
   subroutine cmpt_norm_curv(n,dli,dzci,dzfi,psi,kappa,normx,normy,normz)
     !
-    ! computes the normals and curvature based on a VoF field
-    ! using finite-differences based on Youngs method
+    ! computes the normals and curvature based on a volume-of-fluid
+    ! or level-set field using finite-differences based on Youngs method
     !
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3)           :: n
-    real(rp), intent(in ), dimension(3)           :: dli
+    integer , intent(in ), dimension(3) :: n
+    real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
     real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
@@ -73,18 +73,13 @@ module mod_two_fluid
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
-    real(rp) :: norm
-    logical , save :: is_first = .true.
-    real(rp), allocatable, dimension(:), save :: mx,my,mz
-    integer  :: i,j,k,q
+    real(rp) :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
+                my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
+                mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8
+    real(rp) :: norm,norm_x,norm_y,norm_z
+    integer  :: i,j,k
     !
-    if(is_first) then
-      is_first = .false.
-      allocate(mx(8),my(8),mz(8))
-      !$acc enter data create(mx,my,mz)
-    end if
-    !
-    !$acc parallel loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -116,56 +111,65 @@ module mod_two_fluid
           psipcp = psi(i+1,j  ,k+1)
           psippp = psi(i+1,j+1,k+1)
           !
-          mx(1) = 0.25*((psipcc+psippc+psipcp+psippp)-(psiccc+psicpc+psiccp+psicpp))*dli(1)
-          mx(2) = 0.25*((psipcc+psipmc+psipcp+psipmp)-(psiccc+psicmc+psiccp+psicmp))*dli(1)
-          mx(3) = 0.25*((psipcc+psippc+psipcm+psippm)-(psiccc+psicpc+psiccm+psicpm))*dli(1)
-          mx(4) = 0.25*((psipcc+psipmc+psipcm+psipmm)-(psiccc+psicmc+psiccm+psicmm))*dli(1)
-          mx(5) = 0.25*((psiccc+psicpc+psiccp+psicpp)-(psimcc+psimpc+psimcp+psimpp))*dli(1)
-          mx(6) = 0.25*((psiccc+psicmc+psiccp+psicmp)-(psimcc+psimmc+psimcp+psimmp))*dli(1)
-          mx(7) = 0.25*((psiccc+psicpc+psiccm+psicpm)-(psimcc+psimpc+psimcm+psimpm))*dli(1)
-          mx(8) = 0.25*((psiccc+psicmc+psiccm+psicmm)-(psimcc+psimmc+psimcm+psimmm))*dli(1)
+          mx_1 = 0.25*((psipcc+psippc+psipcp+psippp)-(psiccc+psicpc+psiccp+psicpp))*dli(1)
+          mx_2 = 0.25*((psipcc+psipmc+psipcp+psipmp)-(psiccc+psicmc+psiccp+psicmp))*dli(1)
+          mx_3 = 0.25*((psipcc+psippc+psipcm+psippm)-(psiccc+psicpc+psiccm+psicpm))*dli(1)
+          mx_4 = 0.25*((psipcc+psipmc+psipcm+psipmm)-(psiccc+psicmc+psiccm+psicmm))*dli(1)
+          mx_5 = 0.25*((psiccc+psicpc+psiccp+psicpp)-(psimcc+psimpc+psimcp+psimpp))*dli(1)
+          mx_6 = 0.25*((psiccc+psicmc+psiccp+psicmp)-(psimcc+psimmc+psimcp+psimmp))*dli(1)
+          mx_7 = 0.25*((psiccc+psicpc+psiccm+psicpm)-(psimcc+psimpc+psimcm+psimpm))*dli(1)
+          mx_8 = 0.25*((psiccc+psicmc+psiccm+psicmm)-(psimcc+psimmc+psimcm+psimmm))*dli(1)
           !
-          my(1) = 0.25*((psicpc+psippc+psicpp+psippp)-(psiccc+psipcc+psiccp+psipcp))*dli(2)
-          my(2) = 0.25*((psiccc+psipcc+psiccp+psipcp)-(psicmc+psipmc+psicmp+psipmp))*dli(2)
-          my(3) = 0.25*((psicpc+psippc+psicpm+psippm)-(psiccc+psipcc+psiccm+psipcm))*dli(2)
-          my(4) = 0.25*((psiccc+psipcc+psiccm+psipcm)-(psicmc+psipmc+psicmm+psipmm))*dli(2)
-          my(5) = 0.25*((psicpc+psimpc+psicpp+psimpp)-(psiccc+psimcc+psiccp+psimcp))*dli(2)
-          my(6) = 0.25*((psiccc+psimcc+psiccp+psimcp)-(psicmc+psimmc+psicmp+psimmp))*dli(2)
-          my(7) = 0.25*((psicpc+psimpc+psicpm+psimpm)-(psiccc+psimcc+psiccm+psimcm))*dli(2)
-          my(8) = 0.25*((psiccc+psimcc+psiccm+psimcm)-(psicmc+psimmc+psicmm+psimmm))*dli(2)
+          my_1 = 0.25*((psicpc+psippc+psicpp+psippp)-(psiccc+psipcc+psiccp+psipcp))*dli(2)
+          my_2 = 0.25*((psiccc+psipcc+psiccp+psipcp)-(psicmc+psipmc+psicmp+psipmp))*dli(2)
+          my_3 = 0.25*((psicpc+psippc+psicpm+psippm)-(psiccc+psipcc+psiccm+psipcm))*dli(2)
+          my_4 = 0.25*((psiccc+psipcc+psiccm+psipcm)-(psicmc+psipmc+psicmm+psipmm))*dli(2)
+          my_5 = 0.25*((psicpc+psimpc+psicpp+psimpp)-(psiccc+psimcc+psiccp+psimcp))*dli(2)
+          my_6 = 0.25*((psiccc+psimcc+psiccp+psimcp)-(psicmc+psimmc+psicmp+psimmp))*dli(2)
+          my_7 = 0.25*((psicpc+psimpc+psicpm+psimpm)-(psiccc+psimcc+psiccm+psimcm))*dli(2)
+          my_8 = 0.25*((psiccc+psimcc+psiccm+psimcm)-(psicmc+psimmc+psicmm+psimmm))*dli(2)
           !
-          mz(1) = 0.25*((psiccp+psipcp+psicpp+psippp)-(psiccc+psipcc+psicpc+psippc))*dzci(k  )
-          mz(2) = 0.25*((psiccp+psipcp+psicmp+psipmp)-(psiccc+psipcc+psicmc+psipmc))*dzci(k  )
-          mz(3) = 0.25*((psiccc+psipcc+psicpc+psippc)-(psiccm+psipcm+psicpm+psippm))*dzci(k-1)
-          mz(4) = 0.25*((psiccc+psipcc+psicmc+psipmc)-(psiccm+psipcm+psicmm+psipmm))*dzci(k-1)
-          mz(5) = 0.25*((psiccp+psimcp+psicpp+psimpp)-(psiccc+psimcc+psicpc+psimpc))*dzci(k  )
-          mz(6) = 0.25*((psiccp+psimcp+psicmp+psimmp)-(psiccc+psimcc+psicmc+psimmc))*dzci(k  )
-          mz(7) = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
-          mz(8) = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
+          mz_1 = 0.25*((psiccp+psipcp+psicpp+psippp)-(psiccc+psipcc+psicpc+psippc))*dzci(k  )
+          mz_2 = 0.25*((psiccp+psipcp+psicmp+psipmp)-(psiccc+psipcc+psicmc+psipmc))*dzci(k  )
+          mz_3 = 0.25*((psiccc+psipcc+psicpc+psippc)-(psiccm+psipcm+psicpm+psippm))*dzci(k-1)
+          mz_4 = 0.25*((psiccc+psipcc+psicmc+psipmc)-(psiccm+psipcm+psicmm+psipmm))*dzci(k-1)
+          mz_5 = 0.25*((psiccp+psimcp+psicpp+psimpp)-(psiccc+psimcc+psicpc+psimpc))*dzci(k  )
+          mz_6 = 0.25*((psiccp+psimcp+psicmp+psimmp)-(psiccc+psimcc+psicmc+psimmc))*dzci(k  )
+          mz_7 = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
+          mz_8 = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
           !
-          !$acc loop seq
-          do q=1,8
-            norm = sqrt(mx(q)**2+my(q)**2+mz(q)**2)+eps
-            mx(q) = mx(q)/norm
-            my(q) = my(q)/norm
-            mz(q) = mz(q)/norm
-          end do
+          norm = sqrt(mx_1**2+my_1**2+mz_1**2)+eps
+          mx_1 = mx_1/norm; my_1 = my_1/norm; mz_1 = mz_1/norm
+          norm = sqrt(mx_2**2+my_2**2+mz_2**2)+eps
+          mx_2 = mx_2/norm; my_2 = my_2/norm; mz_2 = mz_2/norm
+          norm = sqrt(mx_3**2+my_3**2+mz_3**2)+eps
+          mx_3 = mx_3/norm; my_3 = my_3/norm; mz_3 = mz_3/norm
+          norm = sqrt(mx_4**2+my_4**2+mz_4**2)+eps
+          mx_4 = mx_4/norm; my_4 = my_4/norm; mz_4 = mz_4/norm
+          norm = sqrt(mx_5**2+my_5**2+mz_5**2)+eps
+          mx_5 = mx_5/norm; my_5 = my_5/norm; mz_5 = mz_5/norm
+          norm = sqrt(mx_6**2+my_6**2+mz_6**2)+eps
+          mx_6 = mx_6/norm; my_6 = my_6/norm; mz_6 = mz_6/norm
+          norm = sqrt(mx_7**2+my_7**2+mz_7**2)+eps
+          mx_7 = mx_7/norm; my_7 = my_7/norm; mz_7 = mz_7/norm
+          norm = sqrt(mx_8**2+my_8**2+mz_8**2)+eps
+          mx_8 = mx_8/norm; my_8 = my_8/norm; mz_8 = mz_8/norm
           !
           ! compute the normal vector
           !
-          normx(i,j,k) = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
-          normy(i,j,k) = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
-          normz(i,j,k) = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
-          norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
-          normx(i,j,k) = normx(i,j,k)/norm
-          normy(i,j,k) = normy(i,j,k)/norm
-          normz(i,j,k) = normz(i,j,k)/norm
+          norm_x = .125*(mx_1+mx_2+mx_3+mx_4+mx_5+mx_6+mx_7+mx_8)
+          norm_y = .125*(my_1+my_2+my_3+my_4+my_5+my_6+my_7+my_8)
+          norm_z = .125*(mz_1+mz_2+mz_3+mz_4+mz_5+mz_6+mz_7+mz_8)
+          norm = sqrt(norm_x**2+norm_y**2+norm_z**2)+eps
+          normx(i,j,k) = norm_x/norm
+          normy(i,j,k) = norm_y/norm
+          normz(i,j,k) = norm_z/norm
           !
           ! compute the curvature
           !
-          kappa(i,j,k) = - ( 0.25*((mx(1)+mx(2)+mx(3)+mx(4))-(mx(5)+mx(6)+mx(7)+mx(8)))*dli(1) + &
-                             0.25*((my(1)+my(3)+my(5)+my(7))-(my(2)+my(4)+my(6)+my(8)))*dli(2) + &
-                             0.25*((mz(1)+mz(2)+mz(5)+mz(6))-(mz(3)+mz(4)+mz(7)+mz(8)))*dzfi(k) )
+          kappa(i,j,k) = - ( 0.25*((mx_1+mx_2+mx_3+mx_4)-(mx_5+mx_6+mx_7+mx_8))*dli(1) + &
+                             0.25*((my_1+my_3+my_5+my_7)-(my_2+my_4+my_6+my_8))*dli(2) + &
+                             0.25*((mz_1+mz_2+mz_5+mz_6)-(mz_3+mz_4+mz_7+mz_8))*dzfi(k) )
         end do
       end do
     end do
@@ -449,4 +453,120 @@ module mod_two_fluid
       res = .5/eps + .5/eps*cos(pi*r/eps)
     end if
   end function smooth_impulse
+#if 0
+  subroutine cmpt_norm_curv_old(n,dli,dzci,dzfi,psi,kappa,normx,normy,normz)
+    !
+    ! computes the normals and curvature based on a VoF field
+    ! using finite-differences based on Youngs method
+    ! (replaced by `cmpt_norm_curv` above, which is slightly faster on GPUs)
+    !
+    implicit none
+    real(rp), parameter :: eps = epsilon(1._rp)
+    integer , intent(in ), dimension(3)           :: n
+    real(rp), intent(in ), dimension(3)           :: dli
+    real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
+    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
+    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
+    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
+    real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
+                psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
+                psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
+    real(rp) :: norm
+    logical , save :: is_first = .true.
+    real(rp), allocatable, dimension(:), save :: mx,my,mz
+    integer  :: i,j,k,q
+    !
+    if(is_first) then
+      is_first = .false.
+      allocate(mx(8),my(8),mz(8))
+      !$acc enter data create(mx,my,mz)
+    end if
+    !
+    !$acc parallel loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          psimmm = psi(i-1,j-1,k-1)
+          psimcm = psi(i-1,j  ,k-1)
+          psimpm = psi(i-1,j+1,k-1)
+          psicmm = psi(i  ,j-1,k-1)
+          psiccm = psi(i  ,j  ,k-1)
+          psicpm = psi(i  ,j+1,k-1)
+          psipmm = psi(i+1,j-1,k-1)
+          psipcm = psi(i+1,j  ,k-1)
+          psippm = psi(i+1,j+1,k-1)
+          psimmc = psi(i-1,j-1,k  )
+          psimcc = psi(i-1,j  ,k  )
+          psimpc = psi(i-1,j+1,k  )
+          psicmc = psi(i  ,j-1,k  )
+          psiccc = psi(i  ,j  ,k  )
+          psicpc = psi(i  ,j+1,k  )
+          psipmc = psi(i+1,j-1,k  )
+          psipcc = psi(i+1,j  ,k  )
+          psippc = psi(i+1,j+1,k  )
+          psimmp = psi(i-1,j-1,k+1)
+          psimcp = psi(i-1,j  ,k+1)
+          psimpp = psi(i-1,j+1,k+1)
+          psicmp = psi(i  ,j-1,k+1)
+          psiccp = psi(i  ,j  ,k+1)
+          psicpp = psi(i  ,j+1,k+1)
+          psipmp = psi(i+1,j-1,k+1)
+          psipcp = psi(i+1,j  ,k+1)
+          psippp = psi(i+1,j+1,k+1)
+          !
+          mx(1) = 0.25*((psipcc+psippc+psipcp+psippp)-(psiccc+psicpc+psiccp+psicpp))*dli(1)
+          mx(2) = 0.25*((psipcc+psipmc+psipcp+psipmp)-(psiccc+psicmc+psiccp+psicmp))*dli(1)
+          mx(3) = 0.25*((psipcc+psippc+psipcm+psippm)-(psiccc+psicpc+psiccm+psicpm))*dli(1)
+          mx(4) = 0.25*((psipcc+psipmc+psipcm+psipmm)-(psiccc+psicmc+psiccm+psicmm))*dli(1)
+          mx(5) = 0.25*((psiccc+psicpc+psiccp+psicpp)-(psimcc+psimpc+psimcp+psimpp))*dli(1)
+          mx(6) = 0.25*((psiccc+psicmc+psiccp+psicmp)-(psimcc+psimmc+psimcp+psimmp))*dli(1)
+          mx(7) = 0.25*((psiccc+psicpc+psiccm+psicpm)-(psimcc+psimpc+psimcm+psimpm))*dli(1)
+          mx(8) = 0.25*((psiccc+psicmc+psiccm+psicmm)-(psimcc+psimmc+psimcm+psimmm))*dli(1)
+          !
+          my(1) = 0.25*((psicpc+psippc+psicpp+psippp)-(psiccc+psipcc+psiccp+psipcp))*dli(2)
+          my(2) = 0.25*((psiccc+psipcc+psiccp+psipcp)-(psicmc+psipmc+psicmp+psipmp))*dli(2)
+          my(3) = 0.25*((psicpc+psippc+psicpm+psippm)-(psiccc+psipcc+psiccm+psipcm))*dli(2)
+          my(4) = 0.25*((psiccc+psipcc+psiccm+psipcm)-(psicmc+psipmc+psicmm+psipmm))*dli(2)
+          my(5) = 0.25*((psicpc+psimpc+psicpp+psimpp)-(psiccc+psimcc+psiccp+psimcp))*dli(2)
+          my(6) = 0.25*((psiccc+psimcc+psiccp+psimcp)-(psicmc+psimmc+psicmp+psimmp))*dli(2)
+          my(7) = 0.25*((psicpc+psimpc+psicpm+psimpm)-(psiccc+psimcc+psiccm+psimcm))*dli(2)
+          my(8) = 0.25*((psiccc+psimcc+psiccm+psimcm)-(psicmc+psimmc+psicmm+psimmm))*dli(2)
+          !
+          mz(1) = 0.25*((psiccp+psipcp+psicpp+psippp)-(psiccc+psipcc+psicpc+psippc))*dzci(k  )
+          mz(2) = 0.25*((psiccp+psipcp+psicmp+psipmp)-(psiccc+psipcc+psicmc+psipmc))*dzci(k  )
+          mz(3) = 0.25*((psiccc+psipcc+psicpc+psippc)-(psiccm+psipcm+psicpm+psippm))*dzci(k-1)
+          mz(4) = 0.25*((psiccc+psipcc+psicmc+psipmc)-(psiccm+psipcm+psicmm+psipmm))*dzci(k-1)
+          mz(5) = 0.25*((psiccp+psimcp+psicpp+psimpp)-(psiccc+psimcc+psicpc+psimpc))*dzci(k  )
+          mz(6) = 0.25*((psiccp+psimcp+psicmp+psimmp)-(psiccc+psimcc+psicmc+psimmc))*dzci(k  )
+          mz(7) = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
+          mz(8) = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
+          !
+          !$acc loop seq
+          do q=1,8
+            norm = sqrt(mx(q)**2+my(q)**2+mz(q)**2)+eps
+            mx(q) = mx(q)/norm
+            my(q) = my(q)/norm
+            mz(q) = mz(q)/norm
+          end do
+          !
+          ! compute the normal vector
+          !
+          normx(i,j,k) = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
+          normy(i,j,k) = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
+          normz(i,j,k) = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
+          norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
+          normx(i,j,k) = normx(i,j,k)/norm
+          normy(i,j,k) = normy(i,j,k)/norm
+          normz(i,j,k) = normz(i,j,k)/norm
+          !
+          ! compute the curvature
+          !
+          kappa(i,j,k) = - ( 0.25*((mx(1)+mx(2)+mx(3)+mx(4))-(mx(5)+mx(6)+mx(7)+mx(8)))*dli(1) + &
+                             0.25*((my(1)+my(3)+my(5)+my(7))-(my(2)+my(4)+my(6)+my(8)))*dli(2) + &
+                             0.25*((mz(1)+mz(2)+mz(5)+mz(6))-(mz(3)+mz(4)+mz(7)+mz(8)))*dzfi(k) )
+        end do
+      end do
+    end do
+  end subroutine cmpt_norm_curv_old
+#endif
 end module mod_two_fluid
