@@ -819,7 +819,7 @@ module mod_mom
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/rhozp + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/rhozp + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)/rhozp
-#if defined(_ACDI_REGULARIZATION_TERM)
+#if defined(_CONSERVATIVE_MOMENTUM)
           !
           ! acdi interface regularization term
           ! (WIP: to be validated)
