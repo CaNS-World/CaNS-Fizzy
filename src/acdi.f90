@@ -221,22 +221,11 @@ module mod_acdi
     real(rp) :: phimmm,phimcm,phimpm,phicmm,phiccm,phicpm,phipmm,phipcm,phippm, &
                 phimmc,phimcc,phimpc,phicmc,phiccc,phicpc,phipmc,phipcc,phippc, &
                 phimmp,phimcp,phimpp,phicmp,phiccp,phicpp,phipmp,phipcp,phippp
-    real(rp) :: norm,norm_1,norm_2,norm_3,norm_4,norm_5,norm_6,norm_7,norm_8
-    logical , save :: is_first = .true.
-    real(rp), allocatable, save :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
-                                   my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
-                                   mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8
-    integer  :: i,j,k,q
-    !
-    if(is_first) then
-      is_first = .false.
-      allocate(mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
-               my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
-               mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8)
-      !$acc enter data create(mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8)
-      !$acc enter data create(my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8)
-      !$acc enter data create(mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8)
-    end if
+    real(rp) :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
+                my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
+                mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8
+    real(rp) :: norm,norm_x,norm_y,norm_z
+    integer  :: i,j,k
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -297,48 +286,32 @@ module mod_acdi
           mz_7 = 0.25*((phiccc+phimcc+phicpc+phimpc)-(phiccm+phimcm+phicpm+phimpm))*dzci(k-1)
           mz_8 = 0.25*((phiccc+phimcc+phicmc+phimmc)-(phiccm+phimcm+phicmm+phimmm))*dzci(k-1)
           !
-          norm_1 = sqrt(mx_1**2+my_1**2+mz_1**2)+eps
-          norm_2 = sqrt(mx_2**2+my_2**2+mz_2**2)+eps
-          norm_3 = sqrt(mx_3**2+my_3**2+mz_3**2)+eps
-          norm_4 = sqrt(mx_4**2+my_4**2+mz_4**2)+eps
-          norm_5 = sqrt(mx_5**2+my_5**2+mz_5**2)+eps
-          norm_6 = sqrt(mx_6**2+my_6**2+mz_6**2)+eps
-          norm_7 = sqrt(mx_7**2+my_7**2+mz_7**2)+eps
-          norm_8 = sqrt(mx_8**2+my_8**2+mz_8**2)+eps
-          mx_1 = mx_1/norm_1
-          mx_2 = mx_2/norm_2
-          mx_3 = mx_3/norm_3
-          mx_4 = mx_4/norm_4
-          mx_5 = mx_5/norm_5
-          mx_6 = mx_6/norm_6
-          mx_7 = mx_7/norm_7
-          mx_8 = mx_8/norm_8
-          my_1 = my_1/norm_1
-          my_2 = my_2/norm_2
-          my_3 = my_3/norm_3
-          my_4 = my_4/norm_4
-          my_5 = my_5/norm_5
-          my_6 = my_6/norm_6
-          my_7 = my_7/norm_7
-          my_8 = my_8/norm_8
-          mz_1 = mz_1/norm_1
-          mz_2 = mz_2/norm_2
-          mz_3 = mz_3/norm_3
-          mz_4 = mz_4/norm_4
-          mz_5 = mz_5/norm_5
-          mz_6 = mz_6/norm_6
-          mz_7 = mz_7/norm_7
-          mz_8 = mz_8/norm_8
+          norm = sqrt(mx_1**2+my_1**2+mz_1**2)+eps
+          mx_1 = mx_1/norm; my_1 = my_1/norm; mz_1 = mz_1/norm
+          norm = sqrt(mx_2**2+my_2**2+mz_2**2)+eps
+          mx_2 = mx_2/norm; my_2 = my_2/norm; mz_2 = mz_2/norm
+          norm = sqrt(mx_3**2+my_3**2+mz_3**2)+eps
+          mx_3 = mx_3/norm; my_3 = my_3/norm; mz_3 = mz_3/norm
+          norm = sqrt(mx_4**2+my_4**2+mz_4**2)+eps
+          mx_4 = mx_4/norm; my_4 = my_4/norm; mz_4 = mz_4/norm
+          norm = sqrt(mx_5**2+my_5**2+mz_5**2)+eps
+          mx_5 = mx_5/norm; my_5 = my_5/norm; mz_5 = mz_5/norm
+          norm = sqrt(mx_6**2+my_6**2+mz_6**2)+eps
+          mx_6 = mx_6/norm; my_6 = my_6/norm; mz_6 = mz_6/norm
+          norm = sqrt(mx_7**2+my_7**2+mz_7**2)+eps
+          mx_7 = mx_7/norm; my_7 = my_7/norm; mz_7 = mz_7/norm
+          norm = sqrt(mx_8**2+my_8**2+mz_8**2)+eps
+          mx_8 = mx_8/norm; my_8 = my_8/norm; mz_8 = mz_8/norm
           !
           ! compute the normal vector
           !
-          normx(i,j,k) = .125*(mx_1+mx_2+mx_3+mx_4+mx_5+mx_6+mx_7+mx_8)
-          normy(i,j,k) = .125*(my_1+my_2+my_3+my_4+my_5+my_6+my_7+my_8)
-          normz(i,j,k) = .125*(mz_1+mz_2+mz_3+mz_4+mz_5+mz_6+mz_7+mz_8)
-          norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
-          normx(i,j,k) = normx(i,j,k)/norm
-          normy(i,j,k) = normy(i,j,k)/norm
-          normz(i,j,k) = normz(i,j,k)/norm
+          norm_x = .125*(mx_1+mx_2+mx_3+mx_4+mx_5+mx_6+mx_7+mx_8)
+          norm_y = .125*(my_1+my_2+my_3+my_4+my_5+my_6+my_7+my_8)
+          norm_z = .125*(mz_1+mz_2+mz_3+mz_4+mz_5+mz_6+mz_7+mz_8)
+          norm = sqrt(norm_x**2+norm_y**2+norm_z**2)+eps
+          normx(i,j,k) = norm_x/norm
+          normy(i,j,k) = norm_y/norm
+          normz(i,j,k) = norm_z/norm
           !
           ! compute the curvature
           !
