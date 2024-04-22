@@ -11,7 +11,7 @@ module mod_acdi
   use mod_param , only: eps
   implicit none
   private
-  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_norm_curv
+  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_norm_curv,acdi_cmpt_phi
   contains
   subroutine acdi_set_epsilon(dl,dzfi,seps_factor,seps)
     !
@@ -61,7 +61,7 @@ module mod_acdi
     gam = sqrt(velmax)*gam_factor
   end subroutine acdi_set_gamma
   !
-  subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,psi,dpsidt,rglrx,rglry,rglrz)
+  subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt,rglrx,rglry,rglrz)
     !
     !
     !
@@ -72,6 +72,7 @@ module mod_acdi
     real(rp), intent(in   )                      :: gam,seps
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
     real(rp), intent(out  ), dimension(0:,0:,0:), optional :: rglrx,rglry,rglrz
@@ -160,13 +161,20 @@ module mod_acdi
           !
           ! sharpening term
           !
-          phi_ccm = seps*log((psi_ccm+eps)/(1.-psi_ccm+eps))
-          phi_cmc = seps*log((psi_cmc+eps)/(1.-psi_cmc+eps))
-          phi_mcc = seps*log((psi_mcc+eps)/(1.-psi_mcc+eps))
-          phi_ccc = seps*log((psi_ccc+eps)/(1.-psi_ccc+eps))
-          phi_pcc = seps*log((psi_pcc+eps)/(1.-psi_pcc+eps))
-          phi_cpc = seps*log((psi_cpc+eps)/(1.-psi_cpc+eps))
-          phi_ccp = seps*log((psi_ccp+eps)/(1.-psi_ccp+eps))
+          phi_ccm = phi(i  ,j  ,k-1)!seps*log((psi_ccm+eps)/(1.-psi_ccm+eps))
+          phi_cmc = phi(i  ,j-1,k  )!seps*log((psi_cmc+eps)/(1.-psi_cmc+eps))
+          phi_mcc = phi(i-1,j  ,k  )!seps*log((psi_mcc+eps)/(1.-psi_mcc+eps))
+          phi_ccc = phi(i  ,j  ,k  )!seps*log((psi_ccc+eps)/(1.-psi_ccc+eps))
+          phi_pcc = phi(i+1,j  ,k  )!seps*log((psi_pcc+eps)/(1.-psi_pcc+eps))
+          phi_cpc = phi(i  ,j+1,k  )!seps*log((psi_cpc+eps)/(1.-psi_cpc+eps))
+          phi_ccp = phi(i  ,j  ,k+1)!seps*log((psi_ccp+eps)/(1.-psi_ccp+eps))
+          !phi_ccm = seps*log((psi_ccm+eps)/(1.-psi_ccm+eps))
+          !phi_cmc = seps*log((psi_cmc+eps)/(1.-psi_cmc+eps))
+          !phi_mcc = seps*log((psi_mcc+eps)/(1.-psi_mcc+eps))
+          !phi_ccc = seps*log((psi_ccc+eps)/(1.-psi_ccc+eps))
+          !phi_pcc = seps*log((psi_pcc+eps)/(1.-psi_pcc+eps))
+          !phi_cpc = seps*log((psi_cpc+eps)/(1.-psi_cpc+eps))
+          !phi_ccp = seps*log((psi_ccp+eps)/(1.-psi_ccp+eps))
           !
           rn_01 = normx_xm/sqrt(normx_xm**2+normy_xm**2+normz_xm**2+eps)
           rn_11 = normx_xp/sqrt(normx_xp**2+normy_xp**2+normz_xp**2+eps)
@@ -204,7 +212,31 @@ module mod_acdi
     end do
   end subroutine acdi_transport_pf
   !
-  subroutine acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
+  subroutine acdi_cmpt_phi(n,seps,psi,phi)
+    !
+    ! computes the signed-distance field phi from the smoothed volume fraction field psi
+    !
+    implicit none
+    !
+    integer , intent(in ), dimension(3)           :: n
+    real(rp), intent(in)                          :: seps
+    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
+    real(rp), intent(out), dimension(0:,0:,0:)    :: phi
+    real(rp) :: psi_aux
+    integer  :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          psi_aux = psi(i,j,k)
+          phi(i,j,k) = seps*log((psi_aux+eps)/(1.-psi_aux+eps))
+        end do
+      end do
+    end do
+  end subroutine acdi_cmpt_phi
+  !
+  subroutine acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,phi,kappa,normx,normy,normz)
     !
     ! computes the normals and curvature based on a phase field
     ! using finite-differences based on Youngs method
@@ -216,6 +248,7 @@ module mod_acdi
     real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
     real(rp), intent(in)                          :: seps
     real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
+    real(rp), intent(in ), dimension(0:,0:,0:)    :: phi
     real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
     real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
     real(rp) :: phimmm,phimcm,phimpm,phicmm,phiccm,phicpm,phipmm,phipcm,phippm, &
@@ -236,33 +269,60 @@ module mod_acdi
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          phimmm = seps*log((psi(i-1,j-1,k-1)+eps)/(1.-psi(i-1,j-1,k-1)+eps))
-          phimcm = seps*log((psi(i-1,j  ,k-1)+eps)/(1.-psi(i-1,j  ,k-1)+eps))
-          phimpm = seps*log((psi(i-1,j+1,k-1)+eps)/(1.-psi(i-1,j+1,k-1)+eps))
-          phicmm = seps*log((psi(i  ,j-1,k-1)+eps)/(1.-psi(i  ,j-1,k-1)+eps))
-          phiccm = seps*log((psi(i  ,j  ,k-1)+eps)/(1.-psi(i  ,j  ,k-1)+eps))
-          phicpm = seps*log((psi(i  ,j+1,k-1)+eps)/(1.-psi(i  ,j+1,k-1)+eps))
-          phipmm = seps*log((psi(i+1,j-1,k-1)+eps)/(1.-psi(i+1,j-1,k-1)+eps))
-          phipcm = seps*log((psi(i+1,j  ,k-1)+eps)/(1.-psi(i+1,j  ,k-1)+eps))
-          phippm = seps*log((psi(i+1,j+1,k-1)+eps)/(1.-psi(i+1,j+1,k-1)+eps))
-          phimmc = seps*log((psi(i-1,j-1,k  )+eps)/(1.-psi(i-1,j-1,k  )+eps))
-          phimcc = seps*log((psi(i-1,j  ,k  )+eps)/(1.-psi(i-1,j  ,k  )+eps))
-          phimpc = seps*log((psi(i-1,j+1,k  )+eps)/(1.-psi(i-1,j+1,k  )+eps))
-          phicmc = seps*log((psi(i  ,j-1,k  )+eps)/(1.-psi(i  ,j-1,k  )+eps))
-          phiccc = seps*log((psi(i  ,j  ,k  )+eps)/(1.-psi(i  ,j  ,k  )+eps))
-          phicpc = seps*log((psi(i  ,j+1,k  )+eps)/(1.-psi(i  ,j+1,k  )+eps))
-          phipmc = seps*log((psi(i+1,j-1,k  )+eps)/(1.-psi(i+1,j-1,k  )+eps))
-          phipcc = seps*log((psi(i+1,j  ,k  )+eps)/(1.-psi(i+1,j  ,k  )+eps))
-          phippc = seps*log((psi(i+1,j+1,k  )+eps)/(1.-psi(i+1,j+1,k  )+eps))
-          phimmp = seps*log((psi(i-1,j-1,k+1)+eps)/(1.-psi(i-1,j-1,k+1)+eps))
-          phimcp = seps*log((psi(i-1,j  ,k+1)+eps)/(1.-psi(i-1,j  ,k+1)+eps))
-          phimpp = seps*log((psi(i-1,j+1,k+1)+eps)/(1.-psi(i-1,j+1,k+1)+eps))
-          phicmp = seps*log((psi(i  ,j-1,k+1)+eps)/(1.-psi(i  ,j-1,k+1)+eps))
-          phiccp = seps*log((psi(i  ,j  ,k+1)+eps)/(1.-psi(i  ,j  ,k+1)+eps))
-          phicpp = seps*log((psi(i  ,j+1,k+1)+eps)/(1.-psi(i  ,j+1,k+1)+eps))
-          phipmp = seps*log((psi(i+1,j-1,k+1)+eps)/(1.-psi(i+1,j-1,k+1)+eps))
-          phipcp = seps*log((psi(i+1,j  ,k+1)+eps)/(1.-psi(i+1,j  ,k+1)+eps))
-          phippp = seps*log((psi(i+1,j+1,k+1)+eps)/(1.-psi(i+1,j+1,k+1)+eps))
+          !phimmm = seps*log((psi(i-1,j-1,k-1)+eps)/(1.-psi(i-1,j-1,k-1)+eps))
+          !phimcm = seps*log((psi(i-1,j  ,k-1)+eps)/(1.-psi(i-1,j  ,k-1)+eps))
+          !phimpm = seps*log((psi(i-1,j+1,k-1)+eps)/(1.-psi(i-1,j+1,k-1)+eps))
+          !phicmm = seps*log((psi(i  ,j-1,k-1)+eps)/(1.-psi(i  ,j-1,k-1)+eps))
+          !phiccm = seps*log((psi(i  ,j  ,k-1)+eps)/(1.-psi(i  ,j  ,k-1)+eps))
+          !phicpm = seps*log((psi(i  ,j+1,k-1)+eps)/(1.-psi(i  ,j+1,k-1)+eps))
+          !phipmm = seps*log((psi(i+1,j-1,k-1)+eps)/(1.-psi(i+1,j-1,k-1)+eps))
+          !phipcm = seps*log((psi(i+1,j  ,k-1)+eps)/(1.-psi(i+1,j  ,k-1)+eps))
+          !phippm = seps*log((psi(i+1,j+1,k-1)+eps)/(1.-psi(i+1,j+1,k-1)+eps))
+          !phimmc = seps*log((psi(i-1,j-1,k  )+eps)/(1.-psi(i-1,j-1,k  )+eps))
+          !phimcc = seps*log((psi(i-1,j  ,k  )+eps)/(1.-psi(i-1,j  ,k  )+eps))
+          !phimpc = seps*log((psi(i-1,j+1,k  )+eps)/(1.-psi(i-1,j+1,k  )+eps))
+          !phicmc = seps*log((psi(i  ,j-1,k  )+eps)/(1.-psi(i  ,j-1,k  )+eps))
+          !phiccc = seps*log((psi(i  ,j  ,k  )+eps)/(1.-psi(i  ,j  ,k  )+eps))
+          !phicpc = seps*log((psi(i  ,j+1,k  )+eps)/(1.-psi(i  ,j+1,k  )+eps))
+          !phipmc = seps*log((psi(i+1,j-1,k  )+eps)/(1.-psi(i+1,j-1,k  )+eps))
+          !phipcc = seps*log((psi(i+1,j  ,k  )+eps)/(1.-psi(i+1,j  ,k  )+eps))
+          !phippc = seps*log((psi(i+1,j+1,k  )+eps)/(1.-psi(i+1,j+1,k  )+eps))
+          !phimmp = seps*log((psi(i-1,j-1,k+1)+eps)/(1.-psi(i-1,j-1,k+1)+eps))
+          !phimcp = seps*log((psi(i-1,j  ,k+1)+eps)/(1.-psi(i-1,j  ,k+1)+eps))
+          !phimpp = seps*log((psi(i-1,j+1,k+1)+eps)/(1.-psi(i-1,j+1,k+1)+eps))
+          !phicmp = seps*log((psi(i  ,j-1,k+1)+eps)/(1.-psi(i  ,j-1,k+1)+eps))
+          !phiccp = seps*log((psi(i  ,j  ,k+1)+eps)/(1.-psi(i  ,j  ,k+1)+eps))
+          !phicpp = seps*log((psi(i  ,j+1,k+1)+eps)/(1.-psi(i  ,j+1,k+1)+eps))
+          !phipmp = seps*log((psi(i+1,j-1,k+1)+eps)/(1.-psi(i+1,j-1,k+1)+eps))
+          !phipcp = seps*log((psi(i+1,j  ,k+1)+eps)/(1.-psi(i+1,j  ,k+1)+eps))
+          !phippp = seps*log((psi(i+1,j+1,k+1)+eps)/(1.-psi(i+1,j+1,k+1)+eps))
+          phimmm = phi(i-1,j-1,k-1)
+          phimcm = phi(i-1,j  ,k-1)
+          phimpm = phi(i-1,j+1,k-1)
+          phicmm = phi(i  ,j-1,k-1)
+          phiccm = phi(i  ,j  ,k-1)
+          phicpm = phi(i  ,j+1,k-1)
+          phipmm = phi(i+1,j-1,k-1)
+          phipcm = phi(i+1,j  ,k-1)
+          phippm = phi(i+1,j+1,k-1)
+          phimmc = phi(i-1,j-1,k  )
+          phimcc = phi(i-1,j  ,k  )
+          phimpc = phi(i-1,j+1,k  )
+          phicmc = phi(i  ,j-1,k  )
+          phiccc = phi(i  ,j  ,k  )
+          phicpc = phi(i  ,j+1,k  )
+          phipmc = phi(i+1,j-1,k  )
+          phipcc = phi(i+1,j  ,k  )
+          phippc = phi(i+1,j+1,k  )
+          phimmp = phi(i-1,j-1,k+1)
+          phimcp = phi(i-1,j  ,k+1)
+          phimpp = phi(i-1,j+1,k+1)
+          phicmp = phi(i  ,j-1,k+1)
+          phiccp = phi(i  ,j  ,k+1)
+          phicpp = phi(i  ,j+1,k+1)
+          phipmp = phi(i+1,j-1,k+1)
+          phipcp = phi(i+1,j  ,k+1)
+          phippp = phi(i+1,j+1,k+1)
           !
           mx(1) = 0.25*((phipcc+phippc+phipcp+phippp)-(phiccc+phicpc+phiccp+phicpp))*dli(1)
           mx(2) = 0.25*((phipcc+phipmc+phipcp+phipmp)-(phiccc+phicmc+phiccp+phicmp))*dli(1)
@@ -319,7 +379,7 @@ module mod_acdi
     end do
   end subroutine acdi_cmpt_norm_curv
   !
-  pure elemental real(rp) function acdi_cmpt_phi(psi,seps) result(phi)
+  pure elemental real(rp) function acdi_phi(psi,seps) result(phi)
     use mod_param, only:eps
     !$acc routine seq
     !
@@ -329,5 +389,5 @@ module mod_acdi
     !
     real(rp), intent(in) :: psi,seps
     phi = seps*log((psi+eps)/(1.-psi+eps))
-  end function acdi_cmpt_phi
+  end function acdi_phi
 end module mod_acdi

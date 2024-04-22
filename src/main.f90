@@ -66,7 +66,7 @@ program cans
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv
+  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv,acdi_cmpt_phi
   use mod_two_fluid      , only: init2fl
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
@@ -130,7 +130,7 @@ program cans
   !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,kappa,normx,normy,normz, &
+  real(rp), allocatable, dimension(:,:,:) :: psi,phi,kappa,normx,normy,normz, &
                                              acdi_rgx,acdi_rgy,acdi_rgz
   real(rp), allocatable, dimension(:,:,:,:) :: psio,kappao
   !
@@ -186,7 +186,7 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi,kappa,normx,normy,normz,mold=pp)
+  allocate(psi,phi,kappa,normx,normy,normz,mold=pp)
 #if defined(_CONSERVATIVE_MOMENTUM)
   allocate(acdi_rgx,acdi_rgy,acdi_rgz,mold=pp)
   if(.not. allocated(psio)) allocate(psio(0:n(1)+1,0:n(2)+1,0:n(3)+1,1))
@@ -315,12 +315,13 @@ program cans
   !$acc enter data copyin(s)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
-  !$acc enter data copyin(psi) create(kappa,normx,normy,normz)
+  !$acc enter data copyin(psi) create(phi,kappa,normx,normy,normz)
   !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz)
   !$acc enter data create(psio,kappao)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
-  call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
+  call acdi_cmpt_phi(n,seps,psi,phi)
+  call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,phi,kappa,normx,normy,normz)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
@@ -392,12 +393,13 @@ program cans
     !$acc end kernels
 #endif
     if(is_track_interface) then
-      call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,psi,acdi_rgx,acdi_rgy,acdi_rgz)
+      call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,acdi_rgx,acdi_rgy,acdi_rgz)
 #if defined(_CONSERVATIVE_MOMENTUM)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
 #endif
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-      call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,kappa,normx,normy,normz)
+      call acdi_cmpt_phi(n,seps,psi,phi)
+      call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,phi,kappa,normx,normy,normz)
       call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
