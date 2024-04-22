@@ -4,7 +4,6 @@
 ! SPDX-License-Identifier: MIT
 !
 ! -
-#define _ACDI_REGULARIZATION_TERM
 module mod_mom
   use mpi
   use mod_types
@@ -527,19 +526,20 @@ module mod_mom
   end subroutine momz_buoy
   !
   subroutine mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rglrx,acdi_rglry,acdi_rglrz, &
-                         u,v,w,psi,dudt,dvdt,dwdt)
+                        u,v,w,psi,psio,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(0:) :: dzci,dzfi
     real(rp), intent(in ), dimension(2) :: rho12,mu12
     real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w,psi
-    real(rp), intent(in ), dimension(0:,0:,0:) :: acdi_rglrx,acdi_rglry,acdi_rglrz
+    real(rp), intent(in ), dimension(0:,0:,0:), optional :: psio,acdi_rglrx,acdi_rglry,acdi_rglrz
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
     real(rp) :: dxi,dyi
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
+                d_ccm,d_pcm,d_cpm,d_cmc,d_pmc,d_mcc,d_ccc,d_pcc,d_mpc,d_cpc,d_cmp,d_mcp,d_ccp,d_cpp,d_ppc,d_pcp, &
                 u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp, &
                 v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp, &
                 w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp, &
@@ -552,7 +552,7 @@ module mod_mom
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rxup,rxum,ryup,ryum,rzup,rzum,rxvp,rxvm,ryvp,ryvm,rzvp,rzvm,rxwp,rxwm,rywp,rywm,rzwp,rzwm
-    real(rp) :: rhoxp,rhoyp,rhozp
+    real(rp) :: rhox,rhoy,rhoz,rhoxp,rhoxm,rhoyp,rhoym,rhozp,rhozm
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
@@ -627,7 +627,24 @@ module mod_mom
           c_ppc = psi(i+1,j+1,k  )
           c_pcp = psi(i+1,j  ,k+1)
           !
-#if defined(_ACDI_REGULARIZATION_TERM)
+#if defined(_CONSERVATIVE_MOMENTUM)
+          d_ccm = psio(i  ,j  ,k-1)
+          d_pcm = psio(i+1,j  ,k-1)
+          d_cpm = psio(i  ,j+1,k-1)
+          d_cmc = psio(i  ,j-1,k  )
+          d_pmc = psio(i+1,j-1,k  )
+          d_mcc = psio(i-1,j  ,k  )
+          d_ccc = psio(i  ,j  ,k  )
+          d_pcc = psio(i+1,j  ,k  )
+          d_mpc = psio(i-1,j+1,k  )
+          d_cpc = psio(i  ,j+1,k  )
+          d_cmp = psio(i  ,j-1,k+1)
+          d_mcp = psio(i-1,j  ,k+1)
+          d_ccp = psio(i  ,j  ,k+1)
+          d_cpp = psio(i  ,j+1,k+1)
+          d_ppc = psio(i+1,j+1,k  )
+          d_pcp = psio(i+1,j  ,k+1)
+          !
           rglrx_mcc = acdi_rglrx(i-1,j  ,k  )
           rglrx_ccc = acdi_rglrx(i  ,j  ,k  )
           rglrx_pcc = acdi_rglrx(i+1,j  ,k  )
@@ -664,6 +681,55 @@ module mod_mom
           !
           ! advection
           !
+#if defined(_CONSERVATIVE_MOMENTUM)
+          !
+          ! n.b.: interpolations can be recycled for viscosity
+          !
+          rhoxp = rho + drho*d_pcc
+          rhoxm = rho + drho*d_ccc
+          rhoyp = rho + drho*0.25*(d_ccc+d_cpc+d_ppc+d_pcc)
+          rhoym = rho + drho*0.25*(d_ccc+d_cmc+d_pmc+d_pcc)
+          rhozp = rho + drho*0.25*(d_ccc+d_pcc+d_ccp+d_pcp)
+          rhozm = rho + drho*0.25*(d_ccc+d_pcc+d_ccm+d_pcm)
+          rhox  = rho + drho*psixp
+          uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)*rhoxp
+          uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)*rhoxm
+          vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)*rhoyp
+          vujm  = 0.25*(v_pmc+v_cmc)*(u_ccc+u_cmc)*rhoym
+          wukp  = 0.25*(w_pcc+w_ccc)*(u_ccc+u_ccp)*rhozp
+          wukm  = 0.25*(w_pcm+w_ccm)*(u_ccc+u_ccm)*rhozm
+          dudt_aux = (dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm ))/rhox
+          !
+          rhoxp = rho + drho*0.25*(d_ccc+d_pcc+d_ppc+d_cpc)
+          rhoxm = rho + drho*0.25*(d_ccc+d_mcc+d_mpc+d_cpc)
+          rhoyp = rho + drho*d_cpc
+          rhoym = rho + drho*d_ccc
+          rhozp = rho + drho*0.25*(d_ccc+d_cpc+d_cpp+d_ccp)
+          rhozm = rho + drho*0.25*(d_ccc+d_cpc+d_cpm+d_ccm)
+          rhoy  = rho + drho*psiyp
+          uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)*rhoxp
+          uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)*rhoxm
+          vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)*rhoyp
+          vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)*rhoym
+          wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)*rhozp
+          wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccc+v_ccm)*rhozm
+          dvdt_aux = (dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm ))/rhoy
+          !
+          rhoxp = rho + drho*0.25*(d_ccc+d_pcc+d_ccp+d_pcp)
+          rhoxm = rho + drho*0.25*(d_ccc+d_mcc+d_ccp+d_mcp)
+          rhoyp = rho + drho*0.25*(d_ccc+d_cpc+d_ccp+d_cpp)
+          rhoym = rho + drho*0.25*(d_ccc+d_cmc+d_ccp+d_cmp)
+          rhozp = rho + drho*d_ccp
+          rhozm = rho + drho*d_ccc
+          rhoz  = rho + drho*psizp
+          uwip  = 0.25*(u_ccc+u_ccp)*(w_ccc+w_pcc)*rhoxp
+          uwim  = 0.25*(u_mcc+u_mcp)*(w_ccc+w_mcc)*rhoxm
+          vwjp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)*rhoyp
+          vwjm  = 0.25*(v_cmc+v_cmp)*(w_ccc+w_cmc)*rhoym
+          wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)*rhozp
+          wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)*rhozm
+          dwdt_aux = (dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm ))/rhoz
+#else
           uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)
           uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)
           vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)
@@ -687,6 +753,7 @@ module mod_mom
           wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)
           wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)
           dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
+#endif
           !
           ! diffusion
           !
