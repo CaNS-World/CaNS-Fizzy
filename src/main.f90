@@ -321,7 +321,7 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   call acdi_cmpt_phi(n,seps,psi,phi)
-  call cmpt_norm_curv(n,dli,dzci,dzfi,phi,kappa,normx,normy,normz)
+  call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
@@ -399,7 +399,7 @@ program cans
 #endif
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
       call acdi_cmpt_phi(n,seps,psi,phi)
-      call cmpt_norm_curv(n,dli,dzci,dzfi,phi,kappa,normx,normy,normz)
+      call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
       call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)

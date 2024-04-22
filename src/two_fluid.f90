@@ -57,7 +57,7 @@ module mod_two_fluid
     end do
   end subroutine clip_field
   !
-  subroutine cmpt_norm_curv(n,dli,dzci,dzfi,psi,kappa,normx,normy,normz)
+  subroutine cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the normals and curvature based on a volume-of-fluid
     ! or level-set field using finite-differences based on Youngs method
@@ -68,8 +68,7 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
+    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
@@ -454,7 +453,7 @@ module mod_two_fluid
     end if
   end function smooth_impulse
 #if 0
-  subroutine cmpt_norm_curv_old(n,dli,dzci,dzfi,psi,kappa,normx,normy,normz)
+  subroutine cmpt_norm_curv_old(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the normals and curvature based on a VoF field
     ! using finite-differences based on Youngs method
@@ -466,8 +465,7 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(3)           :: dli
     real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
+    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
