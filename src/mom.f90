@@ -696,7 +696,7 @@ module mod_mom
           dvdt_aux = (dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm ))/rhoy
           !
           rhoxp = rho + 0.25*drho*(c_ccc+c_pcc+c_ccp+c_pcp)
-          rhoxm = rho + 0.25*drho*(c_mcc+c_ccc+c_mcp+c_pcp)
+          rhoxm = rho + 0.25*drho*(c_mcc+c_ccc+c_mcp+c_ccp)
           rhoyp = rho + 0.25*drho*(c_ccc+c_cpc+c_ccp+c_cpp)
           rhoym = rho + 0.25*drho*(c_cmc+c_ccc+c_cmp+c_ccp) 
           rhozp = rho + drho*c_ccp
