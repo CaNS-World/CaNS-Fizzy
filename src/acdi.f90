@@ -114,6 +114,14 @@ module mod_acdi
           psi_cpc = psi(i  ,j+1,k  )
           psi_ccp = psi(i  ,j  ,k+1)
           !
+          phi_ccm = phi(i  ,j  ,k-1)
+          phi_cmc = phi(i  ,j-1,k  )
+          phi_mcc = phi(i-1,j  ,k  )
+          phi_ccc = phi(i  ,j  ,k  )
+          phi_pcc = phi(i+1,j  ,k  )
+          phi_cpc = phi(i  ,j+1,k  )
+          phi_ccp = phi(i  ,j  ,k+1)
+          !
           u_mcc = u(i-1,j  ,k  )
           u_ccc = u(i  ,j  ,k  )
           v_cmc = v(i  ,j-1,k  )
@@ -160,14 +168,6 @@ module mod_acdi
           dpsidzm = gam*seps*(psi_ccc-psi_ccm)*dzci_m
           !
           ! sharpening term
-          !
-          phi_ccm = phi(i  ,j  ,k-1)
-          phi_cmc = phi(i  ,j-1,k  )
-          phi_mcc = phi(i-1,j  ,k  )
-          phi_ccc = phi(i  ,j  ,k  )
-          phi_pcc = phi(i+1,j  ,k  )
-          phi_cpc = phi(i  ,j+1,k  )
-          phi_ccp = phi(i  ,j  ,k+1)
           !
           rn_01 = normx_xm/sqrt(normx_xm**2+normy_xm**2+normz_xm**2+eps)
           rn_11 = normx_xp/sqrt(normx_xp**2+normy_xp**2+normz_xp**2+eps)
