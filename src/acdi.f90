@@ -229,7 +229,7 @@ module mod_acdi
     end do
   end subroutine acdi_cmpt_phi
   !
-  subroutine acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,phi,kappa,normx,normy,normz)
+  subroutine acdi_cmpt_norm_curv(n,dli,dzci,dzfi,phi,kappa,normx,normy,normz)
     !
     ! computes the normals and curvature based on a phase field
     ! using finite-differences based on Youngs method
@@ -239,8 +239,6 @@ module mod_acdi
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
-    real(rp), intent(in)                          :: seps
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
     real(rp), intent(in ), dimension(0:,0:,0:)    :: phi
     real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
     real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz

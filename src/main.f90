@@ -66,8 +66,8 @@ program cans
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
-  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_norm_curv,acdi_cmpt_phi
-  use mod_two_fluid      , only: init2fl
+  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
+  use mod_two_fluid      , only: init2fl,cmpt_norm_curv
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
 #endif
@@ -321,7 +321,7 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   call acdi_cmpt_phi(n,seps,psi,phi)
-  call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,phi,kappa,normx,normy,normz)
+  call cmpt_norm_curv(n,dli,dzci,dzfi,phi,kappa,normx,normy,normz)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
@@ -399,7 +399,7 @@ program cans
 #endif
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
       call acdi_cmpt_phi(n,seps,psi,phi)
-      call acdi_cmpt_norm_curv(n,dli,dzci,dzfi,seps,psi,phi,kappa,normx,normy,normz)
+      call cmpt_norm_curv(n,dli,dzci,dzfi,phi,kappa,normx,normy,normz)
       call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
