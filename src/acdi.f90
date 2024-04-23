@@ -169,12 +169,12 @@ module mod_acdi
           !
           ! sharpening term
           !
-          rn_01 = normx_xm/sqrt(normx_xm**2+normy_xm**2+normz_xm**2+eps)
-          rn_11 = normx_xp/sqrt(normx_xp**2+normy_xp**2+normz_xp**2+eps)
-          rn_02 = normy_ym/sqrt(normx_ym**2+normy_ym**2+normz_ym**2+eps)
-          rn_12 = normy_yp/sqrt(normx_yp**2+normy_yp**2+normz_yp**2+eps)
-          rn_03 = normz_zm/sqrt(normx_zm**2+normy_zm**2+normz_zm**2+eps)
-          rn_13 = normz_zp/sqrt(normx_zp**2+normy_zp**2+normz_zp**2+eps)
+          rn_01 = normx_xm/(sqrt(normx_xm**2+normy_xm**2+normz_xm**2)+eps)
+          rn_11 = normx_xp/(sqrt(normx_xp**2+normy_xp**2+normz_xp**2)+eps)
+          rn_02 = normy_ym/(sqrt(normx_ym**2+normy_ym**2+normz_ym**2)+eps)
+          rn_12 = normy_yp/(sqrt(normx_yp**2+normy_yp**2+normz_yp**2)+eps)
+          rn_03 = normz_zm/(sqrt(normx_zm**2+normy_zm**2+normz_zm**2)+eps)
+          rn_13 = normz_zp/(sqrt(normx_zp**2+normy_zp**2+normz_zp**2)+eps)
           !
           sharpxp = 0.25*gam*((1.-(tanh(0.25*(phi_pcc+phi_ccc)/seps))**2)*rn_11)
           sharpxm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_mcc)/seps))**2)*rn_01)
