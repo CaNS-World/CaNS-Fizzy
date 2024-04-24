@@ -67,7 +67,7 @@ program cans
   use mod_sanity         , only: test_sanity_input
 #endif
   use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
-  use mod_two_fluid      , only: init2fl,cmpt_norm_curv
+  use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
 #endif

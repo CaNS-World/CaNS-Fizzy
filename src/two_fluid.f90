@@ -10,7 +10,7 @@ module mod_two_fluid
   use mod_types
   implicit none
   private
-  public init2fl,clip_field,cmpt_norm_curv
+  public init2fl,clip_field,cmpt_norm_curv_youngs
   type sphere
     real(rp) :: xyz(3),r
   end type sphere
@@ -57,7 +57,7 @@ module mod_two_fluid
     end do
   end subroutine clip_field
   !
-  subroutine cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_norm_curv_youngs(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the normals and curvature based on a volume-of-fluid
     ! or level-set field using finite-differences based on Youngs method
@@ -172,7 +172,77 @@ module mod_two_fluid
         end do
       end do
     end do
-  end subroutine cmpt_norm_curv
+  end subroutine cmpt_norm_curv_youngs
+  !
+  subroutine cmpt_norm_fd2(n,dli,dzfi,psi,normx,normy,normz)
+    !
+    ! computes the normals based on a volume-of-fluid or level-set field
+    ! using second-order finite-differences
+    !
+    implicit none
+    real(rp), parameter :: eps = epsilon(1._rp)
+    integer , intent(in ), dimension(3) :: n
+    real(rp), intent(in ), dimension(3) :: dli
+    real(rp), intent(in ), dimension(0:)          :: dzfi
+    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
+    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
+    real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm,dpsidx,dpsidy,dpsidz,norm
+    integer  :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
+          psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
+          psiyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
+          psiym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
+          psizp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
+          psizm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
+          dpsidx = (psixp-psixm)*dli(1)
+          dpsidy = (psiyp-psiym)*dli(2)
+          dpsidz = (psizp-psizm)*dzfi(k)
+          norm   = sqrt(dpsidx**2+dpsidy**2+dpsidz**2)
+          dpsidx = dpsidx/norm
+          dpsidy = dpsidy/norm
+          dpsidz = dpsidz/norm
+        end do
+      end do
+    end do
+  end subroutine cmpt_norm_fd2
+  !
+  subroutine cmpt_curv_fd2(n,dli,dzfi,psi,normx,normy,normz,kappa)
+    !
+    ! computes the curvature using second-order finite-differences
+    !
+    implicit none
+    real(rp), parameter :: eps = epsilon(1._rp)
+    integer , intent(in ), dimension(3) :: n
+    real(rp), intent(in ), dimension(3) :: dli
+    real(rp), intent(in ), dimension(0:)          :: dzfi
+    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
+    real(rp), intent(in ), dimension(0:,0:,0:)    :: normx,normy,normz
+    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
+    real(rp) :: normxp,normxm,normyp,normym,normzp,normzm
+    integer  :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          normxp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
+          normxm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
+          normyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
+          normym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
+          normzp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
+          normzm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
+          kappa(i,j,k) = - ( (normxp-normxm)*dli(1) + &
+                             (normyp-normym)*dli(2) + &
+                             (normzp-normzm)*dzfi(k) )
+        end do
+      end do
+    end do
+  end subroutine cmpt_curv_fd2
   !
   subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
     use mod_common_mpi, only: myid
