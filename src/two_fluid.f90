@@ -307,7 +307,7 @@ module mod_two_fluid
       ! interface at z = l(3)/2, with a sinusoidal bump
       ! with amplitude zfilm_max and wavelength = lx
       !
-      zfilm_max = 0.10/l(3)
+      zfilm_max = 0.10/l(1)
       do k=lo(3),hi(3)
         z = zc_g(k)/l(3) - 0.5
         do j=lo(2),hi(2)
