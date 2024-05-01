@@ -11,7 +11,7 @@ module mod_acdi
   use mod_param , only: eps
   implicit none
   private
-  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_norm_curv,acdi_cmpt_phi
+  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_norm_curv,acdi_cmpt_phi,acdi_phi
   contains
   subroutine acdi_set_epsilon(dl,dzfi,seps_factor,seps)
     !
@@ -94,6 +94,7 @@ module mod_acdi
     !
     dxi = dli(1)
     dyi = dli(2)
+    !!gam = 1.
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
