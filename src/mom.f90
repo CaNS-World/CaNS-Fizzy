@@ -683,7 +683,7 @@ module mod_mom
           !
 #if defined(_CONSERVATIVE_MOMENTUM)
           !
-          ! n.b.: interpolations can be recycled for viscosity
+          ! n.b.: interpolations can be recycled from viscosity
           !
           rhoxp = rho + drho*d_pcc
           rhoxm = rho + drho*d_ccc
