@@ -94,7 +94,6 @@ module mod_acdi
     !
     dxi = dli(1)
     dyi = dli(2)
-    !!gam = 1.
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)

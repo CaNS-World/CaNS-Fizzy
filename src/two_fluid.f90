@@ -260,34 +260,33 @@ module mod_two_fluid
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
-    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2,sflm
+    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2
     integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
     real(rp) :: psi_aux
-    logical :: is_sphere,is_drop,is_soap
+    logical :: is_sphere,is_swap_pf
     type(sphere), allocatable, dimension(:) :: spheres
     integer :: nspheres
     integer :: ierr
     !
-    is_sphere = .false.
-    is_drop   = .false.
-    is_soap   = .false.
-    psi(:,:,:) = 1.
+    is_sphere  = .false.
+    is_swap_pf = .false.
     select case(trim(inipsi))
     case('uni')
       psi(:,:,:) = 1._rp
     case('zer')
-    case('bu3')
+      psi(:,:,:) = 0._rp
+    case('bub3')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
-    case('bu2')
+    case('bub2')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.false.,.true. ] ! cylinder in xz plane
       is_sphere = .true.
       !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder in xy plane
       !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder in yz plane
-    case('bu1')
+    case('bub1')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
@@ -295,29 +294,19 @@ module mod_two_fluid
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
-      is_drop   = .true.
-      psi(:,:,:) = 0.
+      is_swap_pf = .true.
     case('drp2')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.false.,.true. ] ! cylinder in xz plane
       !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder in xy plane
       !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder in yz plane
       is_sphere = .true.
-      is_drop   = .true.
-      psi(:,:,:) = 0.
+      is_swap_pf = .true.
     case('drp1')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
-      is_drop   = .true.
-      psi(:,:,:) = 0.
-    case('soap3')
-      call read_sphere_file('spheres.in',spheres,nspheres)
-      is_dim(:) = [.true. ,.true. ,.true.] ! sphere
-      is_sphere = .true.
-      is_soap   = .true.
-      sflm = 0.25 ! Soap film thickness, relatice to bubble radius
-      psi(:,:,:) = 0.
+      is_swap_pf = .true.
     case('flm')
       do k=lo(3),hi(3)
         z = zc_g(k)
@@ -437,21 +426,14 @@ module mod_two_fluid
                 end do
               end do
               sdist = sdistmin
-              if(is_soap) then
-                psi_aux = smooth_step_tanh(sdist+sflm*r,seps) - smooth_step_tanh(sdist,seps)
-                psi(i,j,k) = max(psi(i,j,k),psi_aux)
-              else if(is_drop) then
-                psi_aux = smooth_step_tanh(-sdist,seps)
-                psi(i,j,k) = max(psi(i,j,k),psi_aux)
-              else
-                psi_aux = smooth_step_tanh(sdist,seps)
-                psi(i,j,k) = min(psi(i,j,k),psi_aux)
-              end if
+              psi_aux = smooth_step_tanh(sdist,seps)
+              psi(i,j,k) = min(psi(i,j,k),psi_aux)
             end do
           end do
         end do
       end do
     end if
+    if(is_swap_pf) psi(:,:,:) = 1.-psi(:,:,:)
   end subroutine init2fl
   !
   subroutine read_sphere_file(fname,spheres,nspheres)
