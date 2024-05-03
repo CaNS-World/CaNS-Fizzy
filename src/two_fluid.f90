@@ -381,7 +381,7 @@ module mod_two_fluid
         end do
       end block
     case default
-      if(myid == 0) print*, 'ERROR: invalid name for initial VoF field'
+      if(myid == 0) print*, 'ERROR: invalid name for initial psi field'
       if(myid == 0) print*, ''
       if(myid == 0) print*, '*** Simulation aborted due to errors in the case file ***'
       if(myid == 0) print*, '    check INFO_INPUT.md'
