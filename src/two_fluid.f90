@@ -271,9 +271,9 @@ module mod_two_fluid
     !
     is_sphere  = .false.
     is_swap_pf = .false.
+    psi(:,:,:) = 1._rp
     select case(trim(inipsi))
     case('uni')
-      psi(:,:,:) = 1._rp
     case('zer')
       psi(:,:,:) = 0._rp
     case('bub3')
