@@ -47,7 +47,7 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_param          , only: l,small,eps, &
+  use mod_param          , only: l,small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
@@ -62,7 +62,7 @@ program cans
                                  ng,l,dl,dli, &
                                  read_input, &
                                  rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12, &
-                                 acdi_gam_factor,acdi_eps_factor
+                                 acdi_gam_factor,acdi_gam_min,acdi_eps_factor
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
@@ -103,7 +103,6 @@ program cans
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
   real(rp) :: dt,dto,dti,dtmax,time,divtot,divmax
-  real(rp) :: dlmin
   real(rp) :: gam,seps
   integer :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
@@ -345,6 +344,8 @@ program cans
 #endif
   !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
+  gam = max(gam,acdi_gam_min)
+  if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
   !
   ! post-process and write initial condition
   !
@@ -360,11 +361,6 @@ program cans
   dto = dt
   dti = 1./dt
   kill = .false.
-  dlmin = minval(dl(1:2))
-  dlmin = min(dlmin,minval(1./dzfi))
-  call MPI_ALLREDUCE(MPI_IN_PLACE,dlmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
-  if (gam < eps) gam = dlmin/dt
-  if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
   !
   ! main loop
   !
@@ -463,6 +459,7 @@ program cans
     dto = dt
     if(mod(istep,1) == 0) then
       call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
+      gam = max(gam,acdi_gam_min)
     end if
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
