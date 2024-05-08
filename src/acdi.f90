@@ -11,7 +11,7 @@ module mod_acdi
   use mod_param , only: eps
   implicit none
   private
-  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi,acdi_phi
+  public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi
   contains
   subroutine acdi_set_epsilon(dl,dzfi,seps_factor,seps)
     !
