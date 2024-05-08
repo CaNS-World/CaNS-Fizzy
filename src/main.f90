@@ -499,6 +499,40 @@ program cans
       var(3) = gam
       var(4) = seps
       call out0d(trim(datadir)//'log_acdi.out',4,var)
+      block
+        use mod_acdi, only: acdi_phi
+        real(rp) :: phic,phip,h
+        integer :: i,j,k
+        !$acc wait
+        !$acc update self(psi)
+        h = 0.
+        j = 1
+        if(lo(1) == 1    ) then
+          i = 1
+          do k=1,n(3)
+            phic = acdi_phi(psi(i,j,k  ),seps)
+            phip = acdi_phi(psi(i,j,k+1),seps)
+            if(phic*phip < 0.) then
+              h = h + 0.5*(zc(k)-phic*dzc(k)/(phip-phic))
+            end if
+          end do
+        end if
+        if(hi(1) == ng(1)) then
+          i = n(1)
+          do k=1,n(3)
+            phic = acdi_phi(psi(i,j,k  ),seps)
+            phip = acdi_phi(psi(i,j,k+1),seps)
+            if(phic*phip < 0.) then
+              h = h + 0.5*(zc(k)-phic*dzc(k)/(phip-phic))
+            end if
+          end do
+        end if
+        call MPI_ALLREDUCE(MPI_IN_PLACE,h,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+        h = h - l(3)/2
+        var(1) = time
+        var(2) = h
+        call out0d(trim(datadir)//'amplitude-cap-wav-1d.out',2,var)
+      end block
     end if
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
