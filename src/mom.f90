@@ -796,8 +796,10 @@ module mod_mom
           dudz = 0.5*(dudzp+dudzm)
           dvdx = 0.5*(dvdxp+dvdxm)
           dwdx = 0.5*(dwdxp-dwdxm)
-          dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) - &
-                                mux*(domzdy-domydz))/rhoxp
+          !dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) - &
+          !                      mux*(domzdy-domydz))/rhoxp !vorticity curl
+          dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) + &
+                                mux*((dudxp-dudxm)*dxi+(dudyp-dudym)*dyi+(dudzp-dudzm)*dzfi_c))/rhoxp !laplacian
           !
           dpsidxp = 0.5*(c_ppc+c_pcc-c_cpc-c_ccc)*dxi
           dpsidxm = 0.5*(c_cpc+c_ccc-c_mpc-c_mcc)*dxi
@@ -835,8 +837,10 @@ module mod_mom
           dvdz = 0.5*(dvdzp+dvdzm)
           dudy = 0.5*(dudyp+dudym)
           dwdy = 0.5*(dwdyp-dwdym)
-          dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) - &
-                                muy*(domxdz-domzdx))/rhoyp
+          !dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) - &
+          !                      muy*(domxdz-domzdx))/rhoyp !vorticity curl
+          dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) + &
+                                muy*((dvdxp-dvdxm)*dxi+(dvdyp-dvdym)*dyi+(dvdzp-dvdzm)*dzfi_c))/rhoyp !laplacian
           !
           dpsidxp = 0.5*(c_pcp+c_pcc-c_ccp-c_ccc)*dxi
           dpsidxm = 0.5*(c_ccp+c_ccc-c_mcp-c_mcc)*dxi
@@ -872,8 +876,10 @@ module mod_mom
           dwdz = 0.5*(dwdzp+dwdzm)
           dudz = 0.5*(dudzp+dudzm)
           dvdz = 0.5*(dvdzp-dvdzm)
-          dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) - &
-                                muz*(domydx-domxdy))/rhozp
+          !dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) - &
+          !                      muz*(domydx-domxdy))/rhozp !vorticity curl
+          dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) + &
+                                muz*((dwdxp-dwdxm)*dxi+(dwdyp-dwdym)*dyi+(dwdzp-dwdzm)*dzci_c))/rhozp !laplacian
 #if defined(_CONSERVATIVE_MOMENTUM)
           !
           ! acdi interface regularization term
