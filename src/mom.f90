@@ -795,7 +795,7 @@ module mod_mom
           !dudz = (u_ccp-u_ccm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
           dudz = 0.5*(dudzp+dudzm)
           dvdx = 0.5*(dvdxp+dvdxm)
-          dwdx = 0.5*(dwdxp-dwdxm)
+          dwdx = 0.5*(dwdxp+dwdxm)
           !dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) - &
           !                      mux*(domzdy-domydz))/rhoxp !vorticity curl
           dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) + &
@@ -836,7 +836,7 @@ module mod_mom
           !dvdz = (v_ccp-v_ccm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
           dvdz = 0.5*(dvdzp+dvdzm)
           dudy = 0.5*(dudyp+dudym)
-          dwdy = 0.5*(dwdyp-dwdym)
+          dwdy = 0.5*(dwdyp+dwdym)
           !dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) - &
           !                      muy*(domxdz-domzdx))/rhoyp !vorticity curl
           dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) + &
@@ -875,7 +875,7 @@ module mod_mom
           !dwdz = (w_ccp-w_ccm)*(dzfi_c+dzfi_p)/(dzfi_c*dzfi_p)
           dwdz = 0.5*(dwdzp+dwdzm)
           dudz = 0.5*(dudzp+dudzm)
-          dvdz = 0.5*(dvdzp-dvdzm)
+          dvdz = 0.5*(dvdzp+dvdzm)
           !dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) - &
           !                      muz*(domydx-domxdy))/rhozp !vorticity curl
           dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) + &
