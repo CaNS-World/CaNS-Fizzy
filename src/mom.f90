@@ -760,12 +760,11 @@ module mod_mom
           !
           ! diffusion
           !
+#if defined(_ROT_VISC_STRESS)
           dpsidyp = 0.5*(c_ppc+c_cpc-c_pcc-c_ccc)*dyi
           dpsidym = 0.5*(c_pcc+c_ccc-c_pmc-c_cmc)*dyi
           dpsidzp = 0.5*(c_pcp+c_ccp-c_pcc-c_ccc)*dzci_c
           dpsidzm = 0.5*(c_pcc+c_ccc-c_pcm-c_ccm)*dzci_m
-          !dpsidzp = (c_pcp-c_pcm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
-          !dpsidzm = (c_ccp-c_ccm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
           dpsidx  = (c_pcc-c_ccc)*dxi
           dpsidy  = 0.5*(dpsidyp+dpsidym)
           dpsidz  = 0.5*(dpsidzp+dpsidzm)
@@ -792,21 +791,18 @@ module mod_mom
           domzdy = (omzp-omzm)*dyi
           dudx = 0.5*(dudxp+dudxm)
           dudy = 0.5*(dudyp+dudym)
-          !dudz = (u_ccp-u_ccm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
           dudz = 0.5*(dudzp+dudzm)
           dvdx = 0.5*(dvdxp+dvdxm)
-          dwdx = 0.5*(dwdxp-dwdxm)
-          !dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) - &
-          !                      mux*(domzdy-domydz))/rhoxp !vorticity curl
-          dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) + &
-                                mux*((dudxp-dudxm)*dxi+(dudyp-dudym)*dyi+(dudzp-dudzm)*dzfi_c))/rhoxp !laplacian
+          dwdx = 0.5*(dwdxp+dwdxm)
+          dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) - &
+                                mux*(domzdy-domydz))/rhoxp !vorticity curl
+          !dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) + &
+          !                      mux*((dudxp-dudxm)*dxi+(dudyp-dudym)*dyi+(dudzp-dudzm)*dzfi_c))/rhoxp !laplacian
           !
           dpsidxp = 0.5*(c_ppc+c_pcc-c_cpc-c_ccc)*dxi
           dpsidxm = 0.5*(c_cpc+c_ccc-c_mpc-c_mcc)*dxi
           dpsidzp = 0.5*(c_cpp+c_ccp-c_cpc-c_ccc)*dzci_c
           dpsidzm = 0.5*(c_cpc+c_ccc-c_cpm-c_ccm)*dzci_m
-          !dpsidzp = (c_cpp-c_cpm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
-          !dpsidzm = (c_ccp-c_ccm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
           dpsidx  = 0.5*(dpsidxp+dpsidxm)
           dpsidy  = (c_cpc-c_ccc)*dyi
           dpsidz  = 0.5*(dpsidzp+dpsidzm)
@@ -833,14 +829,13 @@ module mod_mom
           domzdx = (omzp-omzm)*dxi
           dvdx = 0.5*(dvdxp+dvdxm)
           dvdy = 0.5*(dvdyp+dvdym)
-          !dvdz = (v_ccp-v_ccm)*(dzci_c+dzci_m)/(dzci_c*dzci_m)
           dvdz = 0.5*(dvdzp+dvdzm)
           dudy = 0.5*(dudyp+dudym)
-          dwdy = 0.5*(dwdyp-dwdym)
-          !dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) - &
-          !                      muy*(domxdz-domzdx))/rhoyp !vorticity curl
-          dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) + &
-                                muy*((dvdxp-dvdxm)*dxi+(dvdyp-dvdym)*dyi+(dvdzp-dvdzm)*dzfi_c))/rhoyp !laplacian
+          dwdy = 0.5*(dwdyp+dwdym)
+          dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) - &
+                                muy*(domxdz-domzdx))/rhoyp !vorticity curl
+          !dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) + &
+          !                      muy*((dvdxp-dvdxm)*dxi+(dvdyp-dvdym)*dyi+(dvdzp-dvdzm)*dzfi_c))/rhoyp !laplacian
           !
           dpsidxp = 0.5*(c_pcp+c_pcc-c_ccp-c_ccc)*dxi
           dpsidxm = 0.5*(c_ccp+c_ccc-c_mcp-c_mcc)*dxi
@@ -852,7 +847,7 @@ module mod_mom
           dmudx = dmu*dpsidx
           dmudy = dmu*dpsidy
           dmudz = dmu*dpsidz
-          muy  = mu + dmu*psizp
+          muz  = mu + dmu*psizp
           rhozp = rho + drho*psizp
           dwdxp = (w_pcc-w_ccc)*dxi
           dwdxm = (w_ccc-w_mcc)*dxi
@@ -872,14 +867,77 @@ module mod_mom
           domydx = (omyp-omym)*dxi
           dwdx = 0.5*(dwdxp+dwdxm)
           dwdy = 0.5*(dwdyp+dwdym)
-          !dwdz = (w_ccp-w_ccm)*(dzfi_c+dzfi_p)/(dzfi_c*dzfi_p)
           dwdz = 0.5*(dwdzp+dwdzm)
           dudz = 0.5*(dudzp+dudzm)
-          dvdz = 0.5*(dvdzp-dvdzm)
-          !dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) - &
-          !                      muz*(domydx-domxdy))/rhozp !vorticity curl
-          dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) + &
-                                muz*((dwdxp-dwdxm)*dxi+(dwdyp-dwdym)*dyi+(dwdzp-dwdzm)*dzci_c))/rhozp !laplacian
+          dvdz = 0.5*(dvdzp+dvdzm)
+          dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) - &
+                                muz*(domydx-domxdy))/rhozp !vorticity curl
+          !dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) + &
+          !                      muz*((dwdxp-dwdxm)*dxi+(dwdyp-dwdym)*dyi+(dwdzp-dwdzm)*dzci_c))/rhozp !laplacian
+#else
+          dudxp = (u_pcc-u_ccc)*dxi
+          dudxm = (u_ccc-u_mcc)*dxi
+          dvdxp = (v_pcc-v_ccc)*dxi
+          dvdxm = (v_pmc-v_cmc)*dxi
+          dudyp = (u_cpc-u_ccc)*dyi
+          dudym = (u_ccc-u_cmc)*dyi
+          dudzp = (u_ccp-u_ccc)*dzci_c
+          dudzm = (u_ccc-u_ccm)*dzci_m
+          dwdxp = (w_pcc-w_ccc)*dxi
+          dwdxm = (w_pcm-w_ccm)*dxi
+          muxp = mu + dmu*c_pcc
+          muxm = mu + dmu*c_ccc
+          muyp = mu + dmu*0.25*(c_ccc+c_cpc+c_ppc+c_pcc)
+          muym = mu + dmu*0.25*(c_ccc+c_cmc+c_pmc+c_pcc)
+          muzp = mu + dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
+          muzm = mu + dmu*0.25*(c_ccc+c_pcc+c_ccm+c_pcm)
+          rhoxp = rho + drho*psixp
+          dudt_aux = dudt_aux + dxi*(   (dudxp+dudxp)*muxp-(dudxm+dudxm)*muxm)/rhoxp + &
+                                dyi*(   (dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym)/rhoxp + &
+                                dzfi_c*((dudzp+dwdxp)*muzp-(dudzm+dwdxm)*muzm)/rhoxp
+          !
+          dvdxp = (v_pcc-v_ccc)*dxi
+          dvdxm = (v_ccc-v_mcc)*dxi
+          dudyp = (u_cpc-u_ccc)*dyi
+          dudym = (u_mpc-u_mcc)*dyi
+          dvdyp = (v_cpc-v_ccc)*dyi
+          dvdym = (v_ccc-v_cmc)*dyi
+          dvdzp = (v_ccp-v_ccc)*dzci_c
+          dvdzm = (v_ccc-v_ccm)*dzci_m
+          dwdyp = (w_cpc-w_ccc)*dyi
+          dwdym = (w_cpm-w_ccm)*dyi
+          muxp = mu + dmu*0.25*(c_ccc+c_pcc+c_ppc+c_cpc)
+          muxm = mu + dmu*0.25*(c_ccc+c_mcc+c_mpc+c_cpc)
+          muyp = mu + dmu*c_cpc
+          muym = mu + dmu*c_ccc
+          muzp = mu + dmu*0.25*(c_ccc+c_cpc+c_cpp+c_ccp)
+          muzm = mu + dmu*0.25*(c_ccc+c_cpc+c_cpm+c_ccm)
+          rhoyp = rho + drho*psiyp
+          dvdt_aux = dvdt_aux + dxi*(   (dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm)/rhoyp + &
+                                dyi*(   (dvdyp+dvdyp)*muyp-(dvdym+dvdym)*muym)/rhoyp + &
+                                dzfi_c*((dvdzp+dwdyp)*muzp-(dvdzm+dwdym)*muzm)/rhoyp
+          !
+          dwdxp = (w_pcc-w_ccc)*dxi
+          dwdxm = (w_ccc-w_mcc)*dxi
+          dudzp = (u_ccp-u_ccc)*dzci_c
+          dudzm = (u_mcp-u_mcc)*dzci_c
+          dwdyp = (w_cpc-w_ccc)*dyi
+          dwdym = (w_ccc-w_cmc)*dyi
+          dvdzp = (v_ccp-v_ccc)*dzci_c
+          dvdzm = (v_cmp-v_cmc)*dzci_c
+          dwdzp = (w_ccp-w_ccc)*dzfi_p
+          dwdzm = (w_ccc-w_ccm)*dzfi_c
+          muxp = mu + dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
+          muxm = mu + dmu*0.25*(c_ccc+c_mcc+c_ccp+c_mcp)
+          muyp = mu + dmu*0.25*(c_ccc+c_cpc+c_ccp+c_cpp)
+          muym = mu + dmu*0.25*(c_ccc+c_cmc+c_ccp+c_cmp)
+          muzp = mu + dmu*c_ccp
+          muzm = mu + dmu*c_ccc
+          rhozp = rho + drho*psizp
+          dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm)/rhozp + &
+                                dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym)/rhozp + &
+                                dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)/rhozp
+#endif
 #if defined(_CONSERVATIVE_MOMENTUM)
           !
           ! acdi interface regularization term

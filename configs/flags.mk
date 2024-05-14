@@ -143,6 +143,10 @@ ifeq ($(strip $(SURFACE_TENSION_SPLITTING)),1)
 DEFINES += -D_SURFACE_TENSION_SPLITTING
 endif
 
+ifeq ($(strip $(ROT_VISC_STRESS)),1)
+DEFINES += -D_ROT_VISC_STRESS
+endif
+
 ifeq ($(strip $(OPENMP)),1)
 ifeq      ($(strip $(FCOMP)),GNU)
 override FFLAGS += -fopenmp
