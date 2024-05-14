@@ -852,7 +852,7 @@ module mod_mom
           dmudx = dmu*dpsidx
           dmudy = dmu*dpsidy
           dmudz = dmu*dpsidz
-          muy  = mu + dmu*psizp
+          muz  = mu + dmu*psizp
           rhozp = rho + drho*psizp
           dwdxp = (w_pcc-w_ccc)*dxi
           dwdxm = (w_ccc-w_mcc)*dxi
