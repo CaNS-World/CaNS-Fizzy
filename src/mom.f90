@@ -760,7 +760,7 @@ module mod_mom
           !
           ! diffusion
           !
-#if defined(_ROT_VISC_STRESS)
+#if defined(_SPLIT_VISCOUS_DIFFUSION)
           dpsidyp = 0.5*(c_ppc+c_cpc-c_pcc-c_ccc)*dyi
           dpsidym = 0.5*(c_pcc+c_ccc-c_pmc-c_cmc)*dyi
           dpsidzp = 0.5*(c_pcp+c_ccp-c_pcc-c_ccc)*dzci_c
