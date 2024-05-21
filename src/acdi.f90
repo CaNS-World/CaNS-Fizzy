@@ -94,7 +94,6 @@ module mod_acdi
     !
     dxi = dli(1)
     dyi = dli(2)
-    !!gam = 1.
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -161,12 +160,12 @@ module mod_acdi
           !
           ! diffusion term
           !
-          dpsidxp = gam*seps*(psi_pcc-psi_ccc)*dxi
           dpsidxm = gam*seps*(psi_ccc-psi_mcc)*dxi
-          dpsidyp = gam*seps*(psi_cpc-psi_ccc)*dyi
+          dpsidxp = gam*seps*(psi_pcc-psi_ccc)*dxi
           dpsidym = gam*seps*(psi_ccc-psi_cmc)*dyi
-          dpsidzp = gam*seps*(psi_ccp-psi_ccc)*dzci_c
+          dpsidyp = gam*seps*(psi_cpc-psi_ccc)*dyi
           dpsidzm = gam*seps*(psi_ccc-psi_ccm)*dzci_m
+          dpsidzp = gam*seps*(psi_ccp-psi_ccc)*dzci_c
           !
           ! sharpening term
           !
@@ -177,21 +176,21 @@ module mod_acdi
           rn_03 = normz_zm/(sqrt(normx_zm**2+normy_zm**2+normz_zm**2)+eps)
           rn_13 = normz_zp/(sqrt(normx_zp**2+normy_zp**2+normz_zp**2)+eps)
           !
-          sharpxp = 0.25*gam*((1.-(tanh(0.25*(phi_pcc+phi_ccc)/seps))**2)*rn_11)
           sharpxm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_mcc)/seps))**2)*rn_01)
-          sharpyp = 0.25*gam*((1.-(tanh(0.25*(phi_cpc+phi_ccc)/seps))**2)*rn_12)
+          sharpxp = 0.25*gam*((1.-(tanh(0.25*(phi_pcc+phi_ccc)/seps))**2)*rn_11)
           sharpym = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_cmc)/seps))**2)*rn_02)
-          sharpzp = 0.25*gam*((1.-(tanh(0.25*(phi_ccp+phi_ccc)/seps))**2)*rn_13)
+          sharpyp = 0.25*gam*((1.-(tanh(0.25*(phi_cpc+phi_ccc)/seps))**2)*rn_12)
           sharpzm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_ccm)/seps))**2)*rn_03)
+          sharpzp = 0.25*gam*((1.-(tanh(0.25*(phi_ccp+phi_ccc)/seps))**2)*rn_13)
           !
           ! transport
           !
-          rglrxp = dpsidxp - sharpxp
           rglrxm = dpsidxm - sharpxm
-          rglryp = dpsidyp - sharpyp
+          rglrxp = dpsidxp - sharpxp
           rglrym = dpsidym - sharpym
-          rglrzp = dpsidzp - sharpzp
+          rglryp = dpsidyp - sharpyp
           rglrzm = dpsidzm - sharpzm
+          rglrzp = dpsidzp - sharpzp
           !
           rglr = (rglrxp-rglrxm)*dxi + (rglryp-rglrym)*dyi + (rglrzp-rglrzm)*dzfi_c
           !
