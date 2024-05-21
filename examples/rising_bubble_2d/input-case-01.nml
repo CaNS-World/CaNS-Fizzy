@@ -26,6 +26,7 @@ dims(1:2) = 0, 0
 inisca          = 'zer'
 cbcsca(0:1,1:3) = 'N','N',  'P','P',  'N','N'
 bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+ssource         = 0.
 \
 
 &two_fluid

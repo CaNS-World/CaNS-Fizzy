@@ -58,7 +58,7 @@ program cans
                                  is_wallturb,is_forced_hit, &
                                  dims, &
                                  gtype,gr, &
-                                 bforce, &
+                                 bforce,ssource, &
                                  ng,l,dl,dli, &
                                  read_input, &
                                  rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12, &
@@ -406,7 +406,7 @@ program cans
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
     end if
 #if defined(_SCALAR)
-    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,0._rp,rho12,ka12,cp12,psi,u,v,w,s)
+    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)
     call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
     if(.not.is_solve_ns) then
