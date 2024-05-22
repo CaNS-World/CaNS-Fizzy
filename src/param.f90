@@ -54,6 +54,7 @@ character(len=1), protected, dimension(0:1,3)   ::  cbcsca
 real(rp)        , protected, dimension(0:1,3)   ::   bcsca
 !
 real(rp), protected, dimension(3) :: bforce,gacc
+real(rp), protected               :: ssource
 !
 real(rp), protected, dimension(3) :: dl,dli
 !
@@ -99,7 +100,8 @@ contains
                   dims
     namelist /scalar/ &
                   inisca, &
-                  cbcsca,bcsca
+                  cbcsca,bcsca, &
+                  ssource
     namelist /two_fluid/ &
                   inipsi, &
                   cbcpsi,bcpsi, &
@@ -131,6 +133,7 @@ contains
     !
     inisca = 'zer'
     cbcsca(:,:) = 'P'; bcsca(:,:) = 0.
+    ssource = 0.
     !
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; bcpsi(:,:) = 0.

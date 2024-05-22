@@ -26,6 +26,7 @@ dims(1:2) = 0, 0
 inisca          = 'zer'
 cbcsca(0:1,1:3) = 'P','P',  'P','P',  'N','N'
 bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+ssource         = 0.
 \
 
 &two_fluid
@@ -38,8 +39,7 @@ sigma           = 0.0078125 ! mu/0.25/0.1 (Ca = 0.1)
 ka12(1:2)       = 0.001,0.001
 cp12(1:2)       = 1., 1.
 beta12(1:2)     = 1., 1.
-acdi_gam_factor = 1.
-acdi_gam_min    = 1.e-12
+acdi_gam_factor = 1., acdi_gam_min = 0.
 acdi_eps_factor = 1.
 \
 
