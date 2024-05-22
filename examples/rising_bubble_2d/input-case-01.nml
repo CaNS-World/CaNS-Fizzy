@@ -39,7 +39,7 @@ sigma           = 24.5
 ka12(1:2)       = 0.001,0.001
 cp12(1:2)       = 1., 1.
 beta12(1:2)     = 1., 1.
-acdi_gam_factor = 1.
+acdi_gam_factor = 1., acdi_gam_min = 0.
 acdi_eps_factor = 1.
 \
 
