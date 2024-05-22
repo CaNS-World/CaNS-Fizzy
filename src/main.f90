@@ -62,7 +62,7 @@ program cans
                                  ng,l,dl,dli, &
                                  read_input, &
                                  rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12, &
-                                 acdi_gam_factor,acdi_eps_factor
+                                 acdi_gam_factor,acdi_gam_min,acdi_eps_factor
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
@@ -344,6 +344,7 @@ program cans
 #endif
   !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
+  gam = max(gam,acdi_gam_min)
   if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
   !
   ! post-process and write initial condition
@@ -458,6 +459,7 @@ program cans
     dto = dt
     if(mod(istep,1) == 0) then
       call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
+      gam = max(gam,acdi_gam_min)
     end if
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
