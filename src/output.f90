@@ -256,7 +256,7 @@ module mod_output
     character(len=100) :: cfmt
     integer :: iunit
     !
-    write(cfmt, '(A)') '(A,A,A,9i5,E16.7e3,i7)'
+    write(cfmt, '(A)') '(A,A,A,9i5,E16.7e3,i8)'
     if (myid ==  0) then
       open(newunit=iunit,file=fname,position='append')
       write(iunit,trim(cfmt)) trim(fname_fld),' ',trim(varname),nmin,nmax,nskip,time,istep
