@@ -941,7 +941,6 @@ module mod_mom
 #if defined(_CONSERVATIVE_MOMENTUM)
           !
           ! acdi interface regularization term
-          ! (WIP: to be validated)
           !
           rxup = 0.25*drho*(rglrx_ccc+rglrx_pcc)*(u_ccc+u_pcc)
           rxum = 0.25*drho*(rglrx_mcc+rglrx_ccc)*(u_mcc+u_ccc)
