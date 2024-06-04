@@ -235,7 +235,7 @@ module mod_output_acdi
       buf(33,k) = buf33*grid_area_ratio
       buf(34,k) = buf34*grid_area_ratio
       buf(35,k) = buf35*grid_area_ratio
-      !buf(36,k) = buf36*grid_area_ratio
+      buf(36,k) = buf36*grid_area_ratio
       !buf(37,k) = buf37*grid_area_ratio
       !buf(38,k) = buf38*grid_area_ratio
       !buf(39,k) = buf39*grid_area_ratio
