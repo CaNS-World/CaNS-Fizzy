@@ -21,6 +21,7 @@
   !
   ! modify the calls below as desired
   !
+  call out1d_acdi_channel(trim(datadir)//'acdi_stats_z_fld_'//fldnum,ng,lo,hi,l,dl,dzc_g,dzf_g,zc_g,zf_g,u,v,w,p,psi)
   call out1d(trim(datadir)//'umean_z_fld_'//fldnum//'.out',ng,lo,hi,3,l,dl,zc_g,dzf,u)
   call out1d(trim(datadir)//'vmean_z_fld_'//fldnum//'.out',ng,lo,hi,3,l,dl,zc_g,dzf,v)
   call out1d(trim(datadir)//'wmean_z_fld_'//fldnum//'.out',ng,lo,hi,3,l,dl,zf_g,dzc,w)

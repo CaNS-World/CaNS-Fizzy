@@ -47,6 +47,7 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
+  use mod_output_acdi    , only: out0d_acdi,out1d_acdi_channel
   use mod_param          , only: l,small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
@@ -499,6 +500,40 @@ program cans
       var(3) = gam
       var(4) = seps
       call out0d(trim(datadir)//'log_acdi.out',4,var)
+      block
+        real(rp) :: z_c,c_c,w_ccc,w_mcc,w_c,bubble,z_bubble,w_bubble
+        integer :: i,j,k
+        !$acc wait
+        !$acc update self(psi,w)
+        j = 1
+        bubble = 0.
+        z_bubble = 0.
+        w_bubble = 0.
+        do k=1,n(3)
+          do j=1,n(2)
+            do i= 1,n(1)
+              z_c   = zc(k)
+              c_c   = psi(i,j,k)
+              w_ccc = w(i,j,k)
+              w_mcc = w(i,j,k-1)
+              w_c = 0.5*(w_mcc+w_ccc)
+              bubble   = bubble   + (1.-c_c)
+              z_bubble = z_bubble + (1.-c_c)*z_c
+              w_bubble = w_bubble + (1.-c_c)*w_c
+            end do
+          end do
+        end do
+        call MPI_ALLREDUCE(MPI_IN_PLACE,bubble,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+        call MPI_ALLREDUCE(MPI_IN_PLACE,z_bubble,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+        call MPI_ALLREDUCE(MPI_IN_PLACE,w_bubble,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+        z_bubble = z_bubble/bubble
+        w_bubble = w_bubble/bubble
+        var(1) = time
+        var(2) = z_bubble
+        var(3) = w_bubble
+        call out0d(trim(datadir)//'bubble_stats.out',3,var)
+      end block
+      call out0d_acdi(n,dl,dzf,psi,time)
     end if
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
