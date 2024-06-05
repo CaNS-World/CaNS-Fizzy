@@ -68,7 +68,7 @@ module mod_output_acdi
                 buf31,buf32,buf33,buf34,buf35,buf36,buf37,buf38,buf39,buf40, &
                 buf41,buf42,buf43,buf44,buf45,buf46
     !
-    nvars = 36
+    nvars = 46
     grid_area_ratio = dl(1)*dl(2)/(l(1)*l(2))
     allocate(buf(nvars,ng(3)))
     !$acc enter data create(buf) copyin(dzc_g,dzf_g,zc_g,zf_g)
@@ -113,16 +113,16 @@ module mod_output_acdi
       buf34 = 0._rp
       buf35 = 0._rp
       buf36 = 0._rp
-      !buf37 = 0._rp
-      !buf38 = 0._rp
-      !buf39 = 0._rp
-      !buf40 = 0._rp
-      !buf41 = 0._rp
-      !buf42 = 0._rp
-      !buf43 = 0._rp
-      !buf44 = 0._rp
-      !buf45 = 0._rp
-      !buf46 = 0._rp
+      buf37 = 0._rp
+      buf38 = 0._rp
+      buf39 = 0._rp
+      buf40 = 0._rp
+      buf41 = 0._rp
+      buf42 = 0._rp
+      buf43 = 0._rp
+      buf44 = 0._rp
+      buf45 = 0._rp
+      buf46 = 0._rp
       !$acc loop vector collapse(2)
       do j=lo(2),hi(2)
         do i=lo(1),hi(1)
@@ -183,20 +183,22 @@ module mod_output_acdi
           buf34 = buf34 + 0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))*tmp_x**2
           buf35 = buf35 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j,k+1)+psi(i,j,k+1))*tmp_y**2
           buf36 = buf36 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))*tmp_z**2
+#if defined(_SCALAR)
           !
           ! scalar
           !
-          !buf37 = buf37 + s(i,j,k)
-          !buf38 = buf38 + psi(i,j,k)*s(i,j,k)
-          !!            
-          !buf39 = buf39 + s(i,j,k)**2
-          !buf40 = buf40 + psi(i,j,k)*s(i,j,k)**2
-          !buf41 = buf41 + s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
-          !buf42 = buf42 + s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
-          !buf43 = buf43 + s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
-          !buf44 = buf44 + psi(i,j,k)*s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
-          !buf45 = buf45 + psi(i,j,k)*s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
-          !buf46 = buf46 + psi(i,j,k)*s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
+          buf37 = buf37 + s(i,j,k)
+          buf38 = buf38 + psi(i,j,k)*s(i,j,k)
+          !
+          buf39 = buf39 + s(i,j,k)**2
+          buf40 = buf40 + psi(i,j,k)*s(i,j,k)**2
+          buf41 = buf41 + s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
+          buf42 = buf42 + s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
+          buf43 = buf43 + s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
+          buf44 = buf44 + psi(i,j,k)*s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
+          buf45 = buf45 + psi(i,j,k)*s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
+          buf46 = buf46 + psi(i,j,k)*s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
+#endif
           !
         end do
       end do
@@ -235,22 +237,24 @@ module mod_output_acdi
       buf(33,k) = buf33*grid_area_ratio
       buf(34,k) = buf34*grid_area_ratio
       buf(35,k) = buf35*grid_area_ratio
-      !buf(36,k) = buf36*grid_area_ratio
-      !buf(37,k) = buf37*grid_area_ratio
-      !buf(38,k) = buf38*grid_area_ratio
-      !buf(39,k) = buf39*grid_area_ratio
-      !buf(40,k) = buf40*grid_area_ratio
-      !buf(41,k) = buf41*grid_area_ratio
-      !buf(42,k) = buf42*grid_area_ratio
-      !buf(43,k) = buf43*grid_area_ratio
-      !buf(44,k) = buf44*grid_area_ratio
-      !buf(45,k) = buf45*grid_area_ratio
-      !buf(46,k) = buf46*grid_area_ratio
+      buf(36,k) = buf36*grid_area_ratio
+#if defined(_SCALAR)
+      buf(37,k) = buf37*grid_area_ratio
+      buf(38,k) = buf38*grid_area_ratio
+      buf(39,k) = buf39*grid_area_ratio
+      buf(40,k) = buf40*grid_area_ratio
+      buf(41,k) = buf41*grid_area_ratio
+      buf(42,k) = buf42*grid_area_ratio
+      buf(43,k) = buf43*grid_area_ratio
+      buf(44,k) = buf44*grid_area_ratio
+      buf(45,k) = buf45*grid_area_ratio
+      buf(46,k) = buf46*grid_area_ratio
+#endif
     end do
     !$acc update self(buf)
     call MPI_ALLREDUCE(MPI_IN_PLACE,buf(1,1),size(buf),MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     if(myid == 0) then
-      nvars = 36
+      nvars = 46
       write(cfmt,'(A,I3,A)') '(',nvars+2+2,'ES26.18)'
       open(newunit=iunit,file=fname//'.out')
       do k=1,ng(3)
