@@ -135,28 +135,28 @@ module mod_output_acdi
           !
           ! velocity
           !
-          buf03 = buf03  + u(i,j,k)
-          buf04 = buf04  + v(i,j,k)
-          buf05 = buf05  + 0.5*(w(i,j,k)+w(i,j,k-1))
-          buf06 = buf06  + 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)
-          buf07 = buf07  + 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)
-          buf08 = buf08  + 0.5*psi(i,j,k)*(w(i,j,k)+w(i,j,k-1))
+          buf03 = buf03  + 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)
+          buf04 = buf04  + 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)
+          buf05 = buf05  + 0.5*psi(i,j,k)*(w(i,j,k)+w(i,j,k-1))
+          buf06 = buf06  + (1.-0.5*(psi(i,j,k)+psi(i+1,j,k)))*u(i,j,k)
+          buf07 = buf07  + (1.-0.5*(psi(i,j,k)+psi(i,j+1,k)))*v(i,j,k)
+          buf08 = buf08  + (1.-psi(i,j,k))*0.5*(w(i,j,k)+w(i,j,k-1))
           !            
-          buf09 = buf09  + u(i,j,k)**2
-          buf10 = buf10  + v(i,j,k)**2
-          buf11 = buf11  + 0.25*(w(i,j,k)+w(i,j,k-1))**2
-          buf12 = buf12  + 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)**2
-          buf13 = buf13  + 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)**2
-          buf14 = buf14  + 0.25*psi(i,j,k)*(w(i,j,k)+w(i,j,k-1))**2
-          buf15 = buf15  + 0.25*(u(i-1,j,k)+u(i,j,k))*(w(i,j,k-1)+w(i,j,k))
-          buf16 = buf16  + 0.25*psi(i,j,k)*(u(i-1,j,k)+u(i,j,k))*(w(i,j,k)+w(i,j,k-1))
+          buf09 = buf09  + 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)**2
+          buf10 = buf10  + 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)**2
+          buf11 = buf11  + 0.25*psi(i,j,k)*(w(i,j,k)+w(i,j,k-1))**2
+          buf12 = buf12  + (1.-0.5*(psi(i,j,k)+psi(i+1,j,k)))*u(i,j,k)**2
+          buf13 = buf13  + (1.-0.5*(psi(i,j,k)+psi(i,j+1,k)))*v(i,j,k)**2
+          buf14 = buf14  + (1.-psi(i,j,k))*0.25*(w(i,j,k)+w(i,j,k-1))**2
+          buf15 = buf15  + 0.25*psi(i,j,k)*(u(i-1,j,k)+u(i,j,k))*(w(i,j,k)+w(i,j,k-1))
+          buf16 = buf16  + (1.-*psi(i,j,k))*0.25*(u(i-1,j,k)+u(i,j,k))*(w(i,j,k)+w(i,j,k-1))
           !            
-          buf17 = buf17 + u(i,j,k)**3
-          buf18 = buf18 + v(i,j,k)**3
-          buf19 = buf19 + 0.125*(w(i,j,k)+w(i,j,k-1))**3
-          buf20 = buf20 + 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)**3
-          buf21 = buf21 + 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)**3
-          buf22 = buf22 + 0.125*psi(i,j,k)*(w(i,j,k)+w(i,j,k-1))**3
+          buf17 = buf17 + 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)**3
+          buf18 = buf18 + 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)**3
+          buf19 = buf19 + 0.125*psi(i,j,k)*(w(i,j,k)+w(i,j,k-1))**3
+          buf20 = buf20 + (1.-0.5*(psi(i,j,k)+psi(i+1,j,k)))*u(i,j,k)**3
+          buf21 = buf21 + (1.-0.5*(psi(i,j,k)+psi(i,j+1,k)))*v(i,j,k)**3
+          buf22 = buf22 + (1.-psi(i,j,k))*0.125*(w(i,j,k)+w(i,j,k-1))**3
           !
           ! pressure
           !
@@ -170,34 +170,34 @@ module mod_output_acdi
           tmp_y = (u(i,j,k+1)-u(i,j,k))/dzc_g(k) - (w(i+1,j,k)-w(i,j,k))/dl(1)
           tmp_z = (v(i+1,j,k)-v(i,j,k))/dl(1) - (u(i,j+1,k)-u(i,j,k))/dl(2)
           !
-          buf25 = buf25 + tmp_x
-          buf26 = buf26 + tmp_y
-          buf27 = buf27 + tmp_z
-          buf28 = buf28 + 0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))*tmp_x
-          buf29 = buf29 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j,k+1)+psi(i,j,k+1))*tmp_y
-          buf30 = buf30 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))*tmp_z
+          buf25 = buf25 + 0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))*tmp_x
+          buf26 = buf26 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j,k+1)+psi(i,j,k+1))*tmp_y
+          buf27 = buf27 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))*tmp_z
+          buf28 = buf28 + (1.-0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1)))*tmp_x
+          buf29 = buf29 + (1.-0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j,k+1)+psi(i,j,k+1)))*tmp_y
+          buf30 = buf30 + (1.-0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k)))*tmp_z
           !            
-          buf31 = buf31 + tmp_x**2
-          buf32 = buf32 + tmp_y**2
-          buf33 = buf33 + tmp_z**2
-          buf34 = buf34 + 0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))*tmp_x**2
-          buf35 = buf35 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j,k+1)+psi(i,j,k+1))*tmp_y**2
-          buf36 = buf36 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))*tmp_z**2
+          buf31 = buf31 + 0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))*tmp_x**2
+          buf32 = buf32 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j,k+1)+psi(i,j,k+1))*tmp_y**2
+          buf33 = buf33 + 0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))*tmp_z**2
+          buf34 = buf34 + (1.-0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1)))*tmp_x**2
+          buf35 = buf35 + (1.-0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j,k+1)+psi(i,j,k+1)))*tmp_y**2
+          buf36 = buf36 + (1.-0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k)))*tmp_z**2
 #if defined(_SCALAR)
           !
           ! scalar
           !
-          buf37 = buf37 + s(i,j,k)
-          buf38 = buf38 + psi(i,j,k)*s(i,j,k)
+          buf37 = buf37 + psi(i,j,k)*s(i,j,k)
+          buf38 = buf38 + (1.-psi(i,j,k))*s(i,j,k)
           !
-          buf39 = buf39 + s(i,j,k)**2
-          buf40 = buf40 + psi(i,j,k)*s(i,j,k)**2
-          buf41 = buf41 + s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
-          buf42 = buf42 + s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
-          buf43 = buf43 + s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
-          buf44 = buf44 + psi(i,j,k)*s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
-          buf45 = buf45 + psi(i,j,k)*s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
-          buf46 = buf46 + psi(i,j,k)*s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
+          buf39 = buf39 + psi(i,j,k)*s(i,j,k)**2
+          buf40 = buf40 + (1.-psi(i,j,k))*s(i,j,k)**2
+          buf41 = buf41 + psi(i,j,k)*s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
+          buf42 = buf42 + psi(i,j,k)*s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
+          buf43 = buf43 + psi(i,j,k)*s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
+          buf44 = buf44 + (1.-psi(i,j,k))*s(i,j,k)*0.5*(u(i,j,k)+u(i-1,j,k))
+          buf45 = buf45 + (1.-psi(i,j,k))*s(i,j,k)*0.5*(v(i,j,k)+v(i,j-1,k))
+          buf46 = buf46 + (1.-psi(i,j,k))*s(i,j,k)*0.5*(w(i,j,k)+w(i,j,k-1))
 #endif
           !
         end do
