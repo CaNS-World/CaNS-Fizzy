@@ -149,7 +149,7 @@ module mod_output_acdi
           buf13 = buf13  + (1.-0.5*(psi(i,j,k)+psi(i,j+1,k)))*v(i,j,k)**2
           buf14 = buf14  + (1.-psi(i,j,k))*0.25*(w(i,j,k)+w(i,j,k-1))**2
           buf15 = buf15  + 0.25*psi(i,j,k)*(u(i-1,j,k)+u(i,j,k))*(w(i,j,k)+w(i,j,k-1))
-          buf16 = buf16  + (1.-*psi(i,j,k))*0.25*(u(i-1,j,k)+u(i,j,k))*(w(i,j,k)+w(i,j,k-1))
+          buf16 = buf16  + (1.-psi(i,j,k))*0.25*(u(i-1,j,k)+u(i,j,k))*(w(i,j,k)+w(i,j,k-1))
           !            
           buf17 = buf17 + 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)**3
           buf18 = buf18 + 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)**3
