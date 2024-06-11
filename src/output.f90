@@ -698,4 +698,92 @@ module mod_output
     enddo
     call MPI_ALLREDUCE(MPI_IN_PLACE,area,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_total_area
+  !
+  subroutine cmpt_mean_pos_and_vel(iphase,lo,hi,dl,dzf_g,zc_g,psi,u,v,w,pos,vel)
+    !
+    ! computes the mean position and velocity of one of the phases (e.g., useful for single-droplet or bubble benchmarks)
+    !
+    ! not too difficult to port to GPU, if later needed
+    !
+    implicit none
+    integer , intent(in )               :: iphase ! phase 1 or 2?
+    integer , intent(in ), dimension(3) :: lo,hi
+    real(rp), intent(in ), dimension(3) :: dl
+    real(rp), intent(in ), dimension(lo(3)-1:) :: dzf_g,zc_g
+    real(rp), intent(in ), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: psi,u,v,w
+    real(rp), intent(out), dimension(3) :: pos,vel
+    real(rp) :: aux,sgn,xc,yc,zc,vol_loc,vol
+    integer  :: i,j,k
+    !
+    aux = 0.
+    sgn = 1.
+    if(      iphase == 1 ) then
+      aux = aux
+      sgn = sgn
+    else if( iphase == 2 ) then
+      aux =  1.
+      sgn = -1.
+    end if
+    !
+    pos(:) = 0._rp
+    vel(:) = 0._rp
+    vol    = 0.
+    do k=lo(3),hi(3)
+      zc = zc_g(k)
+      do j=lo(2),hi(2)
+        yc = (j-0.5)*dl(2)
+        do i=lo(1),hi(1)
+          xc = (i-0.5)*dl(1)
+          !
+          vol_loc = (aux+sgn*psi(i,j,k))*dl(1)*dl(2)*dzf_g(k)
+          vol     = vol + vol_loc
+          !
+          pos(1) = pos(1) + xc*vol_loc
+          pos(2) = pos(2) + yc*vol_loc
+          pos(3) = pos(3) + zc*vol_loc
+          vel(1) = vel(1) + 0.5*(u(i,j,k)+u(i-1,j,k))*vol_loc
+          vel(2) = vel(2) + 0.5*(v(i,j,k)+v(i,j-1,k))*vol_loc
+          vel(3) = vel(3) + 0.5*(w(i,j,k)+w(i,j,k-1))*vol_loc
+        end do
+      end do
+    end do
+    call MPI_ALLREDUCE(MPI_IN_PLACE,vol,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    pos(:) = pos(:)/vol
+    vel(:) = vel(:)/vol
+    call MPI_ALLREDUCE(MPI_IN_PLACE,pos,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call MPI_ALLREDUCE(MPI_IN_PLACE,vel,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+  end subroutine cmpt_mean_pos_and_vel
+  !
+  subroutine cmpt_total_mass(n,dl,dzf,rho12,psi,mass)
+    !
+    ! computes total mass of the system
+    !
+    implicit none
+    integer , intent(in ), dimension(3)        :: n
+    real(rp), intent(in ), dimension(3)        :: dl
+    real(rp), intent(in ), dimension(0:)       :: dzf
+    real(rp), intent(in ), dimension(2)        :: rho12
+    real(rp), intent(in ), dimension(0:,0:,0:) :: psi
+    real(rp), intent(out)                      :: mass
+    real(rp) :: rho,vcell
+    integer :: i,j,k
+    !
+    ! calculate the total mass of the system
+    !
+    mass = 0._rp
+    !$acc data copy(mass) async(1)
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          rho = rho12(1)*psi(i,j,k)+rho12(2)*(1.-psi(i,j,k))
+          vcell = dl(1)*dl(2)*dzf(k)
+          mass = mass + vcell*rho
+        end do
+      end do
+    end do
+    !$acc end data
+    !$acc wait(1)
+    call MPI_ALLREDUCE(MPI_IN_PLACE,mass,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+  end subroutine cmpt_total_mass
 end module mod_output
