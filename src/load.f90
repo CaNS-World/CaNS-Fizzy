@@ -16,7 +16,7 @@ module mod_load
   private
   public load_one,io_field
   contains
-  subroutine load_one(io,filename,comm,ng,nh,lo,hi,p,time,istep)
+  subroutine load_one(io,filename,comm,ng,nhalo,lo,hi,p,time,istep)
     !
     ! reads/writes a restart file
     !
@@ -24,8 +24,8 @@ module mod_load
     character(len=1), intent(in) :: io
     character(len=*), intent(in) :: filename
     integer         , intent(in) :: comm
-    integer , intent(in), dimension(3) :: ng,nh,lo,hi
-    real(rp), intent(inout), dimension(lo(1)-nh(1):,lo(2)-nh(2):,lo(3)-nh(3):) :: p
+    integer , intent(in), dimension(3) :: ng,nhalo,lo,hi
+    real(rp), intent(inout), dimension(lo(1)-nhalo(1):,lo(2)-nhalo(2):,lo(3)-nhalo(3):) :: p
     real(rp), intent(inout) :: time
     integer , intent(inout) :: istep
     real(rp), dimension(2) :: fldinfo
@@ -54,7 +54,7 @@ module mod_load
       !
       disp = 0_MPI_OFFSET_KIND
 #if !defined(_DECOMP_X_IO)
-      call io_field(io,fh,ng,nh,lo,hi,disp,p)
+      call io_field(io,fh,ng,nhalo,lo,hi,disp,p)
 #else
       block
         !
@@ -76,7 +76,7 @@ module mod_load
                    tmp_z(zstart(1):zend(1),zstart(2):zend(2),zstart(3):zend(3)))
         end select
         call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
-        call transpose_to_or_from_x(io,ipencil,nh,p,tmp_x,tmp_y,tmp_z)
+        call transpose_to_or_from_x(io,ipencil,nhalo,p,tmp_x,tmp_y,tmp_z)
         deallocate(tmp_x,tmp_y,tmp_z)
       end block
 #endif
@@ -98,7 +98,7 @@ module mod_load
       call MPI_FILE_SET_SIZE(fh,filesize,ierr)
       disp = 0_MPI_OFFSET_KIND
 #if !defined(_DECOMP_X_IO)
-      call io_field(io,fh,ng,nh,lo,hi,disp,p)
+      call io_field(io,fh,ng,nhalo,lo,hi,disp,p)
 #else
       block
         !
@@ -119,7 +119,7 @@ module mod_load
                    tmp_y(ystart(1):yend(1),ystart(2):yend(2),ystart(3):yend(3)), &
                    tmp_z(zstart(1):zend(1),zstart(2):zend(2),zstart(3):zend(3)))
         end select
-        call transpose_to_or_from_x(io,ipencil,nh,p,tmp_x,tmp_y,tmp_z)
+        call transpose_to_or_from_x(io,ipencil,nhalo,p,tmp_x,tmp_y,tmp_z)
         call io_field(io,fh,ng,[0,0,0],lo,hi,disp,tmp_x)
         deallocate(tmp_x,tmp_y,tmp_z)
       end block
@@ -133,13 +133,13 @@ module mod_load
     end select
   end subroutine load_one
   !
-  subroutine io_field(io,fh,ng,nh,lo,hi,disp,var)
+  subroutine io_field(io,fh,ng,nhalo,lo,hi,disp,var)
     implicit none
     character(len=1), intent(in)                 :: io
     integer , intent(in)                         :: fh
-    integer , intent(in), dimension(3)           :: ng,nh,lo,hi
+    integer , intent(in), dimension(3)           :: ng,nhalo,lo,hi
     integer(kind=MPI_OFFSET_KIND), intent(inout) :: disp
-    real(rp), dimension(lo(1)-nh(1):,lo(2)-nh(2):,lo(3)-nh(3):) :: var ! best skip intent() attribute here
+    real(rp), dimension(lo(1)-nhalo(1):,lo(2)-nhalo(2):,lo(3)-nhalo(3):) :: var ! best skip intent() attribute here
     integer , dimension(3) :: n
     integer , dimension(3) :: sizes,subsizes,starts
     integer :: type_glob,type_loc
@@ -149,9 +149,9 @@ module mod_load
     starts(:)   = lo(:) - 1 ! starts from 0
     call MPI_TYPE_CREATE_SUBARRAY(3,sizes,subsizes,starts,MPI_ORDER_FORTRAN,MPI_REAL_RP,type_glob,ierr)
     call MPI_TYPE_COMMIT(type_glob,ierr)
-    sizes(:)    = n(:) + 2*nh(:)
+    sizes(:)    = n(:) + 2*nhalo(:)
     subsizes(:) = n(:)
-    starts(:)   = 0 + nh(:)
+    starts(:)   = 0 + nhalo(:)
     call MPI_TYPE_CREATE_SUBARRAY(3,sizes,subsizes,starts,MPI_ORDER_FORTRAN,MPI_REAL_RP,type_loc ,ierr)
     call MPI_TYPE_COMMIT(type_loc,ierr)
     select case(io)
@@ -168,18 +168,18 @@ module mod_load
   end subroutine io_field
   !
 #if defined(_DECOMP_X_IO)
-  subroutine transpose_to_or_from_x(io,ipencil_axis,nh,var,var_x,var_y,var_z)
+  subroutine transpose_to_or_from_x(io,ipencil_axis,nhalo,var,var_x,var_y,var_z)
     !
     ! transpose arrays for I/O over x-aligned pencils
     !
     use decomp_2d
     implicit none
     character(len=1), intent(in) :: io
-    integer , intent(in) :: ipencil_axis,nh(3)
-    real(rp), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: var
+    integer , intent(in) :: ipencil_axis,nhalo(3)
+    real(rp), dimension(1-nhalo(1):,1-nhalo(2):,1-nhalo(3):) :: var
     real(rp), dimension(:,:,:) :: var_x,var_y,var_z
     integer, dimension(3) :: n
-    n(:) = shape(var) - 2*nh(:)
+    n(:) = shape(var) - 2*nhalo(:)
     select case(ipencil_axis)
     case(1)
     case(2)
@@ -206,7 +206,7 @@ module mod_load
   end subroutine transpose_to_or_from_x
   !
 #if defined(_OPENACC)
-  subroutine transpose_to_or_from_x_gpu(io,ipencil_axis,nh,var_io,var)
+  subroutine transpose_to_or_from_x_gpu(io,ipencil_axis,nhalo,var_io,var)
     !
     ! transpose arrays for I/O over x-aligned pencils on GPUs
     !
@@ -227,9 +227,9 @@ module mod_load
                                    ch => handle,gd => gd_poi
     implicit none
     character(len=1), intent(in) :: io
-    integer , intent(in) :: ipencil_axis,nh(3)
+    integer , intent(in) :: ipencil_axis,nhalo(3)
     real(rp), dimension(1      :,1      :,       :) :: var_io
-    real(rp), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: var
+    real(rp), dimension(1-nhalo(1):,1-nhalo(2):,1-nhalo(3):) :: var
     real(rp), pointer, contiguous, dimension(:,:,:) :: var_x,var_y,var_z
     integer, dimension(3) :: n,n_x,n_y,n_z,n_x_0
     integer :: i,j,k
@@ -237,7 +237,7 @@ module mod_load
     !
     !$acc wait
     !
-    n(:) = shape(var) - 2*nh(:)
+    n(:) = shape(var) - 2*nhalo(:)
     !
     n_x(:) = ap_x%shape(:)
     n_y(:) = ap_y%shape(:)
@@ -321,15 +321,15 @@ module mod_load
 #endif
 #endif
   !
-  subroutine load_one_local(io,filename,n,nh,p,time,istep)
+  subroutine load_one_local(io,filename,n,nhalo,p,time,istep)
     !
     ! reads/writes a restart file
     !
     implicit none
     character(len=1), intent(in) :: io
     character(len=*), intent(in) :: filename
-    integer , intent(in), dimension(3) :: n,nh
-    real(rp), intent(inout), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: p
+    integer , intent(in), dimension(3) :: n,nhalo
+    real(rp), intent(inout), dimension(1-nhalo(1):,1-nhalo(2):,1-nhalo(3):) :: p
     real(rp), intent(inout), optional :: time
     integer , intent(inout), optional :: istep
     real(rp), dimension(2) :: fldinfo
@@ -356,7 +356,7 @@ module mod_load
   end subroutine load_one_local
   !
 #if defined(_USE_HDF5)
-  subroutine io_field_hdf5(io,filename,varname,ng,nh,lo,hi,var,meta,x_g,y_g,z_g)
+  subroutine io_field_hdf5(io,filename,varname,ng,nhalo,lo,hi,var,meta,x_g,y_g,z_g)
     use hdf5
     !
     ! collective single field data I/O using HDF5
@@ -367,8 +367,8 @@ module mod_load
     implicit none
     character(len=1), intent(in) :: io
     character(len=*), intent(in) :: filename,varname
-    integer         , intent(in), dimension(3)   :: ng,nh,lo,hi
-    real(rp), intent(inout), dimension(lo(1)-nh(1):,lo(2)-nh(2):,lo(3)-nh(3):) :: var
+    integer         , intent(in), dimension(3)   :: ng,nhalo,lo,hi
+    real(rp), intent(inout), dimension(lo(1)-nhalo(1):,lo(2)-nhalo(2):,lo(3)-nhalo(3):) :: var
     real(rp), intent(inout), dimension(2), optional :: meta
     real(rp), intent(inout), dimension(0:), optional :: x_g,y_g,z_g
     integer , dimension(3) :: n
@@ -400,7 +400,7 @@ module mod_load
     dims(:) = ng(:)
     data_count(:) = subsizes(:)
     data_offset(:) = starts(:)
-    halo_offset(:) = nh(:)
+    halo_offset(:) = nhalo(:)
     !
     select case(io)
     case('r')
@@ -410,7 +410,7 @@ module mod_load
       call h5pclose_f(plist_id,ierr)
       !
       call h5dopen_f(file_id,'fields/'//varname,dset,ierr)
-      call h5screate_simple_f(ndims,data_count+2*nh(:),memspace,ierr)
+      call h5screate_simple_f(ndims,data_count+2*nhalo(:),memspace,ierr)
       !
       call h5dget_space_f(dset,slabspace,ierr)
       call h5sselect_hyperslab_f(slabspace,H5S_SELECT_SET_F,data_offset,data_count,ierr)
@@ -442,7 +442,7 @@ module mod_load
       !
       call h5gcreate_f(file_id,'fields',group_id,ierr)
       call h5dcreate_f(group_id,varname,H5T_NATIVE_DOUBLE,filespace,dset,ierr)
-      call h5screate_simple_f(ndims,data_count+2*nh(:),memspace,ierr)
+      call h5screate_simple_f(ndims,data_count+2*nhalo(:),memspace,ierr)
       call h5dget_space_f(dset,slabspace,ierr)
       call h5sselect_hyperslab_f(slabspace,H5S_SELECT_SET_F,data_offset,data_count,ierr)
       call h5sselect_hyperslab_f(memspace,H5S_SELECT_SET_F,halo_offset,data_count,ierr)

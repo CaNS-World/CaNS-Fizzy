@@ -8,6 +8,7 @@ module mod_initmpi
   use mpi
   use decomp_2d
   use mod_common_mpi, only: myid,ierr,halo,ipencil => ipencil_axis
+  use mod_param, only: nh
   use mod_types
   !@acc use openacc
   !@acc use cudecomp
@@ -72,7 +73,7 @@ module mod_initmpi
     istat = cudecompGridDescConfigSetDefaults(conf)
     conf%transpose_comm_backend = cudecomp_t_comm_backend
     conf%transpose_axis_contiguous(:) = [.true.,.true.,.false.]
-    conf%gdims(:)      = [2*(ng(1)/2+1),2*(ng(2)/2+1),ng(3)]
+    conf%gdims(:)      = [2*(ng(1)/2+1),2*(ng(2)/2+1),ng(3)] !!! maybe put 2*(ng/2+nh) here, giando
     conf%pdims(:)      = dims(1:2)
     conf%gdims_dist(:) = ng(:)
     istat = cudecompGridDescAutotuneOptionsSetDefaults(atune_conf)
@@ -98,7 +99,7 @@ module mod_initmpi
     conf%halo_comm_backend = cudecomp_h_comm_backend
     conf%transpose_axis_contiguous(:) = .false.
     istat = cudecompGridDescAutotuneOptionsSetDefaults(atune_conf)
-    atune_conf%halo_extents(:) = 1
+    atune_conf%halo_extents(:) = nh !! maybe put nh here, giando
     atune_conf%halo_periods(:) = periods(:)
     atune_conf%dtype = cudecomp_real_rp
     atune_conf%autotune_halo_backend = cudecomp_is_h_comm_autotune
@@ -179,7 +180,7 @@ module mod_initmpi
     hi_z(:)    = zend(:)
     n_z(:)     = zsize(:)
     do l=1,3
-      call makehalo(l,1,n(:),halo(l))
+      call makehalo(l,nh,n(:),halo(l)) !giando
     end do
     nb(:,ipencil) = MPI_PROC_NULL
     call MPI_CART_SHIFT(comm_cart,0,1,nb(0,ipencil_t(1)),nb(1,ipencil_t(1)),ierr)

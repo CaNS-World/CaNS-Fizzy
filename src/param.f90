@@ -21,6 +21,11 @@ real(rp), parameter :: eps = 0._rp
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
 character(len=100), parameter :: datadir = 'data/'
 !
+! number of ghost points
+!
+integer, parameter :: nh = 2
+!
+!
 ! variables to be determined from the input file
 !
 integer , protected, dimension(3) :: ng

@@ -6,7 +6,7 @@
 ! -
 module mod_two_fluid
   use mpi
-  use mod_param, only: pi
+  use mod_param, only: pi,nh
   use mod_types
   implicit none
   private
@@ -32,23 +32,23 @@ module mod_two_fluid
     !$acc end kernels
   end subroutine update_property
   !
-  subroutine clip_field(nh,minmax,p)
+  subroutine clip_field(nhalo,minmax,p)
     !
     ! clips a scalar field to certain maximum and minimum values
     !
     implicit none
-    integer , intent(in   ), dimension(3) :: nh
+    integer , intent(in   ), dimension(3) :: nhalo
     real(rp), intent(in   ), dimension(2) :: minmax
-    real(rp), intent(inout), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: p
+    real(rp), intent(inout), dimension(1-nhalo(1):,1-nhalo(2):,1-nhalo(3):) :: p
     real(rp) :: rmin,rmax
     integer :: n1,n2,n3,nh1,nh2,nh3,i,j,k
     !
-    n1 = size(p,1)-2*nh(1)
-    n2 = size(p,2)-2*nh(2)
-    n3 = size(p,3)-2*nh(3)
-    nh1 = nh(1)
-    nh2 = nh(2)
-    nh3 = nh(3)
+    n1 = size(p,1)-2*nhalo(1)
+    n2 = size(p,2)-2*nhalo(2)
+    n3 = size(p,3)-2*nhalo(3)
+    nh1 = nhalo(1)
+    nh2 = nhalo(2)
+    nh3 = nhalo(3)
     rmin = minmax(1); rmax = minmax(2)
     !
     !$acc parallel loop collapse(3) default(present) firstprivate(rmin,rmax) async(1)
@@ -66,9 +66,9 @@ module mod_two_fluid
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    real(rp), intent(in ), dimension(1-nh:)          :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:)    :: psi
+    real(rp), intent(out), dimension(1-nh:,1-nh:,1-nh:)    :: normx,normy,normz,kappa
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
@@ -183,9 +183,9 @@ module mod_two_fluid
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
+    real(rp), intent(in ), dimension(1-nh:)       :: dzfi
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:)    :: psi
+    real(rp), intent(out), dimension(1-nh:,1-nh:,1-nh:)    :: normx,normy,normz
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm,dpsidx,dpsidy,dpsidz,norm
     integer  :: i,j,k
     !
@@ -219,10 +219,10 @@ module mod_two_fluid
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: normx,normy,normz
-    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
+    real(rp), intent(in ), dimension(1-nh:)       :: dzfi
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:)    :: psi
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:)    :: normx,normy,normz
+    real(rp), intent(out), dimension(1-nh:,1-nh:,1-nh:)    :: kappa
     real(rp) :: normxp,normxm,normyp,normym,normzp,normzm
     integer  :: i,j,k
     !
@@ -244,7 +244,7 @@ module mod_two_fluid
     end do
   end subroutine cmpt_curv_fd2
   !
-  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
+  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,zc_g,psi)
     use mod_common_mpi, only: myid
     !
     ! computes initial conditions for the volume fraction field psi
@@ -255,8 +255,8 @@ module mod_two_fluid
     real(rp), intent(in)               :: seps
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), dimension(0:), intent(out) :: dzf_g,zc_g
-    real(rp), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:), intent(out) :: psi
+    real(rp), dimension(1-nh:), intent(in) :: zc_g
+    real(rp), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:), intent(out) :: psi
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
@@ -552,9 +552,9 @@ module mod_two_fluid
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3)           :: n
     real(rp), intent(in ), dimension(3)           :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    real(rp), intent(in ), dimension(1-nh:)       :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:)    :: psi
+    real(rp), intent(out), dimension(1-nh:,1-nh:,1-nh:)    :: normx,normy,normz,kappa
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp

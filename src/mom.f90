@@ -6,6 +6,7 @@
 ! -
 module mod_mom
   use mpi
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -16,8 +17,8 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: dzfi
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     integer :: i,j,k
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm
@@ -46,8 +47,8 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: dzfi
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
     real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
@@ -76,8 +77,8 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: dzci
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     integer :: i,j,k
     real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
@@ -106,9 +107,9 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: rho12,mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm, &
                 dvdxp,dvdxm,dwdxp,dwdxm
@@ -156,9 +157,9 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: rho12,mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm, &
                 dudyp,dudym,dwdyp,dwdym
@@ -207,9 +208,9 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: rho12,mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     integer :: i,j,k
     real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm, &
@@ -259,7 +260,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: rhop,dpdl
     integer :: i,j,k
@@ -292,7 +293,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dyi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
     real(rp) :: rhop,dpdl
@@ -323,10 +324,10 @@ module mod_mom
   subroutine momz_p(nx,ny,nz,dzci,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in), dimension(1-nh:) :: dzci
     real(rp), intent(in) :: dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: rhop,dpdl
     integer :: i,j,k
@@ -360,7 +361,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi
     real(rp), intent(in) :: sigma,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: rhop,kappap
     integer :: i,j,k
@@ -388,7 +389,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dyi
     real(rp), intent(in) :: sigma,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: rhop,kappap
     integer :: i,j,k
@@ -414,9 +415,9 @@ module mod_mom
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in), dimension(1-nh:) :: dzci
     real(rp), intent(in) :: sigma,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: rhop,kappap
     integer :: i,j,k
@@ -443,7 +444,7 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: psip,rhop,factorp
     integer :: i,j,k
@@ -472,7 +473,7 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: psip,rhop,factorp
     integer :: i,j,k
@@ -501,7 +502,7 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: psip,rhop,factorp
     integer :: i,j,k
@@ -530,25 +531,27 @@ module mod_mom
     implicit none
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in ), dimension(2) :: rho12,mu12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w,psi
-    real(rp), intent(in ), dimension(0:,0:,0:), optional :: psio,acdi_rglrx,acdi_rglry,acdi_rglrz
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: psi
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:), optional :: psio,acdi_rglrx,acdi_rglry,acdi_rglrz
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
     real(rp) :: dxi,dyi
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
                 d_ccm,d_pcm,d_cpm,d_cmc,d_pmc,d_mcc,d_ccc,d_pcc,d_mpc,d_cpc,d_cmp,d_mcp,d_ccp,d_cpp,d_ppc,d_pcp, &
-                u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp,u_lcc,u_qcc, &
-                v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp, &
-                w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp, &
+                u_ccl,u_ccm,u_pcm,u_cpm,u_clc,u_cmc,u_pmc,u_lcc,u_mcc,u_ccc,u_pcc,u_qcc,u_mpc,u_cpc,u_cqc,u_cmp,u_mcp,u_ccp,u_ccq, &
+                v_ccl,v_ccm,v_pcm,v_cpm,v_clc,v_cmc,v_pmc,v_lcc,v_mcc,v_ccc,v_pcc,v_qcc,v_mpc,v_cpc,v_cqc,v_cmp,v_mcp,v_ccp,v_ccq, &
+                w_ccl,w_ccm,w_pcm,w_cpm,w_clc,w_cmc,w_pmc,w_lcc,w_mcc,w_ccc,w_pcc,w_qcc,w_mpc,w_cpc,w_cqc,w_cmp,w_mcp,w_ccp,w_ccq, &
                 rglrx_mcc,rglrx_ccc,rglrx_pcc,rglrx_mpc,rglrx_cpc,rglrx_mcp,rglrx_ccp, &
                 rglry_cmc,rglry_ccc,rglry_cpc,rglry_pmc,rglry_pcc,rglry_cmp,rglry_ccp, &
                 rglrz_ccm,rglrz_ccc,rglrz_ccp,rglrz_pcm,rglrz_pcc,rglrz_cpm,rglrz_cpc, &
                 dzci_c,dzci_m,dzfi_c,dzfi_p, &
                 psixp,psiyp,psizp
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
+    real(rp) :: ududx,vdudy,wdudz,udvdx,vdvdy,wdvdz,udwdx,vdwdy,wdwdz
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: dudx,dudy,dudz,dvdx,dvdy,dvdz,dwdx,dwdy,dwdz
     real(rp) :: omxp,omxm,omyp,omym,omzp,omzm,domzdy,domydz,domxdz,domzdx,domydx,domxdy
@@ -571,49 +574,65 @@ module mod_mom
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
+          u_ccl = u(i  ,j  ,k-2)
           u_ccm = u(i  ,j  ,k-1)
           u_pcm = u(i+1,j  ,k-1)
           u_cpm = u(i  ,j+1,k-1)
+          u_clc = u(i  ,j-2,k  )
           u_cmc = u(i  ,j-1,k  )
           u_pmc = u(i+1,j-1,k  )
-          !u_lcc = u(i-2,j  ,k  )
+          u_lcc = u(i-2,j  ,k  )
           u_mcc = u(i-1,j  ,k  )
           u_ccc = u(i  ,j  ,k  )
           u_pcc = u(i+1,j  ,k  )
-          !u_qcc = u(i+2,j  ,k  )
+          u_qcc = u(i+2,j  ,k  )
           u_mpc = u(i-1,j+1,k  )
           u_cpc = u(i  ,j+1,k  )
+          u_cqc = u(i  ,j+2,k  )
           u_cmp = u(i  ,j-1,k+1)
           u_mcp = u(i-1,j  ,k+1)
           u_ccp = u(i  ,j  ,k+1)
+          u_ccq = u(i  ,j  ,k+2)
           !
+          v_ccl = v(i  ,j  ,k-2)
           v_ccm = v(i  ,j  ,k-1)
           v_pcm = v(i+1,j  ,k-1)
           v_cpm = v(i  ,j+1,k-1)
+          v_clc = v(i  ,j-2,k  )
           v_cmc = v(i  ,j-1,k  )
           v_pmc = v(i+1,j-1,k  )
+          v_lcc = v(i-2,j  ,k  )
           v_mcc = v(i-1,j  ,k  )
           v_ccc = v(i  ,j  ,k  )
           v_pcc = v(i+1,j  ,k  )
+          v_qcc = v(i+2,j  ,k  )
           v_mpc = v(i-1,j+1,k  )
           v_cpc = v(i  ,j+1,k  )
+          v_cqc = v(i  ,j+2,k  )
           v_cmp = v(i  ,j-1,k+1)
           v_mcp = v(i-1,j  ,k+1)
           v_ccp = v(i  ,j  ,k+1)
+          v_ccq = v(i  ,j  ,k+2)
           !
+          w_ccl = w(i  ,j  ,k-2)
           w_ccm = w(i  ,j  ,k-1)
           w_pcm = w(i+1,j  ,k-1)
           w_cpm = w(i  ,j+1,k-1)
+          w_clc = w(i  ,j-2,k  )
           w_cmc = w(i  ,j-1,k  )
           w_pmc = w(i+1,j-1,k  )
+          w_lcc = w(i-2,j  ,k  )
           w_mcc = w(i-1,j  ,k  )
           w_ccc = w(i  ,j  ,k  )
           w_pcc = w(i+1,j  ,k  )
+          w_qcc = w(i+2,j  ,k  )
           w_mpc = w(i-1,j+1,k  )
           w_cpc = w(i  ,j+1,k  )
+          w_cqc = w(i  ,j+2,k  )
           w_cmp = w(i  ,j-1,k+1)
           w_mcp = w(i-1,j  ,k+1)
           w_ccp = w(i  ,j  ,k+1)
+          w_ccq = w(i  ,j  ,k+2)
           !
           c_ccm = psi(i  ,j  ,k-1)
           c_pcm = psi(i+1,j  ,k-1)
@@ -735,94 +754,241 @@ module mod_mom
           wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)*rhozm
           dwdt_aux = (dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm ))/rhoz
 #else
-          if ((u_mcc+u_ccc+u_ccc+u_pcc) >= 0.) then
-            !duudx = (2.*u_pcc + 3.*u_ccc - 6.*u_mcc + 1.*u_lcc)*dxi/6.
-            uuip  = 0.5*(u_mcc+u_ccc)*u_ccc
-            uuim  = 0.5*(u_mcc+u_ccc)*u_mcc
-          else
-            !duudx = (1.*u_qcc - 6.*u_pcc + 3.*u_ccc + 2.*u_mcc)*dxi/6.
-            uuip  = 0.5*(u_ccc+u_pcc)*u_pcc
-            uuim  = 0.5*(u_ccc+u_pcc)*u_ccc
-          end if
-          if ((v_cmc+v_pmc+v_ccc+v_pcc) >= 0.) then
-            vujp = 0.5*(v_cmc+v_pmc)*u_ccc
-            vujm = 0.5*(v_cmc+v_pmc)*u_cmc
-          else
-            vujp = 0.5*(v_ccc+v_pcc)*u_cpc
-            vujm = 0.5*(v_ccc+v_pcc)*u_ccc
-          end if
-          if ((w_ccm+w_pcm+w_ccc+w_pcc) >= 0.) then
-            wukp = 0.5*(w_ccm+w_pcm)*u_ccc
-            wukm = 0.5*(w_ccm+w_pcm)*u_ccm
-          else
-            wukp = 0.5*(w_ccc+w_pcc)*u_ccp
-            wukm = 0.5*(w_ccc+w_pcc)*u_ccc
-          end if
-          !uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)
-          !uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)
-          !vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)
-          !vujm  = 0.25*(v_pmc+v_cmc)*(u_ccc+u_cmc)
-          !wukp  = 0.25*(w_pcc+w_ccc)*(u_ccc+u_ccp)
-          !wukm  = 0.25*(w_pcm+w_ccm)*(u_ccc+u_ccm)
-          dudt_aux = dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm )
-          !
-          if ((u_mcc+u_ccc+u_mpc+u_cpc) >= 0.) then
-            uvip = 0.5*(u_mcc+u_mpc)*v_ccc
-            uvim = 0.5*(u_mcc+u_mpc)*v_mcc
-          else
-            uvip = 0.5*(u_ccc+u_cpc)*v_pcc
-            uvim = 0.5*(u_ccc+u_cpc)*v_ccc
-          end if
-          if ((v_cmc+v_ccc+v_ccc+v_cpc) >= 0.) then
-            vvjp = 0.5*(v_cmc+v_ccc)*v_ccc
-            vvjm = 0.5*(v_cmc+v_ccc)*v_cmc
-          else
-            vvjp = 0.5*(v_ccc+v_cpc)*v_cpc
-            vvjm = 0.5*(v_ccc+v_cpc)*v_ccc
-          end if
-          if ((w_ccm+w_cpm+w_ccc+w_cpc) >= 0.) then
-            wvkp = 0.5*(w_ccm+w_cpm)*v_ccc
-            wvkm = 0.5*(w_ccm+w_cpm)*v_ccm
-          else
-            wvkp = 0.5*(w_ccc+w_cpc)*v_ccp
-            wvkm = 0.5*(w_ccc+w_cpc)*v_ccc
-          end if
-          !uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)
-          !uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)
-          !vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)
-          !vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)
-          !wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)
-          !wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccc+v_ccm)
-          dvdt_aux = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
-          !
-          if ((u_mcc+u_mcp+u_ccc+u_ccp) >= 0.) then
-            uwip = 0.5*(u_mcc+u_mcp)*w_ccc
-            uwim = 0.5*(u_mcc+u_mcp)*w_mcc
-          else
-            uwip = 0.5*(u_ccc+u_ccp)*w_pcc
-            uwim = 0.5*(u_ccc+u_ccp)*w_ccc
-          end if
-          if ((v_cmc+v_cmp+v_ccc+v_ccp) >= 0.) then
-            vwjp = 0.5*(v_cmc+v_cmp)*w_ccc
-            vwjm = 0.5*(v_cmc+v_cmp)*w_cmc
-          else
-            vwjp = 0.5*(v_ccc+v_ccp)*w_cpc
-            vwjm = 0.5*(v_ccc+v_ccp)*w_ccc
-          end if
-          if ((w_ccm+w_ccc+w_ccc+w_ccp) >= 0.) then
-            wwkp = 0.5*(w_ccm+w_ccc)*w_ccc
-            wwkm = 0.5*(w_ccm+w_ccc)*w_ccm
-          else
-            wwkp = 0.5*(w_ccc+w_ccp)*w_ccp
-            wwkm = 0.5*(w_ccc+w_ccp)*w_ccc
-          end if
-          !uwip  = 0.25*(u_ccc+u_ccp)*(w_ccc+w_pcc)
-          !uwim  = 0.25*(u_mcc+u_mcp)*(w_ccc+w_mcc)
-          !vwjp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)
-          !vwjm  = 0.25*(v_cmc+v_cmp)*(w_ccc+w_cmc)
-          !wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)
-          !wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)
-          dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
+          !!!QUICK
+          !!if ((u_mcc+u_ccc+u_ccc+u_pcc) >= 0.) then
+          !!  ududx = 0.25*(u_mcc+u_ccc+u_ccc+u_pcc)*(2.*u_pcc + 3.*u_ccc - 6.*u_mcc + 1.*u_lcc)*dxi/6.
+          !!else
+          !!  ududx = 0.25*(u_mcc+u_ccc+u_ccc+u_pcc)*(1.*u_qcc - 6.*u_pcc + 3.*u_ccc + 2.*u_mcc)*dxi/6.
+          !!end if
+          !if ((u_ccc) >= 0.) then
+          !  !ududx = u_ccc*(2.*u_pcc + 3.*u_ccc - 6.*u_mcc + 1.*u_lcc)*dxi/6.
+          !  ududx = u_ccc*(3.*u_pcc + 3.*u_ccc - 7.*u_mcc + 1.*u_lcc)*dxi/8.
+          !  !ududx = u_ccc*(0.5*(u_ccc+u_pcc)-0.5*(u_mcc+u_ccc))*dxi
+          !else
+          !  !ududx = u_ccc*(1.*u_qcc - 6.*u_pcc + 3.*u_ccc + 2.*u_mcc)*dxi/6.
+          !  ududx = u_ccc*(1.*u_qcc - 7.*u_pcc + 3.*u_ccc + 3.*u_mcc)*dxi/8.
+          !  !ududx = u_ccc*(0.5*(u_ccc+u_pcc)-0.5*(u_mcc+u_ccc))*dxi
+          !end if
+          !if ((v_cmc+v_pmc+v_ccc+v_pcc) >= 0.) then
+          !  vdudy = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*(2.*u_cpc + 3.*u_ccc - 6.*u_cmc + 1.*u_clc)*dyi/6.
+          !else
+          !  vdudy = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*(1.*u_cqc - 6.*u_cpc + 3.*u_ccc + 2.*u_cmc)*dyi/6.
+          !end if
+          !if ((w_ccm+w_pcm+w_ccc+w_pcc) >= 0.) then
+          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(2.*u_ccp + 3.*u_ccc - 6.*u_ccm + 1.*u_ccl)*dzfi_c/6.
+          !  wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(3.*u_ccp + 3.*u_ccc - 7.*u_ccm + 1.*u_ccl)*dzfi_c/8.
+          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(0.5*(u_ccc+u_ccp)-0.5*(u_ccm+u_ccc))*dzfi_c
+          !else
+          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(1.*u_ccq - 6.*u_ccp + 3.*u_ccc + 2.*u_ccm)*dzfi_c/6.
+          !  wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(1.*u_ccq - 7.*u_ccp + 3.*u_ccc + 3.*u_ccm)*dzfi_c/8.
+          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(0.5*(u_ccc+u_ccp)-0.5*(u_ccm+u_ccc))*dzfi_c
+          !end if
+          !dudt_aux = -ududx -vdudy -wdudz
+          !!
+          !if ((u_mcc+u_ccc+u_mpc+u_cpc) >= 0.) then
+          !  udvdx = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*(2.*v_pcc + 3.*v_ccc - 6.*v_mcc + 1.*v_lcc)*dxi/6.
+          !else
+          !  udvdx = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*(1.*v_qcc - 6.*v_pcc + 3.*v_ccc + 2.*v_mcc)*dxi/6.
+          !end if
+          !if ((v_ccc) >= 0.) then
+          !  vdvdy = v_ccc*(2.*v_cpc + 3.*v_ccc - 6.*v_cmc + 1.*v_clc)*dyi/6.
+          !else
+          !  vdvdy = v_ccc*(1.*v_cqc - 6.*v_cpc + 3.*v_ccc + 2.*v_cmc)*dyi/6.
+          !end if
+          !!if ((v_cmc+v_ccc+v_ccc+v_cpc) >= 0.) then
+          !!  vdvdy = 0.25*(v_cmc+v_ccc+v_ccc+v_cpc)*(2.*v_cpc + 3.*v_ccc - 6.*v_cmc + 1.*v_clc)*dyi/6.
+          !!else
+          !!  vdvdy = 0.25*(v_cmc+v_ccc+v_ccc+v_cpc)*(1.*v_cqc - 6.*v_cpc + 3.*v_ccc + 2.*v_cmc)*dyi/6.
+          !!end if
+          !if ((w_ccm+w_cpm+w_ccc+w_cpc) >= 0.) then
+          !  wdvdz = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*(2.*v_ccp + 3.*v_ccc - 6.*v_ccm + 1.*v_ccl)*dzfi_c/6.
+          !else
+          !  wdvdz = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*(1.*v_ccq - 6.*v_ccp + 3.*v_ccc + 2.*v_ccm)*dzfi_c/6.
+          !end if
+          !dvdt_aux = -udvdx -vdvdy -wdvdz
+          !!
+          !if ((u_mcc+u_mcp+u_ccc+u_ccp) >= 0.) then
+          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(2.*w_pcc + 3.*w_ccc - 6.*w_mcc + 1.*w_lcc)*dxi/6.
+          !  udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(3.*w_pcc + 3.*w_ccc - 7.*w_mcc + 1.*w_lcc)*dxi/8.
+          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(0.5*(w_ccc+w_pcc)-0.5*(w_mcc+w_ccc))*dxi
+          !else
+          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(1.*w_qcc - 6.*w_pcc + 3.*w_ccc + 2.*w_mcc)*dxi/6.
+          !  udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(1.*w_qcc - 7.*w_pcc + 3.*w_ccc + 3.*w_mcc)*dxi/8.
+          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(0.5*(w_ccc+w_pcc)-0.5*(w_mcc+w_ccc))*dxi
+          !end if
+          !if ((v_cmc+v_cmp+v_ccc+v_ccp) >= 0.) then
+          !  vdwdy = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*(2.*w_cpc + 3.*w_ccc - 6.*w_cmc + 1.*w_clc)*dyi/6.
+          !else
+          !  vdwdy = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*(1.*w_cqc - 6.*w_cpc + 3.*w_ccc + 2.*w_cmc)*dyi/6.
+          !end if
+          !if ((w_ccc) >= 0.) then
+          !  !wdwdz = w_ccc*(2.*w_ccp + 3.*w_ccc - 6.*w_ccm + 1.*w_ccl)*dzfi_c/6.
+          !  wdwdz = w_ccc*(3.*w_ccp + 3.*w_ccc - 7.*w_ccm + 1.*w_ccl)*dzfi_c/8.
+          !  !wdwdz = w_ccc*(0.5*(w_ccc+w_ccp)-0.5*(w_ccm+w_ccc))*dzfi_c
+          !else
+          !  !wdwdz = w_ccc*(1.*w_ccq - 6.*w_ccp + 3.*w_ccc + 2.*w_ccm)*dzfi_c/6.
+          !  wdwdz = w_ccc*(1.*w_ccq - 7.*w_ccp + 3.*w_ccc + 3.*w_ccm)*dzfi_c/8.
+          !  !wdwdz = w_ccc*(0.5*(w_ccc+w_ccp)-0.5*(w_ccm+w_ccc))*dzfi_c
+          !end if
+          !!if ((w_ccm+w_ccc+w_ccc+w_ccp) >= 0.) then
+          !!  wdwdz = 0.25*(w_ccm+w_ccc+w_ccc+w_ccp)*(2.*w_ccp + 3.*w_ccc - 6.*w_ccm + 1.*w_ccl)*dzfi_c/6.
+          !!else
+          !!  wdwdz = 0.25*(w_ccm+w_ccc+w_ccc+w_ccp)*(1.*w_ccq - 6.*w_ccp + 3.*w_ccc + 2.*w_ccm)*dzfi_c/6.
+          !!end if
+          !dwdt_aux = -udwdx -vdwdy -wdwdz
+!!!!!!!!!!!!!!!!!
+          block
+            real(rp), parameter, dimension(2,2) :: c = 1.d0/2.d0*reshape((/-1.d0,3.d0,&
+                                                                          1.d0, 1.d0/),shape(c))
+            real(rp), parameter, dimension(2)   :: sigma = 1.d0/3.d0*(/1.d0,2.d0/) 
+            real(rp), parameter :: eps = 1.e-40
+            integer :: a
+            real(rp), dimension(-1:1) :: f
+            real(rp), dimension(2) :: beta,we,dudlh,dvdlh,dwdlh
+            real(rp) :: tauP
+            !!weno3
+            !
+            a = nint(sign(1.d0,u_ccc))
+            f(-1) = a*(u(i-1*a,j,k) - u(i-2*a,j,k))*dli(1)
+            f( 0) = a*(u(i+0*a,j,k) - u(i-1*a,j,k))*dli(1)
+            f( 1) = a*(u(i+1*a,j,k) - u(i+0*a,j,k))*dli(1)
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dudlh(1) = sum(c(:,1)*f(-1:0))
+            dudlh(2) = sum(c(:,2)*f( 0:1))
+            ududx    = u_ccc*sum(we(:)*dudlh(:))
+            !
+            a = nint(sign(1.d0,v_cmc+v_pmc+v_ccc+v_pcc))
+            f(-1) = a*(u(i,j-1*a,k) - u(i,j-2*a,k))*dli(2)
+            f( 0) = a*(u(i,j+0*a,k) - u(i,j-1*a,k))*dli(2)
+            f( 1) = a*(u(i,j+1*a,k) - u(i,j+0*a,k))*dli(2)
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dudlh(1) = sum(c(:,1)*f(-1:0))
+            dudlh(2) = sum(c(:,2)*f( 0:1))
+            vdudy    = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*sum(we(:)*dudlh(:))
+            !
+            a = nint(sign(1.d0,w_ccm+w_pcm+w_ccc+w_pcc))
+            if(a > 0.) then
+              f(-1) = a*(u(i,j,k-1*a) - u(i,j,k-2*a))*dzci(k-2)
+              f( 0) = a*(u(i,j,k+0*a) - u(i,j,k-1*a))*dzci(k-1)
+              f( 1) = a*(u(i,j,k+1*a) - u(i,j,k+0*a))*dzci(k  )
+            else
+              f(-1) = a*(u(i,j,k-1*a) - u(i,j,k-2*a))*dzci(k+1)
+              f( 0) = a*(u(i,j,k+0*a) - u(i,j,k-1*a))*dzci(k  )
+              f( 1) = a*(u(i,j,k+1*a) - u(i,j,k+0*a))*dzci(k-1)
+            endif
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dudlh(1) = sum(c(:,1)*f(-1:0))
+            dudlh(2) = sum(c(:,2)*f( 0:1))
+            wdudz    = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*sum(we(:)*dudlh(:))
+            !
+            dudt_aux = -ududx -vdudy -wdudz
+            !
+            a = nint(sign(1.d0,u_mcc+u_ccc+u_mpc+u_cpc))
+            f(-1) = a*(v(i-1*a,j,k) - v(i-2*a,j,k))*dli(1)
+            f( 0) = a*(v(i+0*a,j,k) - v(i-1*a,j,k))*dli(1)
+            f( 1) = a*(v(i+1*a,j,k) - v(i+0*a,j,k))*dli(1)
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dvdlh(1) = sum(c(:,1)*f(-1:0))
+            dvdlh(2) = sum(c(:,2)*f( 0:1))
+            udvdx    = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*sum(we(:)*dvdlh(:))
+            !
+            a = nint(sign(1.d0,v_ccc))
+            f(-1) = a*(v(i,j-1*a,k) - v(i,j-2*a,k))*dli(2)
+            f( 0) = a*(v(i,j+0*a,k) - v(i,j-1*a,k))*dli(2)
+            f( 1) = a*(v(i,j+1*a,k) - v(i,j+0*a,k))*dli(2)
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dvdlh(1) = sum(c(:,1)*f(-1:0))
+            dvdlh(2) = sum(c(:,2)*f( 0:1))
+            vdvdy    = v_ccc*sum(we(:)*dvdlh(:))
+            !
+            a = nint(sign(1.d0,w_ccm+w_cpm+w_ccc+w_cpc))
+            if(a > 0.) then
+              f(-1) = a*(v(i,j,k-1*a) - v(i,j,k-2*a))*dzci(k-2)
+              f( 0) = a*(v(i,j,k+0*a) - v(i,j,k-1*a))*dzci(k-1)
+              f( 1) = a*(v(i,j,k+1*a) - v(i,j,k+0*a))*dzci(k  )
+            else
+              f(-1) = a*(v(i,j,k-1*a) - v(i,j,k-2*a))*dzci(k+1)
+              f( 0) = a*(v(i,j,k+0*a) - v(i,j,k-1*a))*dzci(k  )
+              f( 1) = a*(v(i,j,k+1*a) - v(i,j,k+0*a))*dzci(k-1)
+            endif
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dvdlh(1) = sum(c(:,1)*f(-1:0))
+            dvdlh(2) = sum(c(:,2)*f( 0:1))
+            wdvdz    = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*sum(we(:)*dvdlh(:))
+            !
+            dvdt_aux = -udvdx -vdvdy -wdvdz
+            !
+            a = nint(sign(1.d0,u_mcc+u_mcp+u_ccc+u_ccp))
+            f(-1) = a*(w(i-1*a,j,k) - w(i-2*a,j,k))*dli(1)
+            f( 0) = a*(w(i+0*a,j,k) - w(i-1*a,j,k))*dli(1)
+            f( 1) = a*(w(i+1*a,j,k) - w(i+0*a,j,k))*dli(1)
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dwdlh(1) = sum(c(:,1)*f(-1:0))
+            dwdlh(2) = sum(c(:,2)*f( 0:1))
+            udwdx    = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*sum(we(:)*dwdlh(:))
+            !
+            a = nint(sign(1.d0,v_cmc+v_cmp+v_ccc+v_ccp))
+            f(-1) = a*(w(i,j-1*a,k) - w(i,j-2*a,k))*dli(2)
+            f( 0) = a*(w(i,j+0*a,k) - w(i,j-1*a,k))*dli(2)
+            f( 1) = a*(w(i,j+1*a,k) - w(i,j+0*a,k))*dli(2)
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dwdlh(1) = sum(c(:,1)*f(-1:0))
+            dwdlh(2) = sum(c(:,2)*f( 0:1))
+            vdwdy    = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*sum(we(:)*dwdlh(:))
+            !
+            a = nint(sign(1.d0,w_ccc))
+            if(a > 0.) then
+              f(-1) = a*(w(i,j,k-1*a) - w(i,j,k-2*a))*dzci(k-2)
+              f( 0) = a*(w(i,j,k+0*a) - w(i,j,k-1*a))*dzci(k-1)
+              f( 1) = a*(w(i,j,k+1*a) - w(i,j,k+0*a))*dzci(k  )
+            else
+              f(-1) = a*(w(i,j,k-1*a) - w(i,j,k-2*a))*dzci(k+1)
+              f( 0) = a*(w(i,j,k+0*a) - w(i,j,k-1*a))*dzci(k  )
+              f( 1) = a*(w(i,j,k+1*a) - w(i,j,k+0*a))*dzci(k-1)
+            endif
+            beta(1) = (f(-1) - f(0))**2
+            beta(2) = (f( 0) - f(1))**2
+            tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
+            we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+            we(:) = we(:)/sum(we(:))
+            dwdlh(1) = sum(c(:,1)*f(-1:0))
+            dwdlh(2) = sum(c(:,2)*f( 0:1))
+            wdwdz    = w_ccc*sum(we(:)*dwdlh(:))
+            !
+            dwdt_aux = -udwdx -vdwdy -wdwdz
+          end block
 #endif
           !
           ! diffusion
@@ -1054,14 +1220,14 @@ module mod_mom
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in   ) :: dt_r
     real(rp), intent(in   ), dimension(2) :: rho12,beta12
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
-    real(rp), intent(in   ), dimension(0:,0:,0:)    :: p,pp,psi,kappa,s
-    real(rp), intent(in   ), dimension(0:,0:,0:,1:), optional :: psio,kappao
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)    :: p,pp,psi,kappa,s
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:,1:), optional :: psio,kappao
     real(rp), intent(inout), dimension( :, :, :)    :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
@@ -1240,9 +1406,9 @@ module mod_mom
     integer , intent(in ), dimension(3) :: n
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
-    real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh:)    :: dzci,dzfi
     real(rp), intent(in )                   :: mu12(2)
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: psi,u,v,w
     real(rp), intent(out), dimension(3) :: taux,tauy,tauz
     real(rp) :: dudyp,dudym,dudzp,dudzm, &
                 dvdxp,dvdxm,dvdzp,dvdzm, &

@@ -21,13 +21,13 @@ contains
                                    istream_acc_queue_1
     use mod_common_mpi     , only: ipencil => ipencil_axis
     use mod_fft            , only: wsize_fft
-    use mod_param          , only: cudecomp_is_t_in_place,cbcpre
+    use mod_param          , only: cudecomp_is_t_in_place,cbcpre,nh
     use cudecomp
     use openacc
     implicit none
     integer :: istat
     integer(i8) :: wsize,max_wsize
-    integer :: nh(3)
+    integer :: nhalo(3)
     !
     ! allocate cuDecomp workspace buffer for transposes (reused for FFTs)
     !
@@ -47,8 +47,8 @@ contains
     ! (needs to be different due to the possible need of an NVSHMEM allocator
     !  in one of the descriptors, rather than a simple cudaMaloc)
     !
-    nh(:) = 1
-    istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nh,max_wsize)
+    nhalo(:) = nh
+    istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nhalo,max_wsize)
     allocate(work_halo(max_wsize))
     !
     istat = cudecompMalloc(handle,gd_halo,work_halo_cuda,max_wsize)
