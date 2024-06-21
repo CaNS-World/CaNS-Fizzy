@@ -531,13 +531,13 @@ program cans
         end if
       end if
       !$acc update self(u,v,w,p,psi)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,u,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,v,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,w,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,p,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,psi,time,istep)
 #if defined(_SCALAR)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,s,time,istep)
 #endif
       if(.not.is_overwrite_save) then
         !
