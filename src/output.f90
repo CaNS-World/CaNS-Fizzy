@@ -754,7 +754,7 @@ module mod_output
     call MPI_ALLREDUCE(MPI_IN_PLACE,vel,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_mean_pos_and_vel
   !
-  subroutine cmpt_total_mass(n,dl,dzf,rho12,psi,mass)
+  subroutine cmpt_total_mass(n,dl,dzf,rho12,psi,mass12)
     !
     ! computes total mass of the system
     !
@@ -764,26 +764,28 @@ module mod_output
     real(rp), intent(in ), dimension(0:)       :: dzf
     real(rp), intent(in ), dimension(2)        :: rho12
     real(rp), intent(in ), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out)                      :: mass
-    real(rp) :: rho,vcell
+    real(rp), intent(out), dimension(2)        :: mass12
+    real(rp) :: vcell,mass1,mass2
     integer :: i,j,k
     !
     ! calculate the total mass of the system
     !
-    mass = 0._rp
-    !$acc data copy(mass) async(1)
-    !$acc parallel loop collapse(3) default(present) async(1)
+    mass1 = 0._rp
+    mass2 = 0._rp
+    !$acc data copy(mass1,mass2) async(1)
+    !$acc parallel loop collapse(3) default(present) reduction(+:mass1,mass2) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          rho = rho12(1)*psi(i,j,k)+rho12(2)*(1.-psi(i,j,k))
           vcell = dl(1)*dl(2)*dzf(k)
-          mass = mass + vcell*rho
+          mass1 = mass1 + rho12(1)*psi(i,j,k)*vcell
+          mass2 = mass2 + rho12(2)*(1.-psi(i,j,k))*vcell
         end do
       end do
     end do
     !$acc end data
     !$acc wait(1)
-    call MPI_ALLREDUCE(MPI_IN_PLACE,mass,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    mass12(:) = [mass1,mass2]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,mass12,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_total_mass
 end module mod_output
