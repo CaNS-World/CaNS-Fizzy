@@ -1093,7 +1093,6 @@ module mod_mom
           dudt_aux = dudt_aux - dpdx/rho0 + 2*surfx/(2*rho+drho) - (1./rhoxp-1./rho0)*dpdx_e
           dvdt_aux = dvdt_aux - dpdy/rho0 + 2*surfy/(2*rho+drho) - (1./rhoyp-1./rho0)*dpdy_e
           dwdt_aux = dwdt_aux - dpdz/rho0 + 2*surfz/(2*rho+drho) - (1./rhozp-1./rho0)*dpdz_e
-#endif
 #else
           dudt_aux = dudt_aux - dpdx/rhoxp + 2*surfx/(2*rho+drho)
           dvdt_aux = dvdt_aux - dpdy/rhoyp + 2*surfy/(2*rho+drho)
