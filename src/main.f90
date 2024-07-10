@@ -159,10 +159,6 @@ program cans
   po(:,:,:) = 0._rp
 #else
   pp(:,:,:) = 0._rp
-#if defined(_SURFACE_TENSION_SPLITTING)
-  allocate(psio(  0:n(1)+1,0:n(2)+1,0:n(3)+1,2) ,&
-           kappao(0:n(1)+1,0:n(2)+1,0:n(3)+1,2))
-#endif
 #endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
@@ -327,17 +323,7 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
-#if defined(_CONSTANT_COEFFS_POISSON)
-#if defined(_SURFACE_TENSION_SPLITTING)
-  !$acc kernels async(1)
-  psio(:,:,:,1)    = psi(:,:,:)
-  kappao(:,:,:,1)  = kappa(:,:,:)
-  psio(:,:,:,2)    = psio(:,:,:,1)
-  kappao(:,:,:,2)  = kappao(:,:,:,1)
-  !$acc end kernels
-#endif
-#endif
-#if defined(_CONSERVATIVE_MOMENTUM) && !defined(_SURFACE_TENSION_SPLITTING)
+#if defined(_CONSERVATIVE_MOMENTUM)
   !$acc kernels async(1)
   psio(:,:,:,1)    = psi(:,:,:)
   !$acc end kernels
@@ -378,17 +364,7 @@ program cans
     !
     ! phase field update
     !
-#if defined(_CONSTANT_COEFFS_POISSON)
-#if defined(_SURFACE_TENSION_SPLITTING)
-    !$acc kernels async(1)
-    psio(:,:,:,2)   = psio(:,:,:,1)
-    kappao(:,:,:,2) = kappao(:,:,:,1)
-    psio(:,:,:,1)   = psi(:,:,:)
-    kappao(:,:,:,1) = kappa(:,:,:)
-    !$acc end kernels
-#endif
-#endif
-#if defined(_CONSERVATIVE_MOMENTUM) && !defined(_SURFACE_TENSION_SPLITTING)
+#if defined(_CONSERVATIVE_MOMENTUM)
     !$acc kernels async(1)
     psio(:,:,:,1)   = psi(:,:,:)
     !$acc end kernels
@@ -421,7 +397,7 @@ program cans
         call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
       end if
       call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
-              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio,kappao, &
+              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio, &
               acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,0.5_rp,dt,l,dl,zc,zf,u,v,w)
