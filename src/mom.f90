@@ -1136,14 +1136,14 @@ module mod_mom
           dvdt_aux = dvdt_aux + (-dpdy + surfy)/rho0 + (1./rhoyp-1./rho0)*(-dpdy_e + surfy_e)
           dwdt_aux = dwdt_aux + (-dpdz + surfz)/rho0 + (1./rhozp-1./rho0)*(-dpdz_e + surfz_e)
 #else
-          dudt_aux = dudt_aux - dpdx/rho0 + surfx/rhoxp - (1./rhoxp-1./rho0)*dpdx_e
-          dvdt_aux = dvdt_aux - dpdy/rho0 + surfy/rhoyp - (1./rhoyp-1./rho0)*dpdy_e
-          dwdt_aux = dwdt_aux - dpdz/rho0 + surfz/rhozp - (1./rhozp-1./rho0)*dpdz_e
+          dudt_aux = dudt_aux - dpdx/rho0 + 2*surfx/(2*rho+drho) - (1./rhoxp-1./rho0)*dpdx_e
+          dvdt_aux = dvdt_aux - dpdy/rho0 + 2*surfy/(2*rho+drho) - (1./rhoyp-1./rho0)*dpdy_e
+          dwdt_aux = dwdt_aux - dpdz/rho0 + 2*surfz/(2*rho+drho) - (1./rhozp-1./rho0)*dpdz_e
 #endif
 #else
-          dudt_aux = dudt_aux + (-dpdx + surfx)/rhoxp
-          dvdt_aux = dvdt_aux + (-dpdy + surfy)/rhoyp
-          dwdt_aux = dwdt_aux + (-dpdz + surfz)/rhozp
+          dudt_aux = dudt_aux - dpdx/rhoxp + 2*surfx/(2*rho+drho)
+          dvdt_aux = dvdt_aux - dpdy/rhoyp + 2*surfy/(2*rho+drho)
+          dwdt_aux = dwdt_aux - dpdz/rhozp + 2*surfz/(2*rho+drho)
 #endif
           !
           ! buoyancy
