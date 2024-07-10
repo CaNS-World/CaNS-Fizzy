@@ -982,7 +982,7 @@ module mod_mom
   end subroutine mom_xyz_ad
   !
   subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,pp,psi,kappa,s,psio,kappao,dudt,dvdt,dwdt)
+                         p,pp,psi,kappa,s,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
@@ -993,7 +993,6 @@ module mod_mom
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
     real(rp), intent(in   ), dimension(0:,0:,0:)    :: p,pp,psi,kappa,s
-    real(rp), intent(in   ), dimension(0:,0:,0:,1:), optional :: psio,kappao
     real(rp), intent(inout), dimension( :, :, :)    :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
@@ -1012,11 +1011,6 @@ module mod_mom
                 dpdx  ,dpdy  ,dpdz  , &
                 dpdx_e,dpdy_e,dpdz_e, &
                 surfx  ,surfy  ,surfz
-#if defined(_SURFACE_TENSION_SPLITTING)
-    real(rp) :: surfx_1,surfy_1,surfz_1, &
-                surfx_2,surfy_2,surfz_2, &
-                surfx_e,surfy_e,surfz_e
-#endif
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
     rho     = rho12(2); drho = rho12(1)-rho12(2)
@@ -1052,41 +1046,6 @@ module mod_mom
           s_ccp = s(i  ,j  ,k+1)
 #endif
           !
-#if defined(_CONSTANT_COEFFS_POISSON)
-#if defined(_SURFACE_TENSION_SPLITTING)
-          k_ccc = kappao(i  ,j  ,k  ,2)
-          k_pcc = kappao(i+1,j  ,k  ,2)
-          k_cpc = kappao(i  ,j+1,k  ,2)
-          k_ccp = kappao(i  ,j  ,k+1,2)
-          c_ccc = psio(i  ,j  ,k  ,2)
-          c_pcc = psio(i+1,j  ,k  ,2)
-          c_cpc = psio(i  ,j+1,k  ,2)
-          c_ccp = psio(i  ,j  ,k+1,2)
-          kappaxp = 0.5*(k_pcc+k_ccc)
-          kappayp = 0.5*(k_cpc+k_ccc)
-          kappazp = 0.5*(k_ccp+k_ccc)
-          surfx_2 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
-          surfy_2 = sigma*kappayp*(c_cpc-c_ccc)*dyi
-          surfz_2 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
-          k_ccc = kappao(i  ,j  ,k  ,1)
-          k_pcc = kappao(i+1,j  ,k  ,1)
-          k_cpc = kappao(i  ,j+1,k  ,1)
-          k_ccp = kappao(i  ,j  ,k+1,1)
-          c_ccc = psio(i  ,j  ,k  ,1)
-          c_pcc = psio(i+1,j  ,k  ,1)
-          c_cpc = psio(i  ,j+1,k  ,1)
-          c_ccp = psio(i  ,j  ,k+1,1)
-          kappaxp = 0.5*(k_pcc+k_ccc)
-          kappayp = 0.5*(k_cpc+k_ccc)
-          kappazp = 0.5*(k_ccp+k_ccc)
-          surfx_1 = sigma*kappaxp*(c_pcc-c_ccc)*dxi
-          surfy_1 = sigma*kappayp*(c_cpc-c_ccc)*dyi
-          surfz_1 = sigma*kappazp*(c_ccp-c_ccc)*dzci_c
-          surfx_e = ((1.+dt_r)*surfx_1-dt_r*surfx_2)
-          surfy_e = ((1.+dt_r)*surfy_1-dt_r*surfy_2)
-          surfz_e = ((1.+dt_r)*surfz_1-dt_r*surfz_2)
-#endif
-#endif
           k_ccc = kappa(i  ,j  ,k  )
           k_pcc = kappa(i+1,j  ,k  )
           k_cpc = kappa(i  ,j+1,k  )
@@ -1131,11 +1090,6 @@ module mod_mom
           dpdx_e = (q_pcc-q_ccc)*dxi
           dpdy_e = (q_cpc-q_ccc)*dyi
           dpdz_e = (q_ccp-q_ccc)*dzci_c
-#if defined(_SURFACE_TENSION_SPLITTING)
-          dudt_aux = dudt_aux + (-dpdx + surfx)/rho0 + (1./rhoxp-1./rho0)*(-dpdx_e + surfx_e)
-          dvdt_aux = dvdt_aux + (-dpdy + surfy)/rho0 + (1./rhoyp-1./rho0)*(-dpdy_e + surfy_e)
-          dwdt_aux = dwdt_aux + (-dpdz + surfz)/rho0 + (1./rhozp-1./rho0)*(-dpdz_e + surfz_e)
-#else
           dudt_aux = dudt_aux - dpdx/rho0 + 2*surfx/(2*rho+drho) - (1./rhoxp-1./rho0)*dpdx_e
           dvdt_aux = dvdt_aux - dpdy/rho0 + 2*surfy/(2*rho+drho) - (1./rhoyp-1./rho0)*dpdy_e
           dwdt_aux = dwdt_aux - dpdz/rho0 + 2*surfz/(2*rho+drho) - (1./rhozp-1./rho0)*dpdz_e
