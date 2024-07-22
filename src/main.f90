@@ -336,6 +336,7 @@ program cans
   ! post-process and write initial condition
   !
   write(fldnum,'(i7.7)') istep
+  !$acc wait
   !$acc update self(u,v,w,p,psi,kappa)
 #include "out1d.h90"
 #include "out2d.h90"
@@ -478,14 +479,17 @@ program cans
     end if
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
+      !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
 #include "out1d.h90"
     end if
     if(mod(istep,iout2d) == 0) then
+      !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
 #include "out2d.h90"
     end if
     if(mod(istep,iout3d) == 0) then
+      !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
 #include "out3d.h90"
     end if
@@ -505,6 +509,7 @@ program cans
           call out0d(trim(datadir)//'log_checkpoints.out',3,var)
         end if
       end if
+      !$acc wait
       !$acc update self(u,v,w,p,psi)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
