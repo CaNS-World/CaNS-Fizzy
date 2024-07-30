@@ -46,7 +46,8 @@ program cans
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
-  use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
+  use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d, &
+                                 cmpt_total_mass,cmpt_total_energy
   use mod_param          , only: l,small,nh, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
@@ -500,6 +501,19 @@ program cans
       var(3) = gam
       var(4) = seps
       call out0d(trim(datadir)//'log_acdi.out',4,var)
+      block
+        real(rp), dimension(2) :: kin12,mass12
+        call cmpt_total_energy(n,dl,dzf,rho12,psi,u,v,w,kin12)
+        call cmpt_total_mass(n,dl,dzf,rho12,psi,mass12)
+        var(1) = 1.*istep
+        var(2) = time
+        var(3) = kin12(1)
+        var(4) = kin12(2)
+        call out0d(trim(datadir)//'log_kin.out',4,var)
+        var(3) = mass12(1)
+        var(4) = mass12(2)
+        call out0d(trim(datadir)//'log_mass.out',4,var)
+      end block
     end if
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
