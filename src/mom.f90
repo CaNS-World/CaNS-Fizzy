@@ -560,6 +560,7 @@ module mod_mom
     real(rp) :: rxup,rxum,ryup,ryum,rzup,rzum,rxvp,rxvm,ryvp,ryvm,rzvp,rzvm,rxwp,rxwm,rywp,rywm,rzwp,rzwm
     real(rp) :: rhox,rhoy,rhoz,rhoxp,rhoxm,rhoyp,rhoym,rhozp,rhozm
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
+    real(rp) :: u_adv,v_adv,w_adv
     !
     real(rp), parameter, dimension(2,2) :: c = 1.d0/2.d0*reshape((/-1.d0,3.d0,&
                                                                   1.d0, 1.d0/),shape(c))
@@ -763,231 +764,39 @@ module mod_mom
           wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)*rhozm
           dwdt_aux = (dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm ))/rhoz
 #else
-          !!!QUICK
-          !!if ((u_mcc+u_ccc+u_ccc+u_pcc) >= 0.) then
-          !!  ududx = 0.25*(u_mcc+u_ccc+u_ccc+u_pcc)*(2.*u_pcc + 3.*u_ccc - 6.*u_mcc + 1.*u_lcc)*dxi/6.
-          !!else
-          !!  ududx = 0.25*(u_mcc+u_ccc+u_ccc+u_pcc)*(1.*u_qcc - 6.*u_pcc + 3.*u_ccc + 2.*u_mcc)*dxi/6.
-          !!end if
-          !if ((u_ccc) >= 0.) then
-          !  !ududx = u_ccc*(2.*u_pcc + 3.*u_ccc - 6.*u_mcc + 1.*u_lcc)*dxi/6.
-          !  ududx = u_ccc*(3.*u_pcc + 3.*u_ccc - 7.*u_mcc + 1.*u_lcc)*dxi/8.
-          !  !ududx = u_ccc*(0.5*(u_ccc+u_pcc)-0.5*(u_mcc+u_ccc))*dxi
-          !else
-          !  !ududx = u_ccc*(1.*u_qcc - 6.*u_pcc + 3.*u_ccc + 2.*u_mcc)*dxi/6.
-          !  ududx = u_ccc*(1.*u_qcc - 7.*u_pcc + 3.*u_ccc + 3.*u_mcc)*dxi/8.
-          !  !ududx = u_ccc*(0.5*(u_ccc+u_pcc)-0.5*(u_mcc+u_ccc))*dxi
-          !end if
-          !if ((v_cmc+v_pmc+v_ccc+v_pcc) >= 0.) then
-          !  vdudy = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*(2.*u_cpc + 3.*u_ccc - 6.*u_cmc + 1.*u_clc)*dyi/6.
-          !else
-          !  vdudy = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*(1.*u_cqc - 6.*u_cpc + 3.*u_ccc + 2.*u_cmc)*dyi/6.
-          !end if
-          !if ((w_ccm+w_pcm+w_ccc+w_pcc) >= 0.) then
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(2.*u_ccp + 3.*u_ccc - 6.*u_ccm + 1.*u_ccl)*dzfi_c/6.
-          !  wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(3.*u_ccp + 3.*u_ccc - 7.*u_ccm + 1.*u_ccl)*dzfi_c/8.
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(0.5*(u_ccc+u_ccp)-0.5*(u_ccm+u_ccc))*dzfi_c
-          !else
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(1.*u_ccq - 6.*u_ccp + 3.*u_ccc + 2.*u_ccm)*dzfi_c/6.
-          !  wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(1.*u_ccq - 7.*u_ccp + 3.*u_ccc + 3.*u_ccm)*dzfi_c/8.
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(0.5*(u_ccc+u_ccp)-0.5*(u_ccm+u_ccc))*dzfi_c
-          !end if
-          !dudt_aux = -ududx -vdudy -wdudz
-          !!
-          !if ((u_mcc+u_ccc+u_mpc+u_cpc) >= 0.) then
-          !  udvdx = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*(2.*v_pcc + 3.*v_ccc - 6.*v_mcc + 1.*v_lcc)*dxi/6.
-          !else
-          !  udvdx = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*(1.*v_qcc - 6.*v_pcc + 3.*v_ccc + 2.*v_mcc)*dxi/6.
-          !end if
-          !if ((v_ccc) >= 0.) then
-          !  vdvdy = v_ccc*(2.*v_cpc + 3.*v_ccc - 6.*v_cmc + 1.*v_clc)*dyi/6.
-          !else
-          !  vdvdy = v_ccc*(1.*v_cqc - 6.*v_cpc + 3.*v_ccc + 2.*v_cmc)*dyi/6.
-          !end if
-          !!if ((v_cmc+v_ccc+v_ccc+v_cpc) >= 0.) then
-          !!  vdvdy = 0.25*(v_cmc+v_ccc+v_ccc+v_cpc)*(2.*v_cpc + 3.*v_ccc - 6.*v_cmc + 1.*v_clc)*dyi/6.
-          !!else
-          !!  vdvdy = 0.25*(v_cmc+v_ccc+v_ccc+v_cpc)*(1.*v_cqc - 6.*v_cpc + 3.*v_ccc + 2.*v_cmc)*dyi/6.
-          !!end if
-          !if ((w_ccm+w_cpm+w_ccc+w_cpc) >= 0.) then
-          !  wdvdz = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*(2.*v_ccp + 3.*v_ccc - 6.*v_ccm + 1.*v_ccl)*dzfi_c/6.
-          !else
-          !  wdvdz = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*(1.*v_ccq - 6.*v_ccp + 3.*v_ccc + 2.*v_ccm)*dzfi_c/6.
-          !end if
-          !dvdt_aux = -udvdx -vdvdy -wdvdz
-          !!
-          !if ((u_mcc+u_mcp+u_ccc+u_ccp) >= 0.) then
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(2.*w_pcc + 3.*w_ccc - 6.*w_mcc + 1.*w_lcc)*dxi/6.
-          !  udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(3.*w_pcc + 3.*w_ccc - 7.*w_mcc + 1.*w_lcc)*dxi/8.
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(0.5*(w_ccc+w_pcc)-0.5*(w_mcc+w_ccc))*dxi
-          !else
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(1.*w_qcc - 6.*w_pcc + 3.*w_ccc + 2.*w_mcc)*dxi/6.
-          !  udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(1.*w_qcc - 7.*w_pcc + 3.*w_ccc + 3.*w_mcc)*dxi/8.
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(0.5*(w_ccc+w_pcc)-0.5*(w_mcc+w_ccc))*dxi
-          !end if
-          !if ((v_cmc+v_cmp+v_ccc+v_ccp) >= 0.) then
-          !  vdwdy = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*(2.*w_cpc + 3.*w_ccc - 6.*w_cmc + 1.*w_clc)*dyi/6.
-          !else
-          !  vdwdy = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*(1.*w_cqc - 6.*w_cpc + 3.*w_ccc + 2.*w_cmc)*dyi/6.
-          !end if
-          !if ((w_ccc) >= 0.) then
-          !  !wdwdz = w_ccc*(2.*w_ccp + 3.*w_ccc - 6.*w_ccm + 1.*w_ccl)*dzfi_c/6.
-          !  wdwdz = w_ccc*(3.*w_ccp + 3.*w_ccc - 7.*w_ccm + 1.*w_ccl)*dzfi_c/8.
-          !  !wdwdz = w_ccc*(0.5*(w_ccc+w_ccp)-0.5*(w_ccm+w_ccc))*dzfi_c
-          !else
-          !  !wdwdz = w_ccc*(1.*w_ccq - 6.*w_ccp + 3.*w_ccc + 2.*w_ccm)*dzfi_c/6.
-          !  wdwdz = w_ccc*(1.*w_ccq - 7.*w_ccp + 3.*w_ccc + 3.*w_ccm)*dzfi_c/8.
-          !  !wdwdz = w_ccc*(0.5*(w_ccc+w_ccp)-0.5*(w_ccm+w_ccc))*dzfi_c
-          !end if
-          !!if ((w_ccm+w_ccc+w_ccc+w_ccp) >= 0.) then
-          !!  wdwdz = 0.25*(w_ccm+w_ccc+w_ccc+w_ccp)*(2.*w_ccp + 3.*w_ccc - 6.*w_ccm + 1.*w_ccl)*dzfi_c/6.
-          !!else
-          !!  wdwdz = 0.25*(w_ccm+w_ccc+w_ccc+w_ccp)*(1.*w_ccq - 6.*w_ccp + 3.*w_ccc + 2.*w_ccm)*dzfi_c/6.
-          !!end if
-          !dwdt_aux = -udwdx -vdwdy -wdwdz
-!!!!!!!!!!!!!!!!!
-          !!weno3
+          u_adv = u_ccc
+          v_adv = 0.25*(v_cmc+v_pmc+v_pcc+v_ccc)
+          w_adv = 0.25*(w_ccm+w_pcm+w_pcc+w_ccc)
+          ududx =     u_adv *(-1.*u_qcc+8.*u_pcc         -8.*u_mcc+1.*u_lcc)*dxi/12. + &
+                  abs(u_adv)*( 1.*u_qcc-4.*u_pcc+6.*u_ccc-4.*u_mcc+1.*u_lcc)*dxi/4.
+          vdudy =     v_adv *(-1.*u_cqc+8.*u_cpc         -8.*u_cmc+1.*u_clc)*dyi/12. + &
+                  abs(v_adv)*( 1.*u_cqc-4.*u_cpc+6.*u_ccc-4.*u_cmc+1.*u_clc)*dyi/4.
+          wdudz =     w_adv *(-1.*u_ccq+8.*u_ccp         -8.*u_ccm+1.*u_ccl)*dzfi_c/12. + &
+                  abs(w_adv)*( 1.*u_ccq-4.*u_ccp+6.*u_ccc-4.*u_ccm+1.*u_ccl)*dzfi_c/4.
+          dudt_aux = -(ududx+vdudy+wdudz)
           !
-          a = nint(sign(1.d0,u_ccc))
-          f(-1) = a*(u(i-1*a,j,k) - u(i-2*a,j,k))*dli(1)
-          f( 0) = a*(u(i+0*a,j,k) - u(i-1*a,j,k))*dli(1)
-          f( 1) = a*(u(i+1*a,j,k) - u(i+0*a,j,k))*dli(1)
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dudlh(1) = sum(c(:,1)*f(-1:0))
-          dudlh(2) = sum(c(:,2)*f( 0:1))
-          ududx    = u_ccc*sum(we(:)*dudlh(:))
+          u_adv = 0.25*(u_mcc+u_ccc+u_cpc+u_mpc)
+          v_adv = v_ccc
+          w_adv = 0.25*(w_ccm+w_cpm+w_cpc+w_ccc)
+          udvdx =     u_adv *(-1.*v_qcc+8.*v_pcc         -8.*v_mcc+1.*v_lcc)*dxi/12. + &
+                  abs(u_adv)*( 1.*v_qcc-4.*v_pcc+6.*v_ccc-4.*v_mcc+1.*v_lcc)*dxi/4.
+          vdvdy =     v_adv *(-1.*v_cqc+8.*v_cpc         -8.*v_cmc+1.*v_clc)*dyi/12. + &
+                  abs(v_adv)*( 1.*v_cqc-4.*v_cpc+6.*v_ccc-4.*v_cmc+1.*v_clc)*dyi/4.
+          wdvdz =     w_adv *(-1.*v_ccq+8.*v_ccp         -8.*v_ccm+1.*v_ccl)*dzfi_c/12. + &
+                  abs(w_adv)*( 1.*v_ccq-4.*v_ccp+6.*v_ccc-4.*v_ccm+1.*v_ccl)*dzfi_c/4.
+          dvdt_aux = -(udvdx+vdvdy+wdvdz)
           !
-          a = nint(sign(1.d0,v_cmc+v_pmc+v_ccc+v_pcc))
-          f(-1) = a*(u(i,j-1*a,k) - u(i,j-2*a,k))*dli(2)
-          f( 0) = a*(u(i,j+0*a,k) - u(i,j-1*a,k))*dli(2)
-          f( 1) = a*(u(i,j+1*a,k) - u(i,j+0*a,k))*dli(2)
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dudlh(1) = sum(c(:,1)*f(-1:0))
-          dudlh(2) = sum(c(:,2)*f( 0:1))
-          vdudy    = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*sum(we(:)*dudlh(:))
+          u_adv = 0.25*(u_mcc+u_ccc+u_ccp+u_mcp)
+          v_adv = 0.25*(v_cmc+v_ccc+v_ccp+v_cmp)
+          w_adv = w_ccc
+          udwdx =     u_adv *(-1.*w_qcc+8.*w_pcc         -8.*w_mcc+1.*w_lcc)*dxi/12. + &
+                  abs(u_adv)*( 1.*w_qcc-4.*w_pcc+6.*w_ccc-4.*w_mcc+1.*w_lcc)*dxi/4.
+          vdwdy =     v_adv *(-1.*w_cqc+8.*w_cpc         -8.*w_cmc+1.*w_clc)*dyi/12. + &
+                  abs(v_adv)*( 1.*w_cqc-4.*w_cpc+6.*w_ccc-4.*w_cmc+1.*w_clc)*dyi/4.
+          wdwdz =     w_adv *(-1.*w_ccq+8.*w_ccp         -8.*w_ccm+1.*w_ccl)*dzci_c/12. + &
+                  abs(w_adv)*( 1.*w_ccq-4.*w_ccp+6.*w_ccc-4.*w_ccm+1.*w_ccl)*dzci_c/4.
+          dwdt_aux = -(udwdx+vdwdy+wdwdz)
           !
-          a = nint(sign(1.d0,w_ccm+w_pcm+w_ccc+w_pcc))
-          if(a > 0.) then
-            f(-1) = a*(u(i,j,k-1*a) - u(i,j,k-2*a))*dzci(k-2)
-            f( 0) = a*(u(i,j,k+0*a) - u(i,j,k-1*a))*dzci(k-1)
-            f( 1) = a*(u(i,j,k+1*a) - u(i,j,k+0*a))*dzci(k  )
-          else
-            f(-1) = a*(u(i,j,k-1*a) - u(i,j,k-2*a))*dzci(k+1)
-            f( 0) = a*(u(i,j,k+0*a) - u(i,j,k-1*a))*dzci(k  )
-            f( 1) = a*(u(i,j,k+1*a) - u(i,j,k+0*a))*dzci(k-1)
-          endif
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dudlh(1) = sum(c(:,1)*f(-1:0))
-          dudlh(2) = sum(c(:,2)*f( 0:1))
-          wdudz    = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*sum(we(:)*dudlh(:))
-          !
-          dudt_aux = -ududx -vdudy -wdudz
-          !
-          a = nint(sign(1.d0,u_mcc+u_ccc+u_mpc+u_cpc))
-          f(-1) = a*(v(i-1*a,j,k) - v(i-2*a,j,k))*dli(1)
-          f( 0) = a*(v(i+0*a,j,k) - v(i-1*a,j,k))*dli(1)
-          f( 1) = a*(v(i+1*a,j,k) - v(i+0*a,j,k))*dli(1)
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dvdlh(1) = sum(c(:,1)*f(-1:0))
-          dvdlh(2) = sum(c(:,2)*f( 0:1))
-          udvdx    = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*sum(we(:)*dvdlh(:))
-          !
-          a = nint(sign(1.d0,v_ccc))
-          f(-1) = a*(v(i,j-1*a,k) - v(i,j-2*a,k))*dli(2)
-          f( 0) = a*(v(i,j+0*a,k) - v(i,j-1*a,k))*dli(2)
-          f( 1) = a*(v(i,j+1*a,k) - v(i,j+0*a,k))*dli(2)
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dvdlh(1) = sum(c(:,1)*f(-1:0))
-          dvdlh(2) = sum(c(:,2)*f( 0:1))
-          vdvdy    = v_ccc*sum(we(:)*dvdlh(:))
-          !
-          a = nint(sign(1.d0,w_ccm+w_cpm+w_ccc+w_cpc))
-          if(a > 0.) then
-            f(-1) = a*(v(i,j,k-1*a) - v(i,j,k-2*a))*dzci(k-2)
-            f( 0) = a*(v(i,j,k+0*a) - v(i,j,k-1*a))*dzci(k-1)
-            f( 1) = a*(v(i,j,k+1*a) - v(i,j,k+0*a))*dzci(k  )
-          else
-            f(-1) = a*(v(i,j,k-1*a) - v(i,j,k-2*a))*dzci(k+1)
-            f( 0) = a*(v(i,j,k+0*a) - v(i,j,k-1*a))*dzci(k  )
-            f( 1) = a*(v(i,j,k+1*a) - v(i,j,k+0*a))*dzci(k-1)
-          endif
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dvdlh(1) = sum(c(:,1)*f(-1:0))
-          dvdlh(2) = sum(c(:,2)*f( 0:1))
-          wdvdz    = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*sum(we(:)*dvdlh(:))
-          !
-          dvdt_aux = -udvdx -vdvdy -wdvdz
-          !
-          a = nint(sign(1.d0,u_mcc+u_mcp+u_ccc+u_ccp))
-          f(-1) = a*(w(i-1*a,j,k) - w(i-2*a,j,k))*dli(1)
-          f( 0) = a*(w(i+0*a,j,k) - w(i-1*a,j,k))*dli(1)
-          f( 1) = a*(w(i+1*a,j,k) - w(i+0*a,j,k))*dli(1)
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dwdlh(1) = sum(c(:,1)*f(-1:0))
-          dwdlh(2) = sum(c(:,2)*f( 0:1))
-          udwdx    = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*sum(we(:)*dwdlh(:))
-          !
-          a = nint(sign(1.d0,v_cmc+v_cmp+v_ccc+v_ccp))
-          f(-1) = a*(w(i,j-1*a,k) - w(i,j-2*a,k))*dli(2)
-          f( 0) = a*(w(i,j+0*a,k) - w(i,j-1*a,k))*dli(2)
-          f( 1) = a*(w(i,j+1*a,k) - w(i,j+0*a,k))*dli(2)
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dwdlh(1) = sum(c(:,1)*f(-1:0))
-          dwdlh(2) = sum(c(:,2)*f( 0:1))
-          vdwdy    = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*sum(we(:)*dwdlh(:))
-          !
-          a = nint(sign(1.d0,w_ccc))
-          if(a > 0.) then
-            f(-1) = a*(w(i,j,k-1*a) - w(i,j,k-2*a))*dzci(k-2)
-            f( 0) = a*(w(i,j,k+0*a) - w(i,j,k-1*a))*dzci(k-1)
-            f( 1) = a*(w(i,j,k+1*a) - w(i,j,k+0*a))*dzci(k  )
-          else
-            f(-1) = a*(w(i,j,k-1*a) - w(i,j,k-2*a))*dzci(k+1)
-            f( 0) = a*(w(i,j,k+0*a) - w(i,j,k-1*a))*dzci(k  )
-            f( 1) = a*(w(i,j,k+1*a) - w(i,j,k+0*a))*dzci(k-1)
-          endif
-          beta(1) = (f(-1) - f(0))**2
-          beta(2) = (f( 0) - f(1))**2
-          tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
-          we(:) = we(:)/sum(we(:))
-          dwdlh(1) = sum(c(:,1)*f(-1:0))
-          dwdlh(2) = sum(c(:,2)*f( 0:1))
-          wdwdz    = w_ccc*sum(we(:)*dwdlh(:))
-          !
-          dwdt_aux = -udwdx -vdwdy -wdwdz
 #endif
           !
           ! diffusion
