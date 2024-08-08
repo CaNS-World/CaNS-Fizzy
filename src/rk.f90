@@ -14,24 +14,24 @@ module mod_rk
   private
   public rk,rk_scal,rk_2fl
   contains
-  subroutine rk(rkpar,n,dli,dzci,dzfi,dt, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio,kappao, &
+  subroutine rk(rkpar,n,dli,dzci,dzfi,dt,dt_r, &
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pn,po,psio,kappao, &
                 acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
     !
-    ! Adams-Bashforth scheme for time integration of the momentum equations
+    ! rk3 scheme for time integration of the momentum equations
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in) :: dt
+    real(rp), intent(in) :: dt,dt_r
     real(rp), intent(in   ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in   ), dimension(3)  :: bforce,gacc
     real(rp), intent(in   )                :: sigma,rho_av
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
     real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)    :: psi,kappa,s
-    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)    :: p,pp
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)    :: p,pn,po
     real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:,1:), optional :: psio,kappao
     real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)   , optional :: acdi_rgx,acdi_rgy,acdi_rgz
     real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:)    :: u,v,w
@@ -40,13 +40,12 @@ module mod_rk
     real(rp), pointer      , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
                                                                     dudtrko  ,dvdtrko  ,dwdtrko
     logical, save :: is_first = .true.
-    real(rp) :: factor1,factor2,factor12,dt_r
+    real(rp) :: factor1,factor2,factor12
     integer :: i,j,k
     !
     factor1  = rkpar(1)*dt
     factor2  = rkpar(2)*dt
     factor12 = factor1+factor2
-    dt_r     = -2.*rkpar(2) ! N.B.: For AB2 only, rkpar(2) = -(dt/dto)/2 = dt_r/2
     !
     ! initialization
     !
@@ -121,8 +120,8 @@ module mod_rk
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                     p,pp,psi,kappa,s,psio,kappao,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_oth(n,dli,dzci,dzfi,rkpar,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+                     p,pn,po,psi,kappa,s,psio,kappao,dudtrk,dvdtrk,dwdtrk)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -140,7 +139,7 @@ module mod_rk
                      ssource,rho12,ka12,cp12,psi,u,v,w,s)
     use mod_scal, only: scal_ad
     !
-    ! Adams-Bashfroth scheme for time integration of the scalar field
+    ! rk3 scheme for time integration of the scalar field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
@@ -195,7 +194,7 @@ module mod_rk
     use mod_acdi     , only: acdi_transport_pf
     use mod_two_fluid, only: clip_field
     !
-    ! Adams-Bashforth scheme for time integration of the phase field
+    ! rk3 scheme for time integration of the phase field
     !
     implicit none
     logical , parameter :: is_cmpt_wallflux = .false.
@@ -212,12 +211,11 @@ module mod_rk
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
-    real(rp) :: factor1,factor2,factor12
+    real(rp) :: factor1,factor2
     integer :: i,j,k
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
-    factor12 = factor1 + factor2
     if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dpsidtrk_t(n(1),n(2),n(3)),dpsidtrko_t(n(1),n(2),n(3)))
       !$acc enter data create(dpsidtrk_t,dpsidtrko_t) async(1)

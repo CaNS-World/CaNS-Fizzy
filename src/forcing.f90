@@ -10,7 +10,7 @@ module mod_forcing
   private
   public lscale_forcing
   contains
-  subroutine lscale_forcing(ftype,lo,hi,alpha,dt,l,dl,zc,zf,u,v,w)
+  subroutine lscale_forcing(ftype,lo,hi,alpha,dt,rkpar,l,dl,zc,zf,u,v,w)
     use mod_param, only: pi,nh
     implicit none
     integer, parameter :: FTYPE_ABC          = 1, &
@@ -19,6 +19,7 @@ module mod_forcing
     integer , intent(in) :: ftype
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in) :: alpha,dt
+    real(rp), intent(in), dimension(2) :: rkpar
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), intent(in), dimension(1-nh:) :: zc,zf
     real(rp), intent(inout), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: u,v,w
@@ -28,7 +29,7 @@ module mod_forcing
     integer  :: i,j,k
     !
     f0 = alpha*(2.*pi/l(3))**2
-    factor = dt
+    factor = rkpar(1)*dt+rkpar(2)*dt
     !
     select case(ftype)
     case(FTYPE_ABC)

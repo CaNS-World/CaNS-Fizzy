@@ -1214,25 +1214,28 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,pp,psi,kappa,s,psio,kappao,dudt,dvdt,dwdt)
+  subroutine mom_xyz_oth(n,dli,dzci,dzfi,rkpar,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+                         p,pn,po,psi,kappa,s,psio,kappao,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(2) :: rkpar
     real(rp), intent(in   ) :: dt_r
     real(rp), intent(in   ), dimension(2) :: rho12,beta12
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
-    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)    :: p,pp,psi,kappa,s
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)    :: p,pn,po,psi,kappa,s
     real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:,1:), optional :: psio,kappao
     real(rp), intent(inout), dimension( :, :, :)    :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
-    real(rp) :: dxi,dyi
+    real(rp) :: dxi,dyi,sum_rkpar
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
                 p_ccc,p_pcc,p_cpc,p_ccp, &
+                pn_ccc,pn_pcc,pn_cpc,pn_ccp, &
+                po_ccc,po_pcc,po_cpc,po_ccp, &
                 q_ccc,q_pcc,q_cpc,q_ccp, &
                 s_ccc,s_pcc,s_cpc,s_ccp, &
                 k_ccc,k_pcc,k_cpc,k_ccp, &
@@ -1256,6 +1259,7 @@ module mod_mom
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)- rho12(2)*beta12(2)
     dxi = dli(1)
     dyi = dli(2)
+    sum_rkpar = sum(rkpar)
     !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
     !                                        all scalars should be firstprivate/private
@@ -1270,12 +1274,20 @@ module mod_mom
           p_pcc = p(i+1,j  ,k  )
           p_cpc = p(i  ,j+1,k  )
           p_ccp = p(i  ,j  ,k+1)
+          pn_ccc = pn(i  ,j  ,k  )
+          pn_pcc = pn(i+1,j  ,k  )
+          pn_cpc = pn(i  ,j+1,k  )
+          pn_ccp = pn(i  ,j  ,k+1)
+          po_ccc = po(i  ,j  ,k  )
+          po_pcc = po(i+1,j  ,k  )
+          po_cpc = po(i  ,j+1,k  )
+          po_ccp = po(i  ,j  ,k+1)
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
-          q_ccc = (1.+dt_r)*p_ccc-dt_r*pp(i  ,j  ,k  )
-          q_pcc = (1.+dt_r)*p_pcc-dt_r*pp(i+1,j  ,k  )
-          q_cpc = (1.+dt_r)*p_cpc-dt_r*pp(i  ,j+1,k  )
-          q_ccp = (1.+dt_r)*p_ccp-dt_r*pp(i  ,j  ,k+1)
+          q_ccc = p_ccc + dt_r*sum_rkpar*(pn_ccc-po_ccc)
+          q_pcc = p_pcc + dt_r*sum_rkpar*(pn_pcc-po_pcc)
+          q_cpc = p_cpc + dt_r*sum_rkpar*(pn_cpc-po_cpc)
+          q_ccp = p_ccp + dt_r*sum_rkpar*(pn_ccp-po_ccp)
 #endif
           !
 #if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
