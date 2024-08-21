@@ -775,68 +775,17 @@ module mod_mom
           !
 #if defined(_CONSERVATIVE_MOMENTUM)
           !
-          ! n.b.: interpolations can be recycled from viscosity
-          !
-          !rhoxp = rho + drho*d_pcc
-          !rhoxm = rho + drho*d_ccc
-          !rhoyp = rho + drho*0.25*(d_ccc+d_cpc+d_ppc+d_pcc)
-          !rhoym = rho + drho*0.25*(d_ccc+d_cmc+d_pmc+d_pcc)
-          !rhozp = rho + drho*0.25*(d_ccc+d_pcc+d_ccp+d_pcp)
-          !rhozm = rho + drho*0.25*(d_ccc+d_pcc+d_ccm+d_pcm)
-          !rhox  = rho + drho*psixp
-          !uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)*rhoxp
-          !uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)*rhoxm
-          !vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)*rhoyp
-          !vujm  = 0.25*(v_pmc+v_cmc)*(u_ccc+u_cmc)*rhoym
-          !wukp  = 0.25*(w_pcc+w_ccc)*(u_ccc+u_ccp)*rhozp
-          !wukm  = 0.25*(w_pcm+w_ccm)*(u_ccc+u_ccm)*rhozm
-          !dudt_aux = (dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm ))/rhox
-          !!
-          !rhoxp = rho + drho*0.25*(d_ccc+d_pcc+d_ppc+d_cpc)
-          !rhoxm = rho + drho*0.25*(d_ccc+d_mcc+d_mpc+d_cpc)
-          !rhoyp = rho + drho*d_cpc
-          !rhoym = rho + drho*d_ccc
-          !rhozp = rho + drho*0.25*(d_ccc+d_cpc+d_cpp+d_ccp)
-          !rhozm = rho + drho*0.25*(d_ccc+d_cpc+d_cpm+d_ccm)
-          !rhoy  = rho + drho*psiyp
-          !uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)*rhoxp
-          !uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)*rhoxm
-          !vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)*rhoyp
-          !vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)*rhoym
-          !wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)*rhozp
-          !wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccc+v_ccm)*rhozm
-          !dvdt_aux = (dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm ))/rhoy
-          !!
-          !rhoxp = rho + drho*0.25*(d_ccc+d_pcc+d_ccp+d_pcp)
-          !rhoxm = rho + drho*0.25*(d_ccc+d_mcc+d_ccp+d_mcp)
-          !rhoyp = rho + drho*0.25*(d_ccc+d_cpc+d_ccp+d_cpp)
-          !rhoym = rho + drho*0.25*(d_ccc+d_cmc+d_ccp+d_cmp)
-          !rhozp = rho + drho*d_ccp
-          !rhozm = rho + drho*d_ccc
-          !rhoz  = rho + drho*psizp
-          !uwip  = 0.25*(u_ccc+u_ccp)*(w_ccc+w_pcc)*rhoxp
-          !uwim  = 0.25*(u_mcc+u_mcp)*(w_ccc+w_mcc)*rhoxm
-          !vwjp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)*rhoyp
-          !vwjm  = 0.25*(v_cmc+v_cmp)*(w_ccc+w_cmc)*rhoym
-          !wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)*rhozp
-          !wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)*rhozm
-          !dwdt_aux = (dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm ))/rhoz
-          !! conservative weno3
-          !
           ! u advection
           !
           ap = nint(0.5d0*(1.d0+(u_ccc+eps)/abs(u_ccc+eps)))
           am = nint(0.5d0*(1.d0-(u_ccc+eps)/abs(u_ccc+eps)))
-          rhoxl = rho + drho*0.5d0*(d_lcc+d_mcc)
-          rhoxm = rho + drho*0.5d0*(d_mcc+d_ccc)
-          rhoxc = rho + drho*0.5d0*(d_ccc+d_pcc)
-          rhoxp = rho + drho*0.5d0*(d_pcc+d_qcc)
-          rhoxq = rho + drho*0.5d0*(d_qcc+d_rcc)
-          fl = rhoxl*u_lcc*u_lcc
-          fm = rhoxm*u_mcc*u_mcc
-          fc = rhoxc*u_ccc*u_ccc
-          fp = rhoxp*u_pcc*u_pcc
-          fq = rhoxq*u_qcc*u_qcc
+          rhoxp = rho + drho*d_pcc
+          rhoxm = rho + drho*d_ccc
+          fl = u_lcc*u_lcc
+          fm = u_mcc*u_mcc
+          fc = u_ccc*u_ccc
+          fp = u_pcc*u_pcc
+          fq = u_qcc*u_qcc
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -851,21 +800,18 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhouudx = dxi*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                          wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhouudx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(v_cmc+v_pmc+v_pcc+v_ccc+eps)/abs(v_cmc+v_pmc+v_pcc+v_ccc+eps)))
           am = nint(0.5d0*(1.d0-(v_cmc+v_pmc+v_pcc+v_ccc+eps)/abs(v_cmc+v_pmc+v_pcc+v_ccc+eps)))
-          rhoyl = rho + drho*0.5d0*(d_clc+d_plc)
-          rhoym = rho + drho*0.5d0*(d_cmc+d_pmc)
-          rhoyc = rho + drho*0.5d0*(d_ccc+d_pcc)
-          rhoyp = rho + drho*0.5d0*(d_cpc+d_ppc)
-          rhoyq = rho + drho*0.5d0*(d_cqc+d_pqc)
-          fl = rhoyl*0.25d0*(v_ckc+v_pkc+v_plc+v_clc)*u_clc
-          fm = rhoym*0.25d0*(v_clc+v_plc+v_pmc+v_cmc)*u_cmc
-          fc = rhoyc*0.25d0*(v_cmc+v_pmc+v_pcc+v_ccc)*u_ccc
-          fp = rhoyp*0.25d0*(v_ccc+v_pcc+v_ppc+v_cpc)*u_cpc
-          fq = rhoyq*0.25d0*(v_cpc+v_ppc+v_pqc+v_cqc)*u_cqc
+          rhoyp = rho + drho*0.25d0*(d_ccc+d_cpc+d_ppc+d_pcc)
+          rhoym = rho + drho*0.25d0*(d_ccc+d_cmc+d_pmc+d_pcc)
+          fl = 0.25d0*(v_ckc+v_pkc+v_plc+v_clc)*u_clc
+          fm = 0.25d0*(v_clc+v_plc+v_pmc+v_cmc)*u_cmc
+          fc = 0.25d0*(v_cmc+v_pmc+v_pcc+v_ccc)*u_ccc
+          fp = 0.25d0*(v_ccc+v_pcc+v_ppc+v_cpc)*u_cpc
+          fq = 0.25d0*(v_cpc+v_ppc+v_pqc+v_cqc)*u_cqc
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -880,21 +826,18 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhovudy = dyi*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                          wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhovudy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(w_ccm+w_pcm+w_pcc+w_ccc+eps)/abs(w_ccm+w_pcm+w_pcc+w_ccc+eps)))
           am = nint(0.5d0*(1.d0-(w_ccm+w_pcm+w_pcc+w_ccc+eps)/abs(w_ccm+w_pcm+w_pcc+w_ccc+eps)))
-          rhozl = rho + drho*0.5d0*(d_ccl+d_pcl)
-          rhozm = rho + drho*0.5d0*(d_ccm+d_pcm)
-          rhozc = rho + drho*0.5d0*(d_ccc+d_pcc)
-          rhozp = rho + drho*0.5d0*(d_ccp+d_pcp)
-          rhozq = rho + drho*0.5d0*(d_ccq+d_pcq)
-          fl = rhozl*0.25d0*(w_cck+w_pck+w_pcl+w_ccl)*u_ccl
-          fm = rhozm*0.25d0*(w_ccl+w_pcl+w_pcm+w_ccm)*u_ccm
-          fc = rhozc*0.25d0*(w_ccm+w_pcm+w_pcc+w_ccc)*u_ccc
-          fp = rhozp*0.25d0*(w_ccc+w_pcc+w_pcp+w_ccp)*u_ccp
-          fq = rhozq*0.25d0*(w_ccp+w_pcp+w_pcq+w_ccq)*u_ccq
+          rhozp = rho + drho*0.25*(d_ccc+d_pcc+d_ccp+d_pcp)
+          rhozm = rho + drho*0.25*(d_ccc+d_pcc+d_ccm+d_pcm)
+          fl = 0.25d0*(w_cck+w_pck+w_pcl+w_ccl)*u_ccl
+          fm = 0.25d0*(w_ccl+w_pcl+w_pcm+w_ccm)*u_ccm
+          fc = 0.25d0*(w_ccm+w_pcm+w_pcc+w_ccc)*u_ccc
+          fp = 0.25d0*(w_ccc+w_pcc+w_pcp+w_ccp)*u_ccp
+          fq = 0.25d0*(w_ccp+w_pcp+w_pcq+w_ccq)*u_ccq
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -909,8 +852,8 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhowudz = dzfi(k)*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                              wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhowudz = dzfi(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           rhox = rho + drho*psixp
           dudt_aux = (-drhouudx-drhovudy-drhowudz)/rhox
@@ -919,16 +862,13 @@ module mod_mom
           !
           ap = nint(0.5d0*(1.d0+(u_mcc+u_ccc+u_cpc+u_mpc+eps)/abs(u_mcc+u_ccc+u_cpc+u_mpc+eps)))
           am = nint(0.5d0*(1.d0-(u_mcc+u_ccc+u_cpc+u_mpc+eps)/abs(u_mcc+u_ccc+u_cpc+u_mpc+eps)))
-          rhoxl = rho + drho*0.5d0*(d_lcc+d_lpc)
-          rhoxm = rho + drho*0.5d0*(d_mcc+d_mpc)
-          rhoxc = rho + drho*0.5d0*(d_ccc+d_cpc)
-          rhoxp = rho + drho*0.5d0*(d_pcc+d_ppc)
-          rhoxq = rho + drho*0.5d0*(d_qcc+d_qpc)
-          fl = rhoxl*0.25d0*(u_kcc+u_lcc+u_lpc+u_kpc)*v_lcc
-          fm = rhoxm*0.25d0*(u_lcc+u_mcc+u_mpc+u_lpc)*v_mcc
-          fc = rhoxc*0.25d0*(u_mcc+u_ccc+u_cpc+u_mpc)*v_ccc
-          fp = rhoxp*0.25d0*(u_ccc+u_pcc+u_ppc+u_cpc)*v_pcc
-          fq = rhoxq*0.25d0*(u_pcc+u_qcc+u_qpc+u_ppc)*v_qcc
+          rhoxp = rho + drho*0.25*(d_ccc+d_pcc+d_ppc+d_cpc)
+          rhoxm = rho + drho*0.25*(d_ccc+d_mcc+d_mpc+d_cpc)
+          fl = 0.25d0*(u_kcc+u_lcc+u_lpc+u_kpc)*v_lcc
+          fm = 0.25d0*(u_lcc+u_mcc+u_mpc+u_lpc)*v_mcc
+          fc = 0.25d0*(u_mcc+u_ccc+u_cpc+u_mpc)*v_ccc
+          fp = 0.25d0*(u_ccc+u_pcc+u_ppc+u_cpc)*v_pcc
+          fq = 0.25d0*(u_pcc+u_qcc+u_qpc+u_ppc)*v_qcc
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -943,21 +883,18 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhouvdx = dxi*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                          wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhouvdx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(v_ccc+eps)/abs(v_ccc+eps)))
           am = nint(0.5d0*(1.d0-(v_ccc+eps)/abs(v_ccc+eps)))
-          rhoyl = rho + drho*0.5d0*(d_clc+d_cmc)
-          rhoym = rho + drho*0.5d0*(d_cmc+d_ccc)
-          rhoyc = rho + drho*0.5d0*(d_ccc+d_cpc)
-          rhoyp = rho + drho*0.5d0*(d_cpc+d_cqc)
-          rhoyq = rho + drho*0.5d0*(d_cqc+d_crc)
-          fl = rhoyl*v_clc*v_clc
-          fm = rhoym*v_cmc*v_cmc
-          fc = rhoyc*v_ccc*v_ccc
-          fp = rhoyp*v_cpc*v_cpc
-          fq = rhoyq*v_cqc*v_cqc
+          rhoyp = rho + drho*d_cpc
+          rhoym = rho + drho*d_ccc
+          fl = v_clc*v_clc
+          fm = v_cmc*v_cmc
+          fc = v_ccc*v_ccc
+          fp = v_cpc*v_cpc
+          fq = v_cqc*v_cqc
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -972,21 +909,18 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhovvdy = dyi*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                          wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhovvdy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(w_ccm+w_cpm+w_cpc+w_ccc+eps)/abs(w_ccm+w_cpm+w_cpc+w_ccc+eps)))
           am = nint(0.5d0*(1.d0-(w_ccm+w_cpm+w_cpc+w_ccc+eps)/abs(w_ccm+w_cpm+w_cpc+w_ccc+eps)))
-          rhozl = rho + drho*0.5d0*(d_ccl+d_cpl)
-          rhozm = rho + drho*0.5d0*(d_ccm+d_cpm)
-          rhozc = rho + drho*0.5d0*(d_ccc+d_cpc)
-          rhozp = rho + drho*0.5d0*(d_ccp+d_cpp)
-          rhozq = rho + drho*0.5d0*(d_ccq+d_cpq)
-          fl = rhozl*0.25d0*(w_cck+w_cpk+w_cpl+w_ccl)*v_ccl
-          fm = rhozm*0.25d0*(w_ccl+w_cpl+w_cpm+w_ccm)*v_ccm
-          fc = rhozc*0.25d0*(w_ccm+w_cpm+w_cpc+w_ccc)*v_ccc
-          fp = rhozp*0.25d0*(w_ccc+w_cpc+w_cpp+w_ccp)*v_ccp
-          fq = rhozq*0.25d0*(w_ccp+w_cpp+w_cpq+w_ccq)*v_ccq
+          rhozp = rho + drho*0.25*(d_ccc+d_cpc+d_cpp+d_ccp)
+          rhozm = rho + drho*0.25*(d_ccc+d_cpc+d_cpm+d_ccm)
+          fl = 0.25d0*(w_cck+w_cpk+w_cpl+w_ccl)*v_ccl
+          fm = 0.25d0*(w_ccl+w_cpl+w_cpm+w_ccm)*v_ccm
+          fc = 0.25d0*(w_ccm+w_cpm+w_cpc+w_ccc)*v_ccc
+          fp = 0.25d0*(w_ccc+w_cpc+w_cpp+w_ccp)*v_ccp
+          fq = 0.25d0*(w_ccp+w_cpp+w_cpq+w_ccq)*v_ccq
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -1001,8 +935,8 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhowvdz = dzfi(k)*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                              wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhowvdz = dzfi(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           rhoy = rho + drho*psiyp
           dvdt_aux = (-drhouvdx-drhovvdy-drhowvdz)/rhoy
@@ -1011,16 +945,13 @@ module mod_mom
           !
           ap = nint(0.5d0*(1.d0+(u_mcc+u_ccc+u_ccp+u_mcp+eps)/abs(u_mcc+u_ccc+u_ccp+u_mcp+eps)))
           am = nint(0.5d0*(1.d0-(u_mcc+u_ccc+u_ccp+u_mcp+eps)/abs(u_mcc+u_ccc+u_ccp+u_mcp+eps)))
-          rhoxl = rho + drho*0.5d0*(d_lcc+d_lcp)
-          rhoxm = rho + drho*0.5d0*(d_mcc+d_mcp)
-          rhoxc = rho + drho*0.5d0*(d_ccc+d_ccp)
-          rhoxp = rho + drho*0.5d0*(d_pcc+d_pcp)
-          rhoxq = rho + drho*0.5d0*(d_qcc+d_qcp)
-          fl = rhoxl*0.25d0*(u_kcc+u_lcc+u_lcp+u_kcp)*w_lcc
-          fm = rhoxm*0.25d0*(u_lcc+u_mcc+u_mcp+u_lcp)*w_mcc
-          fc = rhoxc*0.25d0*(u_mcc+u_ccc+u_ccp+u_mcp)*w_ccc
-          fp = rhoxp*0.25d0*(u_ccc+u_pcc+u_pcp+u_ccp)*w_pcc
-          fq = rhoxq*0.25d0*(u_pcc+u_qcc+u_qcp+u_pcp)*w_qcc
+          rhoxp = rho + drho*0.25*(d_ccc+d_pcc+d_ccp+d_pcp)
+          rhoxm = rho + drho*0.25*(d_ccc+d_mcc+d_ccp+d_mcp)
+          fl = 0.25d0*(u_kcc+u_lcc+u_lcp+u_kcp)*w_lcc
+          fm = 0.25d0*(u_lcc+u_mcc+u_mcp+u_lcp)*w_mcc
+          fc = 0.25d0*(u_mcc+u_ccc+u_ccp+u_mcp)*w_ccc
+          fp = 0.25d0*(u_ccc+u_pcc+u_pcp+u_ccp)*w_pcc
+          fq = 0.25d0*(u_pcc+u_qcc+u_qcp+u_pcp)*w_qcc
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -1035,21 +966,18 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhouwdx = dxi*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                          wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhouwdx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(v_cmc+v_ccc+v_ccp+v_cmp+eps)/abs(v_cmc+v_ccc+v_ccp+v_cmp+eps)))
           am = nint(0.5d0*(1.d0-(v_cmc+v_ccc+v_ccp+v_cmp+eps)/abs(v_cmc+v_ccc+v_ccp+v_cmp+eps)))
-          rhoyl = rho + drho*0.5d0*(d_clc+d_clp)
-          rhoym = rho + drho*0.5d0*(d_cmc+d_cmp)
-          rhoyc = rho + drho*0.5d0*(d_ccc+d_ccp)
-          rhoyp = rho + drho*0.5d0*(d_cpc+d_cpp)
-          rhoyq = rho + drho*0.5d0*(d_cqc+d_cqp)
-          fl = rhoyl*0.25d0*(v_ckc+v_clc+v_clp+v_ckp)*w_clc
-          fm = rhoym*0.25d0*(v_clc+v_cmc+v_cmp+v_clp)*w_cmc
-          fc = rhoyc*0.25d0*(v_cmc+v_ccc+v_ccp+v_cmp)*w_ccc
-          fp = rhoyp*0.25d0*(v_ccc+v_cpc+v_cpp+v_ccp)*w_cpc
-          fq = rhoyq*0.25d0*(v_cpc+v_cqc+v_cqp+v_cpp)*w_cqc
+          rhoyp = rho + drho*0.25*(d_ccc+d_cpc+d_ccp+d_cpp)
+          rhoym = rho + drho*0.25*(d_ccc+d_cmc+d_ccp+d_cmp)
+          fl = 0.25d0*(v_ckc+v_clc+v_clp+v_ckp)*w_clc
+          fm = 0.25d0*(v_clc+v_cmc+v_cmp+v_clp)*w_cmc
+          fc = 0.25d0*(v_cmc+v_ccc+v_ccp+v_cmp)*w_ccc
+          fp = 0.25d0*(v_ccc+v_cpc+v_cpp+v_ccp)*w_cpc
+          fq = 0.25d0*(v_cpc+v_cqc+v_cqp+v_cpp)*w_cqc
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -1064,21 +992,18 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhovwdy = dyi*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                          wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhovwdy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(w_ccc+eps)/abs(w_ccc+eps)))
           am = nint(0.5d0*(1.d0-(w_ccc+eps)/abs(w_ccc+eps)))
-          rhozl = rho + drho*0.5d0*(d_ccl+d_ccm)
-          rhozm = rho + drho*0.5d0*(d_ccm+d_ccc)
-          rhozc = rho + drho*0.5d0*(d_ccc+d_ccp)
-          rhozp = rho + drho*0.5d0*(d_ccp+d_ccq)
-          rhozq = rho + drho*0.5d0*(d_ccq+d_ccr)
-          fl = rhozl*w_ccl*w_ccl
-          fm = rhozm*w_ccm*w_ccm
-          fc = rhozc*w_ccc*w_ccc
-          fp = rhozp*w_ccp*w_ccp
-          fq = rhozq*w_ccq*w_ccq
+          rhozp = rho + drho*d_ccp
+          rhozm = rho + drho*d_ccc
+          fl = w_ccl*w_ccl
+          fm = w_ccm*w_ccm
+          fc = w_ccc*w_ccc
+          fp = w_ccp*w_ccp
+          fq = w_ccq*w_ccq
           br_u = ap*(fm-fc)**2 + am*(fp-fq)**2
           br_c = (fc-fp)**2
           bl_u = ap*(fl-fm)**2 + am*(fc-fp)**2
@@ -1093,8 +1018,8 @@ module mod_mom
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhowwdz = dzci(k)*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp) - &
-                              wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc))
+          drhowwdz = dzci(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
+                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
           !
           rhoz = rho + drho*psizp
           dwdt_aux = (-drhouwdx-drhovwdy-drhowwdz)/rhoz
