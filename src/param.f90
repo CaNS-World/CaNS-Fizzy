@@ -26,7 +26,7 @@ real(rp), parameter, dimension(2,3) :: rkcoeff = reshape([32._rp/60._rp,  0._rp 
 !
 ! number of ghost points
 !
-integer, parameter :: nh = 2
+integer, parameter :: nh = 1
 !
 !
 ! variables to be determined from the input file
