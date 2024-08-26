@@ -581,17 +581,19 @@ module mod_mom
     real(rp) :: wr_u,wl_u,wr_c,wl_c
     real(rp), dimension(2) :: beta,we,dudlh,dvdlh,dwdlh
     real(rp) :: tauP,tauP_r,tauP_l
+    real(rp) :: lmbd
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     mu  = mu12(2);  dmu  = mu12(1)-mu12(2)
     dxi = dli(1)
     dyi = dli(2)
+    lmbd = 1000.d0/6.d0
     !
     !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
     !                                        all scalars should be firstprivate/private
     !
-    !$acc parallel loop collapse(3) default(present) private(f,beta,we,dudlh,dvdlh,dwdlh) async(1)
+    !$acc parallel loop collapse(3) default(present) private(f,c,sigma,beta,we,dudlh,dvdlh,dwdlh) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -793,16 +795,17 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dxi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dxi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dxi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dxi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhouudx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          !print*, 'c(1,1),c(2,1),c(1,2),c(2,2)',c(1,1),c(2,1),c(1,2),c(2,2)
+          drhouudx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(v_cmc+v_pmc+v_pcc+v_ccc+eps)/abs(v_cmc+v_pmc+v_pcc+v_ccc+eps)))
           am = nint(0.5d0*(1.d0-(v_cmc+v_pmc+v_pcc+v_ccc+eps)/abs(v_cmc+v_pmc+v_pcc+v_ccc+eps)))
@@ -819,16 +822,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dyi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dyi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dyi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dyi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhovudy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhovudy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(w_ccm+w_pcm+w_pcc+w_ccc+eps)/abs(w_ccm+w_pcm+w_pcc+w_ccc+eps)))
           am = nint(0.5d0*(1.d0-(w_ccm+w_pcm+w_pcc+w_ccc+eps)/abs(w_ccm+w_pcm+w_pcc+w_ccc+eps)))
@@ -845,16 +848,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dzci(k  ))**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dzci(k  ))**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhowudz = dzfi(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhowudz = dzfi(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           rhox = rho + drho*psixp
           dudt_aux = (-drhouudx-drhovudy-drhowudz)/rhox
@@ -876,16 +879,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dxi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dxi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dxi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dxi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhouvdx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhouvdx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(v_ccc+eps)/abs(v_ccc+eps)))
           am = nint(0.5d0*(1.d0-(v_ccc+eps)/abs(v_ccc+eps)))
@@ -902,16 +905,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dyi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dyi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dyi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dyi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhovvdy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhovvdy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(w_ccm+w_cpm+w_cpc+w_ccc+eps)/abs(w_ccm+w_cpm+w_cpc+w_ccc+eps)))
           am = nint(0.5d0*(1.d0-(w_ccm+w_cpm+w_cpc+w_ccc+eps)/abs(w_ccm+w_cpm+w_cpc+w_ccc+eps)))
@@ -928,16 +931,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dzci(k  ))**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dzci(k  ))**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhowvdz = dzfi(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhowvdz = dzfi(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           rhoy = rho + drho*psiyp
           dvdt_aux = (-drhouvdx-drhovvdy-drhowvdz)/rhoy
@@ -959,16 +962,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dxi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dxi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dxi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dxi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhouwdx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhouwdx = dxi*(rhoxp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                          rhoxm*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(v_cmc+v_ccc+v_ccp+v_cmp+eps)/abs(v_cmc+v_ccc+v_ccp+v_cmp+eps)))
           am = nint(0.5d0*(1.d0-(v_cmc+v_ccc+v_ccp+v_cmp+eps)/abs(v_cmc+v_ccc+v_ccp+v_cmp+eps)))
@@ -985,16 +988,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dyi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dyi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dyi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dyi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhovwdy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhovwdy = dyi*(rhoyp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                          rhoym*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           ap = nint(0.5d0*(1.d0+(w_ccc+eps)/abs(w_ccc+eps)))
           am = nint(0.5d0*(1.d0-(w_ccc+eps)/abs(w_ccc+eps)))
@@ -1011,16 +1014,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dzfi(k))**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dzfi(k))**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dzfi(k-1))**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dzfi(k-1))**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dzfi(k  ))**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dzfi(k  ))**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dzfi(k-1))**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dzfi(k-1))**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          drhowwdz = dzci(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          drhowwdz = dzci(k)*(rhozp*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                              rhozm*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           rhoz = rho + drho*psizp
           dwdt_aux = (-drhouwdx-drhovwdy-drhowwdz)/rhoz
@@ -1044,16 +1047,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dxi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dxi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dxi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dxi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          ududx = dxi*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                       avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          ududx = dxi*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                       avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           avel = 0.25d0*(v_cmc+v_pmc+v_pcc+v_ccc)
           ap = nint(0.5d0*(1.d0+(avel+eps)/abs(avel+eps)))
@@ -1069,16 +1072,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dyi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dyi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dyi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dyi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          vdudy = dyi*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                       avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          vdudy = dyi*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                       avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           avel = 0.25d0*(w_ccm+w_pcm+w_pcc+w_ccc)
           ap = nint(0.5d0*(1.d0+(avel+eps)/abs(avel+eps)))
@@ -1094,18 +1097,18 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dzci(k  ))**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dzci(k  ))**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          wdudz = dzfi(k)*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                           avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          wdudz = dzfi(k)*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                           avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
-          dudt_aux = (-ududx-vdudy-wdudz)
+          dudt_aux = (-ududx-0.*vdudy-wdudz)
           !
           ! v advection
           !
@@ -1123,16 +1126,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dxi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dxi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dxi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dxi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          udvdx = dxi*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                          avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          udvdx = dxi*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                       avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           avel = v_ccc
           ap = nint(0.5d0*(1.d0+(avel+eps)/abs(avel+eps)))
@@ -1148,16 +1151,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dyi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dyi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dyi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dyi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          vdvdy = dyi*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                       avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          vdvdy = dyi*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                       avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           avel = 0.25d0*(w_ccm+w_cpm+w_cpc+w_ccc)
           ap = nint(0.5d0*(1.d0+(avel+eps)/abs(avel+eps)))
@@ -1173,18 +1176,18 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dzci(k))**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dzci(k-1))**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dzci(k  ))**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dzci(k  ))**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dzci(k-1))**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          wdvdz = dzfi(k)*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                           avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          wdvdz = dzfi(k)*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                           avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
-          dvdt_aux = (-udvdx-vdvdy-wdvdz)
+          dvdt_aux = 0.*(-udvdx-vdvdy-wdvdz)
           !
           ! w advection
           !
@@ -1202,16 +1205,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dxi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dxi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dxi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dxi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dxi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          udwdx = dxi*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                       avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          udwdx = dxi*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                       avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           avel = 0.25d0*(v_cmc+v_ccc+v_ccp+v_cmp)
           ap = nint(0.5d0*(1.d0+(avel+eps)/abs(avel+eps)))
@@ -1227,16 +1230,16 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dyi)**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dyi)**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dyi)**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dyi)**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dyi)**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          vdwdy = dyi*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                       avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          vdwdy = dyi*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                       avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
           avel = w_ccc
           ap = nint(0.5d0*(1.d0+(avel+eps)/abs(avel+eps)))
@@ -1252,18 +1255,18 @@ module mod_mom
           bl_c = (fm-fc)**2
           tauP_r = abs(0.5d0*(br_u+br_c)-0.25d0*(ap*(fm-fp)**2+am*(fc-fq)**2))
           tauP_l = abs(0.5d0*(bl_u+bl_c)-0.25d0*(ap*(fl-fc)**2+am*(fm-fp)**2))
-          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+(1.d0/dzfi(k))**(1.d0/6.d0)*((br_u+eps)/(tauP_r+eps)))
-          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+(1.d0/dzfi(k))**(1.d0/6.d0)*((br_c+eps)/(tauP_r+eps)))
-          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+(1.d0/dzfi(k-1))**(1.d0/6.d0)*((bl_u+eps)/(tauP_l+eps)))
-          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+(1.d0/dzfi(k-1))**(1.d0/6.d0)*((bl_c+eps)/(tauP_l+eps)))
+          wr_u = sigma(1)*(1.d0+tauP_r/(br_u+eps)+((1.d0/dzfi(k  ))**lmbd)*((br_u+eps)/(tauP_r+eps)))
+          wr_c = sigma(2)*(1.d0+tauP_r/(br_c+eps)+((1.d0/dzfi(k  ))**lmbd)*((br_c+eps)/(tauP_r+eps)))
+          wl_u = sigma(1)*(1.d0+tauP_l/(bl_u+eps)+((1.d0/dzfi(k-1))**lmbd)*((bl_u+eps)/(tauP_l+eps)))
+          wl_c = sigma(2)*(1.d0+tauP_l/(bl_c+eps)+((1.d0/dzfi(k-1))**lmbd)*((bl_c+eps)/(tauP_l+eps)))
           wr_u = wr_u/(wr_u+wr_c)
           wr_c = wr_c/(wr_u+wr_c)
           wl_u = wl_u/(wl_u+wl_c)
           wl_c = wl_c/(wl_u+wl_c)
-          wdwdz = dzci(k)*(avel*(wr_u*(ap*(c(1,1)*fm+c(1,2)*fc)+am*(c(1,1)*fq+c(1,2)*fp)) + wr_c*(c(2,1)*fc+c(2,2)*fp)) - &
-                           avel*(wl_u*(ap*(c(1,1)*fl+c(1,2)*fm)+am*(c(1,1)*fp+c(1,2)*fc)) + wl_c*(c(2,1)*fm+c(2,2)*fc)))
+          wdwdz = dzci(k)*(avel*(wr_u*(ap*(c(1,1)*fm+c(2,1)*fc)+am*(c(1,1)*fq+c(2,1)*fp)) + wr_c*(c(1,2)*fc+c(2,2)*fp)) - &
+                           avel*(wl_u*(ap*(c(1,1)*fl+c(2,1)*fm)+am*(c(1,1)*fp+c(2,1)*fc)) + wl_c*(c(1,2)*fm+c(2,2)*fc)))
           !
-          dwdt_aux = (-udwdx-vdwdy-wdwdz)
+          dwdt_aux = (-udwdx-0.*vdwdy-wdwdz)
           !
 #endif
           !
