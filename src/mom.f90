@@ -569,11 +569,14 @@ module mod_mom
     real(rp), dimension(-1:1) :: f
     real(rp), dimension(2) :: beta,we,dudlh,dvdlh,dwdlh
     real(rp) :: tauP
+    real(rp) :: lmbd
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     mu  = mu12(2);  dmu  = mu12(1)-mu12(2)
     dxi = dli(1)
     dyi = dli(2)
+    !
+    lmbd = 1.d0/6.d0
     !
     !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
@@ -855,7 +858,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dudlh(1) = sum(c(:,1)*f(-1:0))
           dudlh(2) = sum(c(:,2)*f( 0:1))
@@ -868,7 +871,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dudlh(1) = sum(c(:,1)*f(-1:0))
           dudlh(2) = sum(c(:,2)*f( 0:1))
@@ -887,7 +890,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dudlh(1) = sum(c(:,1)*f(-1:0))
           dudlh(2) = sum(c(:,2)*f( 0:1))
@@ -902,7 +905,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dvdlh(1) = sum(c(:,1)*f(-1:0))
           dvdlh(2) = sum(c(:,2)*f( 0:1))
@@ -915,7 +918,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dvdlh(1) = sum(c(:,1)*f(-1:0))
           dvdlh(2) = sum(c(:,2)*f( 0:1))
@@ -934,7 +937,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dvdlh(1) = sum(c(:,1)*f(-1:0))
           dvdlh(2) = sum(c(:,2)*f( 0:1))
@@ -949,7 +952,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(1)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dwdlh(1) = sum(c(:,1)*f(-1:0))
           dwdlh(2) = sum(c(:,2)*f( 0:1))
@@ -962,7 +965,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dli(2)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dwdlh(1) = sum(c(:,1)*f(-1:0))
           dwdlh(2) = sum(c(:,2)*f( 0:1))
@@ -981,7 +984,7 @@ module mod_mom
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
-          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(1.d0/6.d0)*((beta(:)+eps)/(tauP+eps)))
+          we(:) = sigma(:)*(1.d0+tauP/(beta(:)+eps)+1.d0/dzci(k)**(lmbd)*((beta(:)+eps)/(tauP+eps)))
           we(:) = we(:)/sum(we(:))
           dwdlh(1) = sum(c(:,1)*f(-1:0))
           dwdlh(2) = sum(c(:,2)*f( 0:1))
