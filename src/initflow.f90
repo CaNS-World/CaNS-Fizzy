@@ -38,7 +38,7 @@ module mod_initflow
     real(rp) :: ubulk,visc,reb,retau
     integer, dimension(3) :: n
     !
-    n(:) = shape(p) - 2*1
+    n(:) = shape(p) - 2*nh
     allocate(u1d(n(3)))
     is_noise = .false.
     is_mean  = .false.
