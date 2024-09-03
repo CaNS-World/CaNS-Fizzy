@@ -83,18 +83,18 @@ module mod_rk
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
-            rhox_n = rho + drho*(psio(i,j,k,1)+psio(i+1,j,k,1))
-            rhoy_n = rho + drho*(psio(i,j,k,1)+psio(i,j+1,k,1))
-            rhoz_n = rho + drho*(psio(i,j,k,1)+psio(i,j,k+1,1))
-            rhox_p = rho + drho*(psi( i,j,k  )+psi( i+1,j,k  ))
-            rhoy_p = rho + drho*(psi( i,j,k  )+psi( i,j+1,k  ))
-            rhoz_p = rho + drho*(psi( i,j,k  )+psi( i,j,k+1  ))
+            rhox_n = rho + drho*0.5d0*(psio(i,j,k,1)+psio(i+1,j,k,1))
+            rhoy_n = rho + drho*0.5d0*(psio(i,j,k,1)+psio(i,j+1,k,1))
+            rhoz_n = rho + drho*0.5d0*(psio(i,j,k,1)+psio(i,j,k+1,1))
+            rhox_p = rho + drho*0.5d0*(psi( i,j,k  )+psi( i+1,j,k  ))
+            rhoy_p = rho + drho*0.5d0*(psi( i,j,k  )+psi( i,j+1,k  ))
+            rhoz_p = rho + drho*0.5d0*(psi( i,j,k  )+psi( i,j,k+1  ))
             factor_rho = rhox_n/rhox_p
-            u(i,j,k) = u(i,j,k)*factor_rho + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)*factor_rho
+            u(i,j,k) = u(i,j,k)*factor_rho + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)
             factor_rho = rhoy_n/rhoy_p
-            v(i,j,k) = v(i,j,k)*factor_rho + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)*factor_rho
+            v(i,j,k) = v(i,j,k)*factor_rho + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)
             factor_rho = rhoz_n/rhoz_p
-            w(i,j,k) = w(i,j,k)*factor_rho + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)*factor_rho
+            w(i,j,k) = w(i,j,k)*factor_rho + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)
           end do
         end do
       end do

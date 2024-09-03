@@ -723,9 +723,12 @@ module mod_mom
           ! weno3
           !
           a = nint(sign(1.d0,u_ccc))
-          f(-1) = a*(u(i-1*a,j,k)*u(i-1*a,j,k) - u(i-2*a,j,k)*u(i-2*a,j,k))*dli(1)
-          f( 0) = a*(u(i+0*a,j,k)*u(i+0*a,j,k) - u(i-1*a,j,k)*u(i-1*a,j,k))*dli(1)
-          f( 1) = a*(u(i+1*a,j,k)*u(i+1*a,j,k) - u(i+0*a,j,k)*u(i+0*a,j,k))*dli(1)
+          f(-1) = a*(u(i-1*a,j,k)*u(i-1*a,j,k)*(rho+drho*0.5d0*(psio(i-1*a,j,k)+psio(i-1*a+1,j,k))) &
+                   - u(i-2*a,j,k)*u(i-2*a,j,k)*(rho+drho*0.5d0*(psio(i-2*a,j,k)+psio(i-2*a+1,j,k))))*dli(1)
+          f( 0) = a*(u(i+0*a,j,k)*u(i+0*a,j,k)*(rho+drho*0.5d0*(psio(i+0*a,j,k)+psio(i+0*a+1,j,k))) &
+                   - u(i-1*a,j,k)*u(i-1*a,j,k)*(rho+drho*0.5d0*(psio(i-1*a,j,k)+psio(i-1*a+1,j,k))))*dli(1)
+          f( 1) = a*(u(i+1*a,j,k)*u(i+1*a,j,k)*(rho+drho*0.5d0*(psio(i+1*a,j,k)+psio(i+1*a+1,j,k))) &
+                   - u(i+0*a,j,k)*u(i+0*a,j,k)*(rho+drho*0.5d0*(psio(i+0*a,j,k)+psio(i+0*a+1,j,k))))*dli(1)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -738,11 +741,17 @@ module mod_mom
           a = nint(sign(1.d0,v_cmc+v_pmc+v_ccc+v_pcc))
           b = nint(0.5d0*(a-1))
           f(-1) = a*(u(i,j-1*a,k)*0.25d0*(v(i,j-2*a+b,k)+v(i,j-1*a+b,k)+v(i+1,j-2*a+b,k)+v(i+1,j-1*a+b,k)) &
-                   - u(i,j-2*a,k)*0.25d0*(v(i,j-3*a+b,k)+v(i,j-2*a+b,k)+v(i+1,j-3*a+b,k)+v(i+1,j-2*a+b,k)))*dli(2)
+                     *(rho+drho*0.5d0*(psio(i,j-1*a,k)+psio(i+1,j-1*a,k))) &
+                   - u(i,j-2*a,k)*0.25d0*(v(i,j-3*a+b,k)+v(i,j-2*a+b,k)+v(i+1,j-3*a+b,k)+v(i+1,j-2*a+b,k)) &
+                     *(rho+drho*0.5d0*(psio(i,j-2*a,k)+psio(i+1,j-2*a,k))))*dli(2)
           f( 0) = a*(u(i,j+0*a,k)*0.25d0*(v(i,j-1*a+b,k)+v(i,j-0*a+b,k)+v(i+1,j-1*a+b,k)+v(i+1,j-0*a+b,k)) &
-                   - u(i,j-1*a,k)*0.25d0*(v(i,j-2*a+b,k)+v(i,j-1*a+b,k)+v(i+1,j-2*a+b,k)+v(i+1,j-1*a+b,k)))*dli(2)
+                     *(rho+drho*0.5d0*(psio(i,j+0*a,k)+psio(i+1,j+0*a,k))) &
+                   - u(i,j-1*a,k)*0.25d0*(v(i,j-2*a+b,k)+v(i,j-1*a+b,k)+v(i+1,j-2*a+b,k)+v(i+1,j-1*a+b,k)) &
+                     *(rho+drho*0.5d0*(psio(i,j-1*a,k)+psio(i+1,j-1*a,k))))*dli(2)
           f( 1) = a*(u(i,j+1*a,k)*0.25d0*(v(i,j+0*a+b,k)+v(i,j+1*a+b,k)+v(i+1,j+0*a+b,k)+v(i+1,j+1*a+b,k)) &
-                   - u(i,j+0*a,k)*0.25d0*(v(i,j-1*a+b,k)+v(i,j-0*a+b,k)+v(i+1,j-1*a+b,k)+v(i+1,j-0*a+b,k)))*dli(2)
+                     *(rho+drho*0.5d0*(psio(i,j+1*a,k)+psio(i+1,j+1*a,k))) &
+                   - u(i,j+0*a,k)*0.25d0*(v(i,j-1*a+b,k)+v(i,j-0*a+b,k)+v(i+1,j-1*a+b,k)+v(i+1,j-0*a+b,k)) &
+                     *(rho+drho*0.5d0*(psio(i,j+0*a,k)+psio(i+1,j+0*a,k))))*dli(2)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -755,11 +764,17 @@ module mod_mom
           a = nint(sign(1.d0,w_ccm+w_pcm+w_pcc+w_ccc))
           b = nint(0.5d0*(a-1))
           f(-1) = a*(u(i,j,k-1*a)*0.25d0*(w(i,j,k-2*a+b)+w(i,j,k-1*a+b)+w(i+1,j,k-2*a+b)+w(i+1,j,k-1*a+b)) &
-                   - u(i,j,k-2*a)*0.25d0*(w(i,j,k-3*a+b)+w(i,j,k-2*a+b)+w(i+1,j,k-3*a+b)+w(i+1,j,k-2*a+b)))*dzci(k-2*a+b)
+                     *(rho+drho*0.5d0*(psio(i,j,k-1*a)+psio(i+1,j,k-1*a))) &
+                   - u(i,j,k-2*a)*0.25d0*(w(i,j,k-3*a+b)+w(i,j,k-2*a+b)+w(i+1,j,k-3*a+b)+w(i+1,j,k-2*a+b)) &
+                     *(rho+drho*0.5d0*(psio(i,j,k-2*a)+psio(i+1,j,k-2*a))))*dzci(k-2*a+b)
           f( 0) = a*(u(i,j,k+0*a)*0.25d0*(w(i,j,k-1*a+b)+w(i,j,k-0*a+b)+w(i+1,j,k-1*a+b)+w(i+1,j,k-0*a+b)) &
-                   - u(i,j,k-1*a)*0.25d0*(w(i,j,k-2*a+b)+w(i,j,k-1*a+b)+w(i+1,j,k-2*a+b)+w(i+1,j,k-1*a+b)))*dzci(k-1*a+b)
+                     *(rho+drho*0.5d0*(psio(i,j,k+0*a)+psio(i+1,j,k+0*a))) &
+                   - u(i,j,k-1*a)*0.25d0*(w(i,j,k-2*a+b)+w(i,j,k-1*a+b)+w(i+1,j,k-2*a+b)+w(i+1,j,k-1*a+b)) &
+                     *(rho+drho*0.5d0*(psio(i,j,k-1*a)+psio(i+1,j,k-1*a))))*dzci(k-1*a+b)
           f( 1) = a*(u(i,j,k+1*a)*0.25d0*(w(i,j,k+0*a+b)+w(i,j,k+1*a+b)+w(i+1,j,k+0*a+b)+w(i+1,j,k+1*a+b)) &
-                   - u(i,j,k+0*a)*0.25d0*(w(i,j,k-1*a+b)+w(i,j,k-0*a+b)+w(i+1,j,k-1*a+b)+w(i+1,j,k-0*a+b)))*dzci(k-0*a+b)
+                     *(rho+drho*0.5d0*(psio(i,j,k+1*a)+psio(i+1,j,k+1*a))) &
+                   - u(i,j,k+0*a)*0.25d0*(w(i,j,k-1*a+b)+w(i,j,k-0*a+b)+w(i+1,j,k-1*a+b)+w(i+1,j,k-0*a+b)) &
+                     *(rho+drho*0.5d0*(psio(i,j,k+0*a)+psio(i+1,j,k+0*a))))*dzci(k-0*a+b)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -769,16 +784,23 @@ module mod_mom
           dudlh(2) = sum(c(:,2)*f( 0:1))
           dwudz    = sum(we(:)*dudlh(:))
           !
-          dudt_aux = -duudx -dvudy -dwudz
+          rhox  = rho + drho*psixp
+          dudt_aux = (-duudx -dvudy -dwudz)/rhox
           !
           a = nint(sign(1.d0,u_mcc+u_ccc+u_mpc+u_cpc))
           b = nint(0.5d0*(a-1))
           f(-1) = a*(v(i-1*a,j,k)*0.25d0*(u(i-2*a+b,j,k)+u(i-1*a+b,j,k)+u(i-2*a+b,j+1,k)+u(i-1*a+b,j+1,k)) &
-                   - v(i-2*a,j,k)*0.25d0*(u(i-3*a+b,j,k)+u(i-2*a+b,j,k)+u(i-3*a+b,j+1,k)+u(i-2*a+b,j+1,k)))*dli(1)
+                     *(rho+drho*0.5d0*(psio(i-1*a,j,k)+psio(i-1*a,j+1,k))) &
+                   - v(i-2*a,j,k)*0.25d0*(u(i-3*a+b,j,k)+u(i-2*a+b,j,k)+u(i-3*a+b,j+1,k)+u(i-2*a+b,j+1,k)) &
+                     *(rho+drho*0.5d0*(psio(i-2*a,j,k)+psio(i-2*a,j+1,k))))*dli(1)
           f( 0) = a*(v(i+0*a,j,k)*0.25d0*(u(i-1*a+b,j,k)+u(i-0*a+b,j,k)+u(i-1*a+b,j+1,k)+u(i-0*a+b,j+1,k)) &
-                   - v(i-1*a,j,k)*0.25d0*(u(i-2*a+b,j,k)+u(i-1*a+b,j,k)+u(i-2*a+b,j+1,k)+u(i-1*a+b,j+1,k)))*dli(1)
+                     *(rho+drho*0.5d0*(psio(i+0*a,j,k)+psio(i+0*a,j+1,k))) &
+                   - v(i-1*a,j,k)*0.25d0*(u(i-2*a+b,j,k)+u(i-1*a+b,j,k)+u(i-2*a+b,j+1,k)+u(i-1*a+b,j+1,k)) &
+                     *(rho+drho*0.5d0*(psio(i-1*a,j,k)+psio(i-1*a,j+1,k))))*dli(1)
           f( 1) = a*(v(i+1*a,j,k)*0.25d0*(u(i+0*a+b,j,k)+u(i+1*a+b,j,k)+u(i+0*a+b,j+1,k)+u(i+1*a+b,j+1,k)) &
-                   - v(i+0*a,j,k)*0.25d0*(u(i-1*a+b,j,k)+u(i-0*a+b,j,k)+u(i-1*a+b,j+1,k)+u(i-0*a+b,j+1,k)))*dli(1)
+                     *(rho+drho*0.5d0*(psio(i+1*a,j,k)+psio(i+1*a,j+1,k))) &
+                   - v(i+0*a,j,k)*0.25d0*(u(i-1*a+b,j,k)+u(i-0*a+b,j,k)+u(i-1*a+b,j+1,k)+u(i-0*a+b,j+1,k)) &
+                     *(rho+drho*0.5d0*(psio(i+0*a,j,k)+psio(i+0*a,j+1,k))))*dli(1)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -789,9 +811,12 @@ module mod_mom
           duvdx    = sum(we(:)*dvdlh(:))
           !
           a = nint(sign(1.d0,v_ccc))
-          f(-1) = a*(v(i,j-1*a,k)*v(i,j-1*a,k) - v(i,j-2*a,k)*v(i,j-2*a,k))*dli(2)
-          f( 0) = a*(v(i,j+0*a,k)*v(i,j+0*a,k) - v(i,j-1*a,k)*v(i,j-1*a,k))*dli(2)
-          f( 1) = a*(v(i,j+1*a,k)*v(i,j+1*a,k) - v(i,j+0*a,k)*v(i,j+0*a,k))*dli(2)
+          f(-1) = a*(v(i,j-1*a,k)*v(i,j-1*a,k)*(rho+drho*0.5d0*(psio(i,j-1*a,k)+psio(i,j-1*a+1,k))) &
+                   - v(i,j-2*a,k)*v(i,j-2*a,k)*(rho+drho*0.5d0*(psio(i,j-2*a,k)+psio(i,j-2*a+1,k))))*dli(2)
+          f( 0) = a*(v(i,j+0*a,k)*v(i,j+0*a,k)*(rho+drho*0.5d0*(psio(i,j+0*a,k)+psio(i,j+0*a+1,k))) &
+                   - v(i,j-1*a,k)*v(i,j-1*a,k)*(rho+drho*0.5d0*(psio(i,j-1*a,k)+psio(i,j-1*a+1,k))))*dli(2)
+          f( 1) = a*(v(i,j+1*a,k)*v(i,j+1*a,k)*(rho+drho*0.5d0*(psio(i,j+1*a,k)+psio(i,j+1*a+1,k))) &
+                   - v(i,j+0*a,k)*v(i,j+0*a,k)*(rho+drho*0.5d0*(psio(i,j+0*a,k)+psio(i,j+0*a+1,k))))*dli(2)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -804,11 +829,17 @@ module mod_mom
           a = nint(sign(1.d0,w_ccm+w_cpm+w_ccc+w_cpc))
           b = nint(0.5d0*(a-1))
           f(-1) = a*(v(i,j,k-1*a)*0.25d0*(w(i,j,k-2*a+b)+w(i,j,k-1*a+b)+w(i,j+1,k-2*a+b)+w(i,j+1,k-1*a+b)) &
-                   - v(i,j,k-2*a)*0.25d0*(w(i,j,k-3*a+b)+w(i,j,k-2*a+b)+w(i,j+1,k-3*a+b)+w(i,j+1,k-2*a+b)))*dzci(k-2*a+b)
+                     *(rho+drho*0.5d0*(psio(i,j,k-1*a)+psio(i,j+1,k-1*a))) &
+                   - v(i,j,k-2*a)*0.25d0*(w(i,j,k-3*a+b)+w(i,j,k-2*a+b)+w(i,j+1,k-3*a+b)+w(i,j+1,k-2*a+b)) &
+                     *(rho+drho*0.5d0*(psio(i,j,k-2*a)+psio(i,j+1,k-2*a))))*dzci(k-2*a+b)
           f( 0) = a*(v(i,j,k+0*a)*0.25d0*(w(i,j,k-1*a+b)+w(i,j,k-0*a+b)+w(i,j+1,k-1*a+b)+w(i,j+1,k-0*a+b)) &
-                   - v(i,j,k-1*a)*0.25d0*(w(i,j,k-2*a+b)+w(i,j,k-1*a+b)+w(i,j+1,k-2*a+b)+w(i,j+1,k-1*a+b)))*dzci(k-1*a+b)
+                     *(rho+drho*0.5d0*(psio(i,j,k+0*a)+psio(i,j+1,k+0*a))) &
+                   - v(i,j,k-1*a)*0.25d0*(w(i,j,k-2*a+b)+w(i,j,k-1*a+b)+w(i,j+1,k-2*a+b)+w(i,j+1,k-1*a+b)) &
+                     *(rho+drho*0.5d0*(psio(i,j,k-1*a)+psio(i,j+1,k-1*a))))*dzci(k-1*a+b)
           f( 1) = a*(v(i,j,k+1*a)*0.25d0*(w(i,j,k+0*a+b)+w(i,j,k+1*a+b)+w(i,j+1,k+0*a+b)+w(i,j+1,k+1*a+b)) &
-                   - v(i,j,k+0*a)*0.25d0*(w(i,j,k-1*a+b)+w(i,j,k-0*a+b)+w(i,j+1,k-1*a+b)+w(i,j+1,k-0*a+b)))*dzci(k-0*a+b)
+                     *(rho+drho*0.5d0*(psio(i,j,k+1*a)+psio(i,j+1,k+1*a))) &
+                   - v(i,j,k+0*a)*0.25d0*(w(i,j,k-1*a+b)+w(i,j,k-0*a+b)+w(i,j+1,k-1*a+b)+w(i,j+1,k-0*a+b)) &
+                     *(rho+drho*0.5d0*(psio(i,j,k+0*a)+psio(i,j+1,k+0*a))))*dzci(k-0*a+b)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -818,16 +849,23 @@ module mod_mom
           dvdlh(2) = sum(c(:,2)*f( 0:1))
           dwvdz    = sum(we(:)*dvdlh(:))
           !
-          dvdt_aux = -duvdx -dvvdy -dwvdz
+          rhoy  = rho + drho*psiyp
+          dvdt_aux = (-duvdx -dvvdy -dwvdz)/rhoy
           !
           a = nint(sign(1.d0,u_mcc+u_mcp+u_ccc+u_ccp))
           b = nint(0.5d0*(a-1))
           f(-1) = a*(w(i-1*a,j,k)*0.25d0*(u(i-2*a+b,j,k)+u(i-1*a+b,j,k)+u(i-2*a+b,j,k+1)+u(i-1*a+b,j,k+1)) &
-                   - w(i-2*a,j,k)*0.25d0*(u(i-3*a+b,j,k)+u(i-2*a+b,j,k)+u(i-3*a+b,j,k+1)+u(i-2*a+b,j,k+1)))*dli(1)
+                     *(rho+drho*0.5d0*(psio(i-1*a,j,k)+psio(i-1*a,j,k+1))) &
+                   - w(i-2*a,j,k)*0.25d0*(u(i-3*a+b,j,k)+u(i-2*a+b,j,k)+u(i-3*a+b,j,k+1)+u(i-2*a+b,j,k+1)) &
+                     *(rho+drho*0.5d0*(psio(i-2*a,j,k)+psio(i-2*a,j,k+1))))*dli(1)
           f( 0) = a*(w(i+0*a,j,k)*0.25d0*(u(i-1*a+b,j,k)+u(i-0*a+b,j,k)+u(i-1*a+b,j,k+1)+u(i-0*a+b,j,k+1)) &
-                   - w(i-1*a,j,k)*0.25d0*(u(i-2*a+b,j,k)+u(i-1*a+b,j,k)+u(i-2*a+b,j,k+1)+u(i-1*a+b,j,k+1)))*dli(1)
+                     *(rho+drho*0.5d0*(psio(i+0*a,j,k)+psio(i+0*a,j,k+1))) &
+                   - w(i-1*a,j,k)*0.25d0*(u(i-2*a+b,j,k)+u(i-1*a+b,j,k)+u(i-2*a+b,j,k+1)+u(i-1*a+b,j,k+1)) &
+                     *(rho+drho*0.5d0*(psio(i-1*a,j,k)+psio(i-1*a,j,k+1))))*dli(1)
           f( 1) = a*(w(i+1*a,j,k)*0.25d0*(u(i+0*a+b,j,k)+u(i+1*a+b,j,k)+u(i+0*a+b,j,k+1)+u(i+1*a+b,j,k+1)) &
-                   - w(i+0*a,j,k)*0.25d0*(u(i-1*a+b,j,k)+u(i-0*a+b,j,k)+u(i-1*a+b,j,k+1)+u(i-0*a+b,j,k+1)))*dli(1)
+                     *(rho+drho*0.5d0*(psio(i+1*a,j,k)+psio(i+1*a,j,k+1))) &
+                   - w(i+0*a,j,k)*0.25d0*(u(i-1*a+b,j,k)+u(i-0*a+b,j,k)+u(i-1*a+b,j,k+1)+u(i-0*a+b,j,k+1)) &
+                     *(rho+drho*0.5d0*(psio(i+0*a,j,k)+psio(i+0*a,j,k+1))))*dli(1)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -840,11 +878,17 @@ module mod_mom
           a = nint(sign(1.d0,v_cmc+v_cmp+v_ccc+v_ccp))
           b = nint(0.5d0*(a-1))
           f(-1) = a*(w(i,j-1*a,k)*0.25d0*(v(i,j-2*a+b,k)+v(i,j-1*a+b,k)+v(i,j-2*a+b,k+1)+v(i,j-1*a+b,k+1)) &
-                   - w(i,j-2*a,k)*0.25d0*(v(i,j-3*a+b,k)+v(i,j-2*a+b,k)+v(i,j-3*a+b,k+1)+v(i,j-2*a+b,k+1)))*dli(2)
+                     *(rho+drho*0.5d0*(psio(i,j-1*a,k)+psio(i,j-1*a,k+1))) &
+                   - w(i,j-2*a,k)*0.25d0*(v(i,j-3*a+b,k)+v(i,j-2*a+b,k)+v(i,j-3*a+b,k+1)+v(i,j-2*a+b,k+1)) &
+                     *(rho+drho*0.5d0*(psio(i,j-2*a,k)+psio(i,j-2*a,k+1))))*dli(2)
           f( 0) = a*(w(i,j+0*a,k)*0.25d0*(v(i,j-1*a+b,k)+v(i,j-0*a+b,k)+v(i,j-1*a+b,k+1)+v(i,j-0*a+b,k+1)) &
-                   - w(i,j-1*a,k)*0.25d0*(v(i,j-2*a+b,k)+v(i,j-1*a+b,k)+v(i,j-2*a+b,k+1)+v(i,j-1*a+b,k+1)))*dli(2)
+                     *(rho+drho*0.5d0*(psio(i,j+0*a,k)+psio(i,j+0*a,k+1))) &
+                   - w(i,j-1*a,k)*0.25d0*(v(i,j-2*a+b,k)+v(i,j-1*a+b,k)+v(i,j-2*a+b,k+1)+v(i,j-1*a+b,k+1)) &
+                     *(rho+drho*0.5d0*(psio(i,j-1*a,k)+psio(i,j-1*a,k+1))))*dli(2)
           f( 1) = a*(w(i,j+1*a,k)*0.25d0*(v(i,j+0*a+b,k)+v(i,j+1*a+b,k)+v(i,j+0*a+b,k+1)+v(i,j+1*a+b,k+1)) &
-                   - w(i,j+0*a,k)*0.25d0*(v(i,j-1*a+b,k)+v(i,j-0*a+b,k)+v(i,j-1*a+b,k+1)+v(i,j-0*a+b,k+1)))*dli(2)
+                     *(rho+drho*0.5d0*(psio(i,j+1*a,k)+psio(i,j+1*a,k+1))) &
+                   - w(i,j+0*a,k)*0.25d0*(v(i,j-1*a+b,k)+v(i,j-0*a+b,k)+v(i,j-1*a+b,k+1)+v(i,j-0*a+b,k+1)) &
+                     *(rho+drho*0.5d0*(psio(i,j+0*a,k)+psio(i,j+0*a,k+1))))*dli(2)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -856,9 +900,12 @@ module mod_mom
           !
           a = nint(sign(1.d0,w_ccc))
           b = nint(0.5d0*(a-1))
-          f(-1) = a*(w(i,j,k-1*a)*w(i,j,k-1*a) - w(i,j,k-2*a)*w(i,j,k-2*a))*dzci(k-2*a+b)
-          f( 0) = a*(w(i,j,k+0*a)*w(i,j,k+0*a) - w(i,j,k-1*a)*w(i,j,k-1*a))*dzci(k-1*a+b)
-          f( 1) = a*(w(i,j,k+1*a)*w(i,j,k+1*a) - w(i,j,k+0*a)*w(i,j,k+0*a))*dzci(k-0*a+b)
+          f(-1) = a*(w(i,j,k-1*a)*w(i,j,k-1*a)*(rho+drho*0.5d0*(psio(i,j,k-1*a)+psio(i,j,k-1*a+1))) &
+                   - w(i,j,k-2*a)*w(i,j,k-2*a)*(rho+drho*0.5d0*(psio(i,j,k-2*a)+psio(i,j,k-2*a+1))))*dzci(k-2*a+b)
+          f( 0) = a*(w(i,j,k+0*a)*w(i,j,k+0*a)*(rho+drho*0.5d0*(psio(i,j,k+0*a)+psio(i,j,k+0*a+1))) &
+                   - w(i,j,k-1*a)*w(i,j,k-1*a)*(rho+drho*0.5d0*(psio(i,j,k-1*a)+psio(i,j,k-1*a+1))))*dzci(k-1*a+b)
+          f( 1) = a*(w(i,j,k+1*a)*w(i,j,k+1*a)*(rho+drho*0.5d0*(psio(i,j,k+1*a)+psio(i,j,k+1*a+1))) &
+                   - w(i,j,k+0*a)*w(i,j,k+0*a)*(rho+drho*0.5d0*(psio(i,j,k+0*a)+psio(i,j,k+0*a+1))))*dzci(k-0*a+b)
           beta(1) = (f(-1) - f(0))**2
           beta(2) = (f( 0) - f(1))**2
           tauP  = abs(0.5d0*(beta(1)+beta(2))-0.25d0*(f(-1)-f(1))**2)
@@ -868,92 +915,11 @@ module mod_mom
           dwdlh(2) = sum(c(:,2)*f( 0:1))
           dwwdz    = sum(we(:)*dwdlh(:))
           !
-          dwdt_aux = -duwdx -dvwdy -dwwdz
+          rhoz  = rho + drho*psizp
+          dwdt_aux = (-duwdx -dvwdy -dwwdz)/rhoz
 #else
-          !!!QUICK
-          !!if ((u_mcc+u_ccc+u_ccc+u_pcc) >= 0.) then
-          !!  ududx = 0.25*(u_mcc+u_ccc+u_ccc+u_pcc)*(2.*u_pcc + 3.*u_ccc - 6.*u_mcc + 1.*u_lcc)*dxi/6.
-          !!else
-          !!  ududx = 0.25*(u_mcc+u_ccc+u_ccc+u_pcc)*(1.*u_qcc - 6.*u_pcc + 3.*u_ccc + 2.*u_mcc)*dxi/6.
-          !!end if
-          !if ((u_ccc) >= 0.) then
-          !  !ududx = u_ccc*(2.*u_pcc + 3.*u_ccc - 6.*u_mcc + 1.*u_lcc)*dxi/6.
-          !  ududx = u_ccc*(3.*u_pcc + 3.*u_ccc - 7.*u_mcc + 1.*u_lcc)*dxi/8.
-          !  !ududx = u_ccc*(0.5*(u_ccc+u_pcc)-0.5*(u_mcc+u_ccc))*dxi
-          !else
-          !  !ududx = u_ccc*(1.*u_qcc - 6.*u_pcc + 3.*u_ccc + 2.*u_mcc)*dxi/6.
-          !  ududx = u_ccc*(1.*u_qcc - 7.*u_pcc + 3.*u_ccc + 3.*u_mcc)*dxi/8.
-          !  !ududx = u_ccc*(0.5*(u_ccc+u_pcc)-0.5*(u_mcc+u_ccc))*dxi
-          !end if
-          !if ((v_cmc+v_pmc+v_ccc+v_pcc) >= 0.) then
-          !  vdudy = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*(2.*u_cpc + 3.*u_ccc - 6.*u_cmc + 1.*u_clc)*dyi/6.
-          !else
-          !  vdudy = 0.25*(v_cmc+v_pmc+v_ccc+v_pcc)*(1.*u_cqc - 6.*u_cpc + 3.*u_ccc + 2.*u_cmc)*dyi/6.
-          !end if
-          !if ((w_ccm+w_pcm+w_ccc+w_pcc) >= 0.) then
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(2.*u_ccp + 3.*u_ccc - 6.*u_ccm + 1.*u_ccl)*dzfi_c/6.
-          !  wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(3.*u_ccp + 3.*u_ccc - 7.*u_ccm + 1.*u_ccl)*dzfi_c/8.
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(0.5*(u_ccc+u_ccp)-0.5*(u_ccm+u_ccc))*dzfi_c
-          !else
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(1.*u_ccq - 6.*u_ccp + 3.*u_ccc + 2.*u_ccm)*dzfi_c/6.
-          !  wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(1.*u_ccq - 7.*u_ccp + 3.*u_ccc + 3.*u_ccm)*dzfi_c/8.
-          !  !wdudz = 0.25*(w_ccm+w_pcm+w_ccc+w_pcc)*(0.5*(u_ccc+u_ccp)-0.5*(u_ccm+u_ccc))*dzfi_c
-          !end if
-          !dudt_aux = -ududx -vdudy -wdudz
-          !!
-          !if ((u_mcc+u_ccc+u_mpc+u_cpc) >= 0.) then
-          !  udvdx = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*(2.*v_pcc + 3.*v_ccc - 6.*v_mcc + 1.*v_lcc)*dxi/6.
-          !else
-          !  udvdx = 0.25*(u_mcc+u_ccc+u_mpc+u_cpc)*(1.*v_qcc - 6.*v_pcc + 3.*v_ccc + 2.*v_mcc)*dxi/6.
-          !end if
-          !if ((v_ccc) >= 0.) then
-          !  vdvdy = v_ccc*(2.*v_cpc + 3.*v_ccc - 6.*v_cmc + 1.*v_clc)*dyi/6.
-          !else
-          !  vdvdy = v_ccc*(1.*v_cqc - 6.*v_cpc + 3.*v_ccc + 2.*v_cmc)*dyi/6.
-          !end if
-          !!if ((v_cmc+v_ccc+v_ccc+v_cpc) >= 0.) then
-          !!  vdvdy = 0.25*(v_cmc+v_ccc+v_ccc+v_cpc)*(2.*v_cpc + 3.*v_ccc - 6.*v_cmc + 1.*v_clc)*dyi/6.
-          !!else
-          !!  vdvdy = 0.25*(v_cmc+v_ccc+v_ccc+v_cpc)*(1.*v_cqc - 6.*v_cpc + 3.*v_ccc + 2.*v_cmc)*dyi/6.
-          !!end if
-          !if ((w_ccm+w_cpm+w_ccc+w_cpc) >= 0.) then
-          !  wdvdz = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*(2.*v_ccp + 3.*v_ccc - 6.*v_ccm + 1.*v_ccl)*dzfi_c/6.
-          !else
-          !  wdvdz = 0.25*(w_ccm+w_cpm+w_ccc+w_cpc)*(1.*v_ccq - 6.*v_ccp + 3.*v_ccc + 2.*v_ccm)*dzfi_c/6.
-          !end if
-          !dvdt_aux = -udvdx -vdvdy -wdvdz
-          !!
-          !if ((u_mcc+u_mcp+u_ccc+u_ccp) >= 0.) then
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(2.*w_pcc + 3.*w_ccc - 6.*w_mcc + 1.*w_lcc)*dxi/6.
-          !  udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(3.*w_pcc + 3.*w_ccc - 7.*w_mcc + 1.*w_lcc)*dxi/8.
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(0.5*(w_ccc+w_pcc)-0.5*(w_mcc+w_ccc))*dxi
-          !else
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(1.*w_qcc - 6.*w_pcc + 3.*w_ccc + 2.*w_mcc)*dxi/6.
-          !  udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(1.*w_qcc - 7.*w_pcc + 3.*w_ccc + 3.*w_mcc)*dxi/8.
-          !  !udwdx = 0.25*(u_mcc+u_mcp+u_ccc+u_ccp)*(0.5*(w_ccc+w_pcc)-0.5*(w_mcc+w_ccc))*dxi
-          !end if
-          !if ((v_cmc+v_cmp+v_ccc+v_ccp) >= 0.) then
-          !  vdwdy = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*(2.*w_cpc + 3.*w_ccc - 6.*w_cmc + 1.*w_clc)*dyi/6.
-          !else
-          !  vdwdy = 0.25*(v_cmc+v_cmp+v_ccc+v_ccp)*(1.*w_cqc - 6.*w_cpc + 3.*w_ccc + 2.*w_cmc)*dyi/6.
-          !end if
-          !if ((w_ccc) >= 0.) then
-          !  !wdwdz = w_ccc*(2.*w_ccp + 3.*w_ccc - 6.*w_ccm + 1.*w_ccl)*dzfi_c/6.
-          !  wdwdz = w_ccc*(3.*w_ccp + 3.*w_ccc - 7.*w_ccm + 1.*w_ccl)*dzfi_c/8.
-          !  !wdwdz = w_ccc*(0.5*(w_ccc+w_ccp)-0.5*(w_ccm+w_ccc))*dzfi_c
-          !else
-          !  !wdwdz = w_ccc*(1.*w_ccq - 6.*w_ccp + 3.*w_ccc + 2.*w_ccm)*dzfi_c/6.
-          !  wdwdz = w_ccc*(1.*w_ccq - 7.*w_ccp + 3.*w_ccc + 3.*w_ccm)*dzfi_c/8.
-          !  !wdwdz = w_ccc*(0.5*(w_ccc+w_ccp)-0.5*(w_ccm+w_ccc))*dzfi_c
-          !end if
-          !!if ((w_ccm+w_ccc+w_ccc+w_ccp) >= 0.) then
-          !!  wdwdz = 0.25*(w_ccm+w_ccc+w_ccc+w_ccp)*(2.*w_ccp + 3.*w_ccc - 6.*w_ccm + 1.*w_ccl)*dzfi_c/6.
-          !!else
-          !!  wdwdz = 0.25*(w_ccm+w_ccc+w_ccc+w_ccp)*(1.*w_ccq - 6.*w_ccp + 3.*w_ccc + 2.*w_ccm)*dzfi_c/6.
-          !!end if
-          !dwdt_aux = -udwdx -vdwdy -wdwdz
-!!!!!!!!!!!!!!!!!
-          !!weno3
+          !
+          ! weno3
           !
           a = nint(sign(1.d0,u_ccc))
           f(-1) = a*(u(i-1*a,j,k) - u(i-2*a,j,k))*dli(1)
