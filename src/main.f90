@@ -335,17 +335,7 @@ po(:,:,:) = 0._rp
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
-#if defined(_CONSTANT_COEFFS_POISSON)
-#if defined(_SURFACE_TENSION_SPLITTING)
-  !$acc kernels async(1)
-  psio(:,:,:,1)    = psi(:,:,:)
-  kappao(:,:,:,1)  = kappa(:,:,:)
-  psio(:,:,:,2)    = psio(:,:,:,1)
-  kappao(:,:,:,2)  = kappao(:,:,:,1)
-  !$acc end kernels
-#endif
-#endif
-#if defined(_CONSERVATIVE_MOMENTUM) && !defined(_SURFACE_TENSION_SPLITTING)
+#if defined(_CONSERVATIVE_MOMENTUM)
   !$acc kernels async(1)
   psio(:,:,:,1)    = psi(:,:,:)
   !$acc end kernels
@@ -358,6 +348,7 @@ po(:,:,:) = 0._rp
   ! post-process and write initial condition
   !
   write(fldnum,'(i7.7)') istep
+  !$acc wait
   !$acc update self(u,v,w,p,psi,kappa)
 #include "out1d.h90"
 #include "out2d.h90"
@@ -530,14 +521,17 @@ po(:,:,:) = 0._rp
     end if
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
+      !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
 #include "out1d.h90"
     end if
     if(mod(istep,iout2d) == 0) then
+      !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
 #include "out2d.h90"
     end if
     if(mod(istep,iout3d) == 0) then
+      !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
 #include "out3d.h90"
     end if
@@ -557,6 +551,7 @@ po(:,:,:) = 0._rp
           call out0d(trim(datadir)//'log_checkpoints.out',3,var)
         end if
       end if
+      !$acc wait
       !$acc update self(u,v,w,p,psi)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,u,time,istep)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,v,time,istep)
