@@ -405,7 +405,8 @@ po(:,:,:) = 0._rp
         call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+        !call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+        call boundp(cbcvel(:,:,2),n,bcvel(:,:,2),nb,is_bound,dl,dzc,normz)
       end if
 #if defined(_SCALAR)
       call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)
@@ -516,7 +517,7 @@ po(:,:,:) = 0._rp
         call out0d(trim(datadir)//'log_kin.out',4,var)
         var(3) = mass12(1)
         var(4) = mass12(2)
-        call out0d(trim(datadir)//'log_mass.out',4,var)
+        call out0d(trim(datadir)//'log_mas.out',4,var)
       end block
     end if
     write(fldnum,'(i7.7)') istep
