@@ -635,6 +635,7 @@ module mod_output
     real(rp), dimension(8) :: mx,my,mz
     real(rp) :: dpsidx,dpsidy,dpsidz
     integer  :: i,j,k
+    area = 0._rp
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
