@@ -5,7 +5,7 @@
 !
 ! -
 module mod_initgrid
-  use mod_param, only:pi,nh
+  use mod_param, only:pi
   use mod_types
   implicit none
   private
@@ -22,7 +22,7 @@ module mod_initgrid
                           CLUSTER_MIDDLE               = 4
     integer , intent(in ) :: gtype,n
     real(rp), intent(in ) :: gr,lz
-    real(rp), intent(out), dimension(1-nh:n+nh) :: dzc,dzf,zc,zf
+    real(rp), intent(out), dimension(0:n+1) :: dzc,dzf,zc,zf
     real(rp) :: z0
     integer :: k
     procedure (), pointer :: gridpoint => null()
@@ -57,28 +57,21 @@ module mod_initgrid
     do k=1,n
       dzf(k) = zf(k)-zf(k-1)
     end do
-    !
-    do k = 1-nh, 0
-      dzf(k) = dzf(1-k)
-      dzf(n+1-k) =  dzf(n+k)
-      zf(-k-nh+1) = zf(-k-nh+2) - dzf(-k-nh+2)
-    end do
+    dzf(0  ) = dzf(1)
+    dzf(n+1) = dzf(n)
     !
     ! step 3) determine grid spacing between centers dzc
     !
-    do k=1-nh,n-1+nh
+    do k=0,n
       dzc(k) = .5*(dzf(k)+dzf(k+1))
     end do
-    dzc(n+nh) = dzc(n-1+nh)
+    dzc(n+1) = dzc(n)
     !
     ! step 4) compute coordinates of cell centers zc and faces zf
     !
     zc(0)    = -dzc(0)/2.
     zf(0)    = 0.
-    do k = 1-nh, -1
-      zc(-k-nh) = zc(-k-nh+1) - dzc(-k-nh)
-    end do
-    do k=1,n+nh
+    do k=1,n+1
       zc(k) = zc(k-1) + dzc(k-1)
       zf(k) = zf(k-1) + dzf(k)
     end do

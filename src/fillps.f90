@@ -5,7 +5,6 @@
 !
 ! -
 module mod_fillps
-  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -24,13 +23,13 @@ module mod_fillps
     implicit none
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3 ) :: dli
-    real(rp), intent(in ), dimension(1-nh:) :: dzfi
+    real(rp), intent(in ), dimension(0:) :: dzfi
     real(rp), intent(in ) :: dti
     real(rp), intent(in ) :: rho0
-    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
-    real(rp), intent(out), dimension(1-nh:,1-nh:,1-nh:) :: p
+    real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(out), dimension(0:,0:,0:) :: p
     real(rp) :: dtidxi,dtidyi!,dtidzi
-    !real(rp), dimension(1-nh:n(3)+nh) :: dtidzfi
+    !real(rp), dimension(0:n(3)+1) :: dtidzfi
     integer :: i,j,k
     !
     dtidxi = dti*dli(1)

@@ -7,7 +7,6 @@
 module mod_chkdiv
   use mpi
   use mod_common_mpi, only: ierr
-  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -20,8 +19,8 @@ module mod_chkdiv
     implicit none
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in), dimension(lo(3)-nh:) :: dzfi
-    real(rp), intent(in), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: u,v,w
+    real(rp), intent(in), dimension(lo(3)-1:) :: dzfi
+    real(rp), intent(in), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: u,v,w
     real(rp), intent(out) :: divtot,divmax
     real(rp) :: dxi,dyi,div
     integer :: i,j,k

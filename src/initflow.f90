@@ -7,7 +7,7 @@
 module mod_initflow
   use mpi
   use mod_common_mpi, only: ierr,myid
-  use mod_param     , only: pi,nh
+  use mod_param     , only: pi
   use mod_types
   implicit none
   private
@@ -22,12 +22,12 @@ module mod_initflow
     real(rp), intent(in), dimension(0:1,3,3) :: bcvel
     integer , intent(in), dimension(3) :: ng,lo
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(1-nh:) :: dzc,dzf,zc,zf
+    real(rp), intent(in), dimension(0:) :: dzc,dzf,zc,zf
     real(rp), intent(in)               :: rho,mu
     real(rp), intent(in), dimension(3) :: bforce
     logical , intent(in)               :: is_wallturb
     real(rp), intent(in)               :: time
-    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(out) :: u,v,w,p
+    real(rp), dimension(0:,0:,0:), intent(out) :: u,v,w,p
     real(rp), allocatable, dimension(:) :: u1d
     !real(rp), allocatable, dimension(:,:) :: u2d
     integer :: i,j,k
@@ -38,7 +38,7 @@ module mod_initflow
     real(rp) :: ubulk,visc,reb,retau
     integer, dimension(3) :: n
     !
-    n(:) = shape(p) - 2*nh
+    n(:) = shape(p) - 2*1
     allocate(u1d(n(3)))
     is_noise = .false.
     is_mean  = .false.
@@ -350,8 +350,8 @@ module mod_initflow
     real(rp), intent(in), dimension(0:1,3) :: bcsca
     integer , intent(in), dimension(3) :: ng,lo
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(1-nh:) :: dzf,zc
-    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(out) :: s
+    real(rp), intent(in), dimension(0:) :: dzf,zc
+    real(rp), dimension(0:,0:,0:), intent(out) :: s
     real(rp), allocatable, dimension(:) :: s1d
     !real(rp), allocatable, dimension(:,:) :: u2d
     integer :: i,j,k
@@ -445,7 +445,7 @@ module mod_initflow
   subroutine set_mean(n,mean,grid_vol_ratio,p)
   implicit none
   integer , intent(in), dimension(3) :: n
-  real(rp), intent(in), dimension(1-nh:) :: grid_vol_ratio
+  real(rp), intent(in), dimension(0:) :: grid_vol_ratio
   real(rp), intent(in) :: mean
   real(rp), intent(inout), dimension(:,:,:) :: p
   real(rp) :: meanold

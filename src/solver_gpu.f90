@@ -9,7 +9,6 @@ module mod_solver_gpu
   use, intrinsic :: iso_c_binding, only: C_PTR
   use cudecomp
   use mod_fft  ,  only: signal_processing,fftf_gpu,fftb_gpu
-  use mod_param,  only: nh
   use mod_types
   use mod_common_mpi     , only: ipencil_axis
   use mod_common_cudecomp, only: dtype_rp => cudecomp_real_rp, &
@@ -38,7 +37,7 @@ module mod_solver_gpu
     real(rp), intent(in), dimension(:) :: a,b,c
     character(len=1), dimension(0:1,3), intent(in) :: bc
     character(len=1), intent(in), dimension(3) :: c_or_f
-    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
+    real(rp), intent(inout), dimension(0:,0:,0:) :: p
     real(rp), pointer, contiguous, dimension(:,:,:) :: px,py,pz
     integer :: q
     integer, dimension(3) :: n_x,n_y,n_z,n_z_0

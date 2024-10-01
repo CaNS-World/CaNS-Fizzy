@@ -5,7 +5,6 @@
 !
 ! -
 module mod_utils
-  use mod_param, only: nh
   implicit none
   private
   public bulk_mean,bulk_mean_12,f_sizeof,swap
@@ -19,8 +18,8 @@ contains
     use mod_types
     implicit none
     integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(1-nh:) :: grid_vol_ratio
-    real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: p
+    real(rp), intent(in), dimension(0:) :: grid_vol_ratio
+    real(rp), intent(in), dimension(0:,0:,0:) :: p
     real(rp), intent(out) :: mean
     integer :: i,j,k
     integer :: ierr
@@ -46,8 +45,8 @@ contains
     use mod_types
     implicit none
     integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(1-nh:) :: grid_vol_ratio
-    real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: psi
+    real(rp), intent(in), dimension(0:) :: grid_vol_ratio
+    real(rp), intent(in), dimension(0:,0:,0:) :: psi
     real(rp), intent(in), dimension(2)        :: p12
     real(rp), intent(out) :: mean
     integer :: i,j,k
@@ -90,7 +89,6 @@ contains
     !
     ! NOTE: not updated for the two-fluid solver
     !
-    use mod_param, only: nh
     use mod_types, only: i8,rp
     integer, intent(in), dimension(3) :: n,n_z
     integer :: nhalo(3)
@@ -100,7 +98,7 @@ contains
     !
     ! 1. 'main' arrays: u,v,w,p,pp
     !
-    nhalo(:) = nh
+    nhalo(:) = 1
     itotal = itotal + product(n(:)+2*nhalo(:))*rp_size*5
     !
     ! 2. grids arrays: zc,zf,dzc,dzf,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f (tiny footprint)

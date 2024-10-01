@@ -8,7 +8,7 @@ module mod_acdi
   use mpi
   use mod_common_mpi, only:ierr
   use mod_types
-  use mod_param , only: eps,nh
+  use mod_param , only: eps
   implicit none
   private
   public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi
@@ -19,7 +19,7 @@ module mod_acdi
     !
     implicit none
     real(rp), intent(in), dimension(3) :: dl
-    real(rp), intent(in), dimension(1-nh:) :: dzfi
+    real(rp), intent(in), dimension(0:) :: dzfi
     real(rp), intent(in)  :: seps_factor
     real(rp), intent(out) :: seps
     real(rp), save :: dlmax
@@ -35,7 +35,7 @@ module mod_acdi
     !
     implicit none
     integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
+    real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in) :: gam_factor
     real(rp), intent(out) :: gam
     real(rp) :: uc,vc,wc,vel,velmax
@@ -68,14 +68,14 @@ module mod_acdi
     implicit none
     integer , intent(in   ), dimension(3)        :: n
     real(rp), intent(in   ), dimension(3)        :: dli
-    real(rp), intent(in   ), dimension(1-nh:)       :: dzci,dzfi
+    real(rp), intent(in   ), dimension(0:)       :: dzci,dzfi
     real(rp), intent(in   )                      :: gam,seps
-    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
-    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: phi
-    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: psi
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
+    real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(1-nh:,1-nh:,1-nh:), optional :: rglrx,rglry,rglrz
+    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: rglrx,rglry,rglrz
     integer :: i,j,k
     real(rp) :: dxi,dyi
     real(rp) :: adv,diff,sharp,rglr
@@ -212,15 +212,15 @@ module mod_acdi
     implicit none
     integer , intent(in ), dimension(3)           :: n
     real(rp), intent(in )                         :: seps
-    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:)    :: psi
-    real(rp), intent(out), dimension(1-nh:,1-nh:,1-nh:)    :: phi
+    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
+    real(rp), intent(out), dimension(0:,0:,0:)    :: phi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
     !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1-nh,n(3)+nh
-      do j=1-nh,n(2)+nh
-        do i=1-nh,n(1)+nh
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
           psi_aux = psi(i,j,k)
           phi(i,j,k) = seps*log((psi_aux+eps)/(1.-psi_aux+eps))
         end do
