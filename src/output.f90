@@ -637,6 +637,7 @@ module mod_output
     real(rp), dimension(8) :: mx,my,mz
     real(rp) :: dpsidx,dpsidy,dpsidz
     integer  :: i,j,k
+    area = 0._rp
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -793,7 +794,7 @@ module mod_output
   !
   subroutine cmpt_total_energy(n,dl,dzf,rho12,psi,u,v,w,kin12)
     !
-    ! computes total mass of the system
+    ! computes total kinetic energy of the system
     !
     implicit none
     integer , intent(in ), dimension(3)        :: n
@@ -805,7 +806,7 @@ module mod_output
     real(rp) :: vcell,ecell,kin1,kin2
     integer :: i,j,k
     !
-    ! calculate the total mass of the system
+    ! calculate the total kinetic of the system
     !
     kin1 = 0._rp
     kin2 = 0._rp

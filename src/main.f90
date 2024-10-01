@@ -405,8 +405,7 @@ po(:,:,:) = 0._rp
         call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-        !call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
-        call boundp(cbcvel(:,:,2),n,bcvel(:,:,2),nb,is_bound,dl,dzc,normz)
+        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
       end if
 #if defined(_SCALAR)
       call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)
