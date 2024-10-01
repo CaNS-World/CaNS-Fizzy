@@ -20,7 +20,7 @@ module mod_chkdt
     implicit none
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dl
-    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi
     logical,  intent(in) :: is_solve_ns
     real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
     real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
