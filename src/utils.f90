@@ -103,7 +103,7 @@ contains
     !
     ! 2. grids arrays: zc,zf,dzc,dzf,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f (tiny footprint)
     !
-    nhalo(:) = nh
+    nhalo(:) = 1
     itotal = itotal + (n(3)+2*nhalo(3))*rp_size*8
     !
     ! 3. solver eigenvalues and Gauss elimination coefficient arrays (small footprint)
