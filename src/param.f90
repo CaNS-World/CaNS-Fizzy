@@ -53,6 +53,8 @@ character(len=1), protected, dimension(0:1,3)   ::  cbcpre
 real(rp)        , protected, dimension(0:1,3)   ::   bcpre
 character(len=1), protected, dimension(0:1,3)   ::  cbcpsi
 real(rp)        , protected, dimension(0:1,3)   ::   bcpsi
+character(len=1), protected, dimension(0:1,3,3) ::  cbcnor
+real(rp)        , protected, dimension(0:1,3,3) ::   bcnor
 character(len=1), protected, dimension(0:1,3)   ::  cbcsca
 real(rp)        , protected, dimension(0:1,3)   ::   bcsca
 !
@@ -108,6 +110,7 @@ contains
     namelist /two_fluid/ &
                   inipsi, &
                   cbcpsi,bcpsi, &
+                  cbcnor,bcnor, &
                   sigma,rho12,mu12, &
                   ka12,cp12,beta12, &
                   acdi_gam_factor,acdi_gam_min,acdi_eps_factor
@@ -140,6 +143,7 @@ contains
     !
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; bcpsi(:,:) = 0.
+    cbcnor(:,:,:) = 'P'; bcnor(:,:,:) = 0.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     acdi_gam_factor = 1.; acdi_gam_min = 1.e-12; acdi_eps_factor = 0.51

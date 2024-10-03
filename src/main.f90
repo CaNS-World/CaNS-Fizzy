@@ -32,7 +32,7 @@ program cans
   use, intrinsic :: ieee_arithmetic, only: is_nan => ieee_is_nan
   use mpi
   use decomp_2d
-  use mod_bound          , only: boundp,bounduvw,updt_rhs_b
+  use mod_bound          , only: boundp,bounduvw,boundnor,updt_rhs_b
   use mod_chkdiv         , only: chkdiv
   use mod_chkdt          , only: chkdt
   use mod_common_mpi     , only: myid,ierr
@@ -49,7 +49,7 @@ program cans
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d, &
                                  cmpt_total_mass,cmpt_total_energy
   use mod_param          , only: rkcoeff,l,small, &
-                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
+                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
@@ -320,10 +320,8 @@ po(:,:,:) = 0._rp
   !
   call acdi_cmpt_phi(n,seps,psi,phi)
   call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+  call boundnor(cbcnor,n,bcnor,nb,is_bound,dl,dzc,dzf,normx,normy,normz)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
-  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
-  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
 #if defined(_CONSERVATIVE_MOMENTUM)
   !$acc kernels async(1)
@@ -392,10 +390,8 @@ po(:,:,:) = 0._rp
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
         call acdi_cmpt_phi(n,seps,psi,phi)
         call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+        call boundnor(cbcnor,n,bcnor,nb,is_bound,dl,dzc,dzf,normx,normy,normz)
         call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
-        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
       end if
 #if defined(_SCALAR)
       call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)

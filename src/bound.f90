@@ -10,7 +10,7 @@ module mod_bound
   use mod_types
   implicit none
   private
-  public boundp,bounduvw,updt_rhs_b
+  public boundp,bounduvw,boundnor,updt_rhs_b
   contains
   subroutine bounduvw(cbc,n,bc,nb,is_bound,is_correc,dl,dzc,dzf,u,v,w)
     !
@@ -59,7 +59,7 @@ module mod_bound
                          call set_bc(cbc(0,2,1),0,2,nh,.true. ,bc(0,2,1),dl(2),u)
       if(impose_norm_bc) call set_bc(cbc(0,2,2),0,2,nh,.false.,bc(0,2,2),dl(2),v)
                          call set_bc(cbc(0,2,3),0,2,nh,.true. ,bc(0,2,3),dl(2),w)
-     end if
+    end if
     if(is_bound(1,2)) then
                          call set_bc(cbc(1,2,1),1,2,nh,.true. ,bc(1,2,1),dl(2),u)
       if(impose_norm_bc) call set_bc(cbc(1,2,2),1,2,nh,.false.,bc(1,2,2),dl(2),v)
@@ -122,13 +122,76 @@ module mod_bound
     end if
   end subroutine boundp
   !
-  subroutine set_bc(ctype,ibound,idir,nh,centered,rvalue,dr,p)
+  subroutine boundnor(cbc,n,bc,nb,is_bound,dl,dzc,dzf,normx,normy,normz)
+    !
+    ! imposes boundary conditions for the interface normal
+    !
+    implicit none
+    character(len=1), intent(in), dimension(0:1,3,3) :: cbc
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in), dimension(0:1,3,3) :: bc
+    integer , intent(in), dimension(0:1,3  ) :: nb
+    logical , intent(in), dimension(0:1,3  ) :: is_bound
+    real(rp), intent(in), dimension(3 ) :: dl
+    real(rp), intent(in), dimension(0:) :: dzc,dzf
+    real(rp), intent(inout), dimension(0:,0:,0:) :: normx,normy,normz
+    integer :: idir,nh
+    !
+    nh = 1
+    !
+#if !defined(_OPENACC)
+    do idir = 1,3
+      call updthalo(nh,halo(idir),nb(:,idir),idir,normx)
+      call updthalo(nh,halo(idir),nb(:,idir),idir,normy)
+      call updthalo(nh,halo(idir),nb(:,idir),idir,normz)
+    end do
+#else
+    call updthalo_gpu(nh,cbc(0,:,1)//cbc(1,:,1)==['PP','PP','PP'],normx)
+    call updthalo_gpu(nh,cbc(0,:,2)//cbc(1,:,2)==['PP','PP','PP'],normy)
+    call updthalo_gpu(nh,cbc(0,:,3)//cbc(1,:,3)==['PP','PP','PP'],normz)
+#endif
+    !
+    if(is_bound(0,1)) then
+      call set_bc(cbc(0,1,1),0,1,nh,.true. ,bc(0,1,1),dl(1),normx)
+      call set_bc(cbc(0,1,2),0,1,nh,.true. ,bc(0,1,2),dl(1),normy,normz)
+      call set_bc(cbc(0,1,3),0,1,nh,.true. ,bc(0,1,3),dl(1),normz,normy)
+    end if
+    if(is_bound(1,1)) then
+      call set_bc(cbc(1,1,1),1,1,nh,.true. ,bc(1,1,1),dl(1),normx)
+      call set_bc(cbc(1,1,2),1,1,nh,.true. ,bc(1,1,2),dl(1),normy,normz)
+      call set_bc(cbc(1,1,3),1,1,nh,.true. ,bc(1,1,3),dl(1),normz,normy)
+    end if
+    if(is_bound(0,2)) then
+      call set_bc(cbc(0,2,1),0,2,nh,.true. ,bc(0,2,1),dl(2),normx,normz)
+      call set_bc(cbc(0,2,2),0,2,nh,.true. ,bc(0,2,2),dl(2),normy)
+      call set_bc(cbc(0,2,3),0,2,nh,.true. ,bc(0,2,3),dl(2),normz,normx)
+    end if
+    if(is_bound(1,2)) then
+      call set_bc(cbc(1,2,1),1,2,nh,.true. ,bc(1,2,1),dl(2),normx,normz)
+      call set_bc(cbc(1,2,2),1,2,nh,.true. ,bc(1,2,2),dl(2),normy)
+      call set_bc(cbc(1,2,3),1,2,nh,.true. ,bc(1,2,3),dl(2),normz,normx)
+    end if
+    if(is_bound(0,3)) then
+      call set_bc(cbc(0,3,1),0,3,nh,.true. ,bc(0,3,1),dzc(0)   ,normx,normy)
+      call set_bc(cbc(0,3,2),0,3,nh,.true. ,bc(0,3,2),dzc(0)   ,normy,normx)
+      call set_bc(cbc(0,3,3),0,3,nh,.true. ,bc(0,3,3),dzf(0)   ,normz)
+    end if
+    if(is_bound(1,3)) then
+      call set_bc(cbc(1,3,1),1,3,nh,.true. ,bc(1,3,1),dzc(n(3)),normx,normy)
+      call set_bc(cbc(1,3,2),1,3,nh,.true. ,bc(1,3,2),dzc(n(3)),normy,normx)
+      call set_bc(cbc(1,3,3),1,3,nh,.true. ,bc(1,3,3),dzf(n(3)),normz)
+    end if
+    !
+  end subroutine boundnor
+  !
+  subroutine set_bc(ctype,ibound,idir,nh,centered,rvalue,dr,p,q)
     implicit none
     character(len=1), intent(in) :: ctype
     integer , intent(in) :: ibound,idir,nh
     logical , intent(in) :: centered
     real(rp), intent(in) :: rvalue,dr
-    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:)           :: p
+    real(rp), intent(in),    dimension(1-nh:,1-nh:,1-nh:), optional :: q
     real(rp) :: factor,sgn
     integer  :: n,dh
     !
@@ -145,6 +208,13 @@ module mod_bound
         factor =  dr*factor ! n.b.: only valid for nh /= 1 or factor /= 0
       end if
       sgn    = 1.
+    end if
+    if(ctype == 'A'.and.centered) then
+      factor = 2.*cos(factor)
+      sgn    = -1.
+    else if(ctype == 'S'.and.centered) then
+      factor = 2.*sin(factor)
+      sgn    = -1.
     end if
     !
     do dh=0,nh-1
@@ -174,7 +244,7 @@ module mod_bound
           p(:,:,n+1+dh) = p(:,:,1+dh)
           !$acc end kernels
         end select
-      case('D','N')
+      case('D','N','A')
         if(centered) then
           select case(idir)
           case(1)
@@ -283,6 +353,47 @@ module mod_bound
               !p(:,:,n) = 1./3.*(-2.*factor+4.*p(:,:,n-1)-p(:,:,n-2))
               p(:,:,n+1) = p(:,:,n) ! unused
               p(:,:,n+dh) = 1.*factor + p(:,:,n-1-dh)
+              !$acc end kernels
+            end if
+          end select
+        end if
+      case('S')
+        if(centered) then
+          select case(idir)
+          case(1)
+            if     (ibound == 0) then
+              !$acc kernels default(present) async(1)
+              p(  0-dh,:,:) = (p(0-dh,:,:)+p(1+dh,:,:))/sqrt((p(0-dh,:,:)+p(1+dh,:,:))**2+(q(0-dh,:,:)+q(1+dh,:,:))**2) &
+                              *factor+sgn*p(1+dh,:,:)
+              !$acc end kernels
+            else if(ibound == 1) then
+              !$acc kernels default(present) async(1)
+              p(n+1+dh,:,:) = (p(n+1+dh,:,:)+p(n-dh,:,:))/sqrt((p(n+1+dh,:,:)+p(n-dh,:,:))**2+(q(n+1+dh,:,:)+q(n-dh,:,:))**2) &
+                              *factor+sgn*p(n-dh,:,:)
+              !$acc end kernels
+            end if
+          case(2)
+            if     (ibound == 0) then
+              !$acc kernels default(present) async(1)
+              p(:,  0-dh,:) = (p(:,0-dh,:)+p(:,1+dh,:))/sqrt((p(:,0-dh,:)+p(:,1+dh,:))**2+(q(:,0-dh,:)+q(:,1+dh,:))**2) &
+                              *factor+sgn*p(:,1+dh,:)
+              !$acc end kernels
+            else if(ibound == 1) then
+              !$acc kernels default(present) async(1)
+              p(:,n+1+dh,:) = (p(:,n+1+dh,:)+p(:,n-dh,:))/sqrt((p(:,n+1+dh,:)+p(:,n-dh,:))**2+(q(:,n+1+dh,:)+q(:,n-dh,:))**2) &
+                              *factor+sgn*p(:,n-dh,:)
+              !$acc end kernels
+            end if
+          case(3)
+            if     (ibound == 0) then
+              !$acc kernels default(present) async(1)
+              p(:,:,  0-dh) = (p(:,:,0-dh)+p(:,:,1+dh))/sqrt((p(:,:,0-dh)+p(:,:,1+dh))**2+(q(:,:,0-dh)+q(:,:,1+dh))**2) &
+                              *factor+sgn*p(:,:,1+dh)
+              !$acc end kernels
+            else if(ibound == 1) then
+              !$acc kernels default(present) async(1)
+              p(:,:,n+1+dh) = (p(:,:,n+1+dh)+p(:,:,n-dh))/sqrt((p(:,:,n+1+dh)+p(:,:,n-dh))**2+(q(:,:,n+1+dh)+q(:,:,n-dh))**2) &
+                              *factor+sgn*p(:,:,n-dh)
               !$acc end kernels
             end if
           end select
