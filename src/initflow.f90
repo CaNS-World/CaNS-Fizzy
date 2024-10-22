@@ -207,6 +207,22 @@ module mod_initflow
           end do
         end do
       end do
+    case('rox') ! solid body rotation around x
+      do k=1,n(3)
+        zcc = zc(k)/l(3)-0.5
+        do j=1,n(2)
+          yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
+          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
+          do i=1,n(1)
+            xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
+            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
+            u(i,j,k) =  0.
+            v(i,j,k) = -2.*pi*zcc
+            w(i,j,k) =  2.*pi*yc
+            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+          end do
+        end do
+      end do
     case('voz') ! 2D serpentine vortex around z
       do k=1,n(3)
         zcc = zc(k)/l(3)
@@ -265,7 +281,7 @@ module mod_initflow
       call MPI_FINALIZE(ierr)
       error stop
     end select
-    if(.not.any(inivel == ['tgv','tgw','ant','roy','roz','vox','voy','voz'])) then
+    if(.not.any(inivel == ['tgv','tgw','ant','rox','roy','roz','vox','voy','voz'])) then
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
