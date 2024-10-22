@@ -21,7 +21,7 @@ module mod_chkdt
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dl
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    logical,  intent(in) :: is_solve_ns
+    logical,  intent(in) :: is_solve_ns,is_track_interface
     real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
     real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(out) :: dtmax
