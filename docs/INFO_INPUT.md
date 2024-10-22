@@ -1,6 +1,6 @@
 # about the input file `input.nml`
 
-Consider the following input file as example (corresponds to a turbulent plane channel flow). `&dns` defines a so-called Fortran namelist containing all the necessary physical and computational parameters to set a case.
+Consider the following input file as example (corresponds to a turbulent plane channel flow with bubbles and walls at different temperatures). `&dns` defines a so-called Fortran namelist containing the necessary computational parameters to set a case.
 
 
 ```fortran
@@ -8,10 +8,10 @@ Consider the following input file as example (corresponds to a turbulent plane c
 ng(1:3) = 512, 256, 144
 l(1:3) = 6., 3., 1.
 gtype = 1, gr = 0.
-cfl = 0.95, dtmin = 1.e5
-visci = 5640.
+cfl = 0.95, dtmin = 1.e5, dt_f = -1
+is_solve_ns = T, is_track_interface = T
 inivel = 'poi'
-is_wallturb = T
+is_wallturb = T, is_forced_hit = F
 nstep = 100000, time_max = 100., tw_max = 0.1
 stop_type(1:3) = T, F, F
 restart = F, is_overwrite_save = T, nsaves_max = 0
@@ -25,11 +25,36 @@ bcvel(0:1,1:3,2) =  0.,0.,   0.,0.,   0.,0.
 bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
 bcpre(0:1,1:3  ) =  0.,0.,   0.,0.,   0.,0.
 bforce(1:3) = 0., 0., 0.
-is_forced(1:3) = T, F, F
-velf(1:3) = 1., 0., 0.
+gacc(1:3) = 0., 0., 0.
 dims(1:2) = 2, 2
 \
 ```
+
+Additionally, the `&scalar` namelist contains the computational parameters for scalar transport (e.g. temperature), while the physical and transport properties of the two phases and the numerical parameters of the two-phase solver are specified in the `&two_fluid` namelist.
+
+```fortran
+&scalar
+inisca          = 'dht'
+cbcsca(0:1,1:3) = 'P','P',  'P','P',  'D','D'
+bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   1.,0.
+ssource         = 0.
+\
+
+&two_fluid
+inipsi          = 'bub3'
+cbcpsi(0:1,1:3) = 'P','P',  'P','P',  'P','P'
+bcpsi(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+sigma           = 1.
+rho12(1:2)      = 1., 1.
+mu12(1:2)       = 100., 100.
+ka12(1:2)       = 0., 0.
+cp12(1:2)       = 0., 0.
+beta12(1:2)     = 0., 0.
+acdi_gam_factor = 1., acdi_gam_min = 0.
+acdi_eps_factor = 1.
+\
+```
+
 <details>
 
 <summary>Tip for vim/nvim users</summary>
@@ -67,27 +92,28 @@ These lines set the computational grid.
 ---
 
 ```fortran
-cfl = 0.95, dtmin = 1.e5
+cfl = 0.95, dtmin = 1.e5, dt_f = -1
 ```
 
 This line controls the simulation time step.
 
 The time step is set to be equal to `min(cfl*dtmax,dtmin)`, i.e. the minimum value between `dtmin` and `cfl` times the maximum allowable time step `dtmax` (computed every `ickeck` time steps; see below).
-`dtmin` is therefore used when a constant time step, smaller than `cfl*dtmax`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dtmax`.
+`dtmin` is therefore used when a constant time step, smaller than `cfl*dtmax`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dtmax`. Alternatively, the user can force the simulation to advance with a constant time step of arbitrary value, independent of the `dtmax` evaluation, by changing the value of `dt_f` from `-1` to the desired time step.
 
 ---
 
 ```fortran
-visci = 5640.
+is_solve_ns = T, is_track_interface = T
 ```
 
-This line defines the inverse of the fluid viscosity, `visci`, meaning that the viscosity is `visc = visci**(-1)`. Note that, for a setup defined with unit reference length and velocity scales, `visci` has the same value as the flow Reynolds number.
+`is_solve_ns`, if true, enables the solution of the Navier-Stokes momentum equation. It can be set to false when a prescribed velocity field is desired.
+`is_track_interface`, if true, enables the two-phase interface advection.
 
 ---
 
 ```fortran
 inivel = 'poi'
-is_wallturb = T
+is_wallturb = T, is_forced_hit = F
 ```
 
 These lines set the initial velocity field.
@@ -98,6 +124,7 @@ These lines set the initial velocity field.
 * `uni`: uniform velocity field equal to `uref`                                     ; streamwise direction in `x`
 * `cou`: plane Couette flow profile with symmetric wall velocities equal to `uref/2`; streamwise direction in `x`
 * `poi`: plane Poiseuille flow profile with mean velocity `uref`                    ; streamwise direction in `x`
+* `iop`: same as `poi`, with the reference frame moving with velocity `uref`        ; streamwise direction in `x`
 * `tbl`: temporal boundary layer profile with wall velocity `uref`                  ; streamwise direction in `x`
 * `pdc`: plane Poiseuille flow profile with constant pressure gradient              ; streamwise direction in `x`
 * `log`: logarithmic profile with mean velocity `uref`                              ; streamwise direction in `x`
@@ -106,11 +133,18 @@ These lines set the initial velocity field.
 * `hdc`: half plane Poiseuille flow profile with constant pressure gradient         ; streamwise direction in `x`
 * `tgv`: three-dimensional Taylor-Green vortex
 * `tgw`: two-dimensional   Taylor-Green vortex
-* `ant`: three-dimensional Antuono vortex
+* `rox`: solid body rotation with angular velocity $2 \pi$                          ; around the `x` axis
+* `roy`: solid body rotation with angular velocity $2 \pi$                          ; around the `y` axis
+* `roz`: solid body rotation with angular velocity $2 \pi$                          ; around the `z` axis
+* `vox`: two-dimensional, time dependent serpentine vortex                          ; around the `x` axis
+* `voy`: two-dimensional, time dependent serpentine vortex                          ; around the `y` axis
+* `voz`: two-dimensional, time dependent serpentine vortex                          ; around the `z` axis
 
 `is_wallturb`, if true, **superimposes a high amplitude disturbance on the initial velocity field** that effectively triggers transition to turbulence in a wall-bounded shear flow.
 
 See `initflow.f90` for more details.
+
+`is_forced_hit`, if true, introduces a homogeneous and isotropic forcing in the domain. See `forcing.f90` for more details.
 
 ---
 
@@ -151,7 +185,7 @@ icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 10000, isave = 50
 These lines set the frequency of time step checking and output:
 
 * every `icheck` time steps **the new time step size** is computed according to the new stability criterion and cfl (above)
-* every `iout0d` time steps **history files with global scalar variables** are appended; currently the forcing pressure gradient and time step history are reported
+* every `iout0d` time steps **history files with global scalar variables** are appended
 * every `iout1d` time steps **1d profiles** are written (e.g. velocity and its moments) to a file
 * every `iout2d` time steps **2d slices of a 3d scalar field** are written to a file
 * every `iout3d` time steps **3d scalar fields** are written to a file
@@ -172,13 +206,13 @@ bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
 bcpre(0:1,1:3  ) =  0.,0.,   0.,0.,   0.,0.
 ```
 
-These lines set the boundary conditions (BC).
+These lines set the boundary conditions (BC) for velocity and pressure.
 
-The **type** (BC) for each field variable are set by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
+The **type** (BC) for each field variable is set by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
 
-* `X0` `X1` set the type of BC the field variable for the **lower** and **upper** boundaries in `x`
-* `Y0` `Y1` set the type of BC the field variable for the **lower** and **upper** boundaries in `y`
-* `Z0` `Z1` set the type of BC the field variable for the **lower** and **upper** boundaries in `z`
+* `X0` `X1` set the type of BC for the field variable on the **lower** and **upper** boundaries in `x`
+* `Y0` `Y1` set the type of BC for the field variable on the **lower** and **upper** boundaries in `y`
+* `Z0` `Z1` set the type of BC for the field variable on the **lower** and **upper** boundaries in `z`
 
 The four rows correspond to the three velocity components, and pressure, i.e. `u`, `v`, `w`, and `p`.
 
@@ -194,17 +228,13 @@ The **last four rows** follow the same logic, but now for the BC **values** (dum
 
 ```fortran
 bforce(1:3) = 0., 0., 0.
-is_forced(1:3) = T, F, F
-velf(1:3) = 1., 0., 0.
+gacc(1:3) = 0., 0., 0.
 ```
 
 These lines set the flow forcing.
 
 `bforce`, is a constant **body force density term** in the direction in question (e.g., the negative of a constant pressure gradient) that can be added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
-
-`is_forced`, if true in the direction in question, **forces the flow** with a pressure gradient that balances the total wall shear (e.g., for a pressure-driven channel). The three boolean values correspond to three domain directions.
-
-`velf`, is the **target bulk velocity** in the direction in question (where `is_forced` is true). The three values correspond to three domain directions.
+`gacc`, is a constant **acceleration** in the direction in question (e.g., gravity) added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
 
 ---
 
@@ -212,9 +242,133 @@ These lines set the flow forcing.
 dims(1:2) = 2, 2
 ```
 
-This line set the grid of computational subdomains.
+This line sets the grid of computational subdomains.
 
 `dims` is the **processor grid**, the number of domain partitions along the first and second decomposed directions (which depend on the selected default pencil orientation). `dims(1)*dims(2)` corresponds therefore to the total number of computational subdomains. Setting `dims(:) = [0,0]` will trigger a runtime autotuning step to find the processor grid that minimizes transpose times. Note, however, that other components of the algorithm (e.g., collective I/O) may also be affected by the choice of processor grid.
+
+---
+
+```fortran
+inisca          = 'dht'
+```
+
+`inisca` **chooses the initial scalar field** (e.g. temperature). The following options are available:
+
+* `zer`: zero scalar field
+* `uni`: uniform scalar field equal to `sref`
+* `cou`: plane scalar profile, linear between the wall boundary values
+* `dhc`: differentially heated cavity, in the x direction
+
+See `initflow.f90` for more details.
+
+---
+
+```fortran
+cbcsca(0:1,1:3) = 'P','P',  'P','P',  'P','P'
+bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+```
+
+These lines set the boundary conditions (BC) for the scalar.
+
+The **type** (BC) is set in `cbcsca` by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
+
+* `X0` `X1` set the type of BC for the scalar on the **lower** and **upper** boundaries in `x`
+* `Y0` `Y1` set the type of BC for the scalar on the **lower** and **upper** boundaries in `y`
+* `Z0` `Z1` set the type of BC for the scalar on the **lower** and **upper** boundaries in `z`
+
+The following options are available:
+
+* `P` periodic
+* `D` Dirichlet
+* `N` Neumann
+
+The corresponding BC **values** are set in `bcsca` (dummy for a periodic direction).
+
+---
+
+```fortran
+ssource         = 0.
+```
+
+This line sets the value of a scalar source, that can be added to the right-hand-side of the scalar transport equation.
+
+---
+
+```fortran
+inipsi          = 'bub3'
+```
+
+`inipsi` **chooses the initial volume fraction field for phase 1** of the two-fluid system. The following options are available:
+
+* `zer` : uniform (zero) volume fraction field
+* `uni` : uniform (unitary) volume fraction field
+* `bub1`: planar film (lighter phase)
+* `bub2`: two-dimensional (lighter phase) bubbles
+* `bub3`: three-dimensional (lighter phase) bubbles
+* `drp1`: planar film (heavier phase)
+* `drp2`: two-dimensional (heavier phase) droplets
+* `drp3`: three-dimensional (heavier phase) droplets
+* `cap-wav-1d`: planar small-amplitude capillary wave
+* `zalesak-disk`: two-dimensional (lighter phase) slotted disk
+
+See `two_fluid.f90` for more details. For the `bub` and `drp` initial fields, the position and size of the films/bubbles/droplets are specified in the `spheres.in` file.
+
+---
+
+```fortran
+cbcpsi(0:1,1:3) = 'P','P',  'P','P',  'P','P'
+bcpsi(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+```
+
+These lines set the boundary conditions (BC) for the volume fraction of phase 1.
+
+The **type** (BC) is set in `cbcpsi` by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
+
+* `X0` `X1` set the type of BC for the volume fraction on the **lower** and **upper** boundaries in `x`
+* `Y0` `Y1` set the type of BC for the volume fraction on the **lower** and **upper** boundaries in `y`
+* `Z0` `Z1` set the type of BC for the volume fraction on the **lower** and **upper** boundaries in `z`
+
+The following options are available:
+
+* `P` periodic
+* `D` Dirichlet
+* `N` Neumann
+
+The corresponding BC **values** are set in `bcpsi` (dummy for a periodic direction).
+
+---
+
+```fortran
+sigma           = 1.
+rho12(1:2)      = 10., 1.
+mu12(1:2)       = 1.e-2, 1.e-3
+ka12(1:2)       = 0., 0.
+cp12(1:2)       = 0., 0.
+beta12(1:2)     = 0., 0.
+```
+
+These lines specify the physical and transport properties of the two-phase system.
+
+`sigma` sets the value of the surface tension at the two-phase interface.
+`rho12` sets the value of the density of each phase. The fluid with the heavier density should always be assigned to phase 1.
+`mu12` sets the value of the dynamic viscosity of each phase.
+`ka12` sets the value of the thermal conductivity of each phase.
+`cp12` sets the value of the constant pressure specfic heat capacity of each phase.
+`beta12` sets the value of the thermal expansion coeffcient of each phase.
+
+---
+
+```fortran
+acdi_gam_factor = 1., acdi_gam_min = 0.
+acdi_eps_factor = 0.51
+```
+
+These lines set the computational parameters specific to the phase field solver.
+
+`acdi_gam_factor` sets the speed of the interface relaxation, relative to the maximum flow velocity. It should always be equal to or larger than `1`.
+`acdi_gam_min` sets a lower threshold for the speed of the interface relaxation.
+`acdi_eps_factor` sets the interface thickness relative to the maximum grid size. It should always be larger than `0.5`.
+
 
 # about the `&cudecomp` namelist under `input.nml`
 
