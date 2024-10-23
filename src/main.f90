@@ -48,7 +48,7 @@ program cans
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d, &
                                  cmpt_total_mass,cmpt_total_energy
-  use mod_param          , only: rkcoeff,l,small, &
+  use mod_param          , only: rkcoeff,l,small,nh, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
@@ -150,42 +150,42 @@ program cans
   !
   ! allocate variables
   !
-  allocate(u( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           v( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           w( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           p( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           pp(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           pn(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           po(0:n(1)+1,0:n(2)+1,0:n(3)+1))
+  allocate(u( 1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+           v( 1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+           w( 1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+           p( 1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+           pp(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+           pn(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+           po(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh))
 pp(:,:,:) = 0._rp
 po(:,:,:) = 0._rp
 #if defined(_SCALAR)
-  allocate(s(0:n(1)+1,0:n(2)+1,0:n(3)+1))
+  allocate(s(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh))
 #endif
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
-  allocate(dzc( 0:n(3)+1), &
-           dzf( 0:n(3)+1), &
-           zc(  0:n(3)+1), &
-           zf(  0:n(3)+1), &
-           dzci(0:n(3)+1), &
-           dzfi(0:n(3)+1))
-  allocate(dzc_g( 0:ng(3)+1), &
-           dzf_g( 0:ng(3)+1), &
-           zc_g(  0:ng(3)+1), &
-           zf_g(  0:ng(3)+1), &
-           dzci_g(0:ng(3)+1), &
-           dzfi_g(0:ng(3)+1))
+  allocate(dzc( 1-nh:n(3)+nh), &
+           dzf( 1-nh:n(3)+nh), &
+           zc(  1-nh:n(3)+nh), &
+           zf(  1-nh:n(3)+nh), &
+           dzci(1-nh:n(3)+nh), &
+           dzfi(1-nh:n(3)+nh))
+  allocate(dzc_g( 1-nh:ng(3)+nh), &
+           dzf_g( 1-nh:ng(3)+nh), &
+           zc_g(  1-nh:ng(3)+nh), &
+           zf_g(  1-nh:ng(3)+nh), &
+           dzci_g(1-nh:ng(3)+nh), &
+           dzfi_g(1-nh:ng(3)+nh))
   allocate(grid_vol_ratio_c,mold=dzc)
   allocate(grid_vol_ratio_f,mold=dzf)
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi(0:n(1)+1,0:n(2)+1,0:n(3)+1))
+  allocate(psi(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh))
   allocate(phi,kappa,normx,normy,normz,mold=psi)
 #if defined(_CONSERVATIVE_MOMENTUM)
   allocate(acdi_rgx,acdi_rgy,acdi_rgz,mold=pp)
-  if(.not. allocated(psio)) allocate(psio(0:n(1)+1,0:n(2)+1,0:n(3)+1,1))
+  if(.not. allocated(psio)) allocate(psio(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh,1))
 #endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
@@ -208,7 +208,7 @@ po(:,:,:) = 0._rp
     write(99) dzc_g(1:ng(3)),dzf_g(1:ng(3)),zc_g(1:ng(3)),zf_g(1:ng(3))
     close(99)
     open(99,file=trim(datadir)//'grid.out')
-    do kk=0,ng(3)+1
+    do kk=1-nh,ng(3)+nh
       write(99,*) 0.,zf_g(kk),zc_g(kk),dzf_g(kk),dzc_g(kk)
     end do
     close(99)
@@ -225,7 +225,7 @@ po(:,:,:) = 0._rp
   !$acc enter data copyin(rho12,mu12,ka12,cp12,beta12) async
   !
   !$acc parallel loop default(present) private(k) async
-  do kk=lo(3)-1,hi(3)+1
+  do kk=lo(3)-nh,hi(3)+nh
     k = kk-(lo(3)-1)
     zc( k) = zc_g(kk)
     zf( k) = zf_g(kk)
@@ -293,13 +293,13 @@ po(:,:,:) = 0._rp
     call init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition succesfully set ***'
   else
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,u,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,v,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,w,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,p,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,psi,time,istep)
 #if defined(_SCALAR)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+    call load_one('r',trim(datadir)//'fld_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,s,time,istep)
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
@@ -459,7 +459,7 @@ po(:,:,:) = 0._rp
     end if
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps)
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
       dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
       if(dtmax < small) then
@@ -543,13 +543,14 @@ po(:,:,:) = 0._rp
       end if
       !$acc wait
       !$acc update self(u,v,w,p,psi)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,u,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,v,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,w,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,p,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh], &
+                                                                                                              lo,hi,psi,time,istep)
 #if defined(_SCALAR)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
+      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[nh,nh,nh],lo,hi,s,time,istep)
 #endif
       if(.not.is_overwrite_save) then
         !

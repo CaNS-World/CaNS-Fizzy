@@ -11,7 +11,7 @@ module mod_forcing
   public lscale_forcing
   contains
   subroutine lscale_forcing(ftype,lo,hi,alpha,dt,rkpar,l,dl,zc,zf,u,v,w)
-    use mod_param, only: pi
+    use mod_param, only: pi,nh
     implicit none
     integer, parameter :: FTYPE_ABC          = 1, &
                           FTYPE_TAYLOR_GREEN = 2
@@ -21,8 +21,8 @@ module mod_forcing
     real(rp), intent(in) :: alpha,dt
     real(rp), intent(in), dimension(2) :: rkpar
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(0:) :: zc,zf
-    real(rp), intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: zc,zf
+    real(rp), intent(inout), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: u,v,w
     !
     real(rp) :: f0,factor
     real(rp) :: xxc,yyc,zzc,xxf,yyf,zzf

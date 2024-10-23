@@ -21,7 +21,7 @@ contains
                                    istream_acc_queue_1
     use mod_common_mpi     , only: ipencil => ipencil_axis
     use mod_fft            , only: wsize_fft
-    use mod_param          , only: cudecomp_is_t_in_place,cbcpre
+    use mod_param          , only: cudecomp_is_t_in_place,cbcpre,nh
     use cudecomp
     use openacc
     implicit none
@@ -47,7 +47,7 @@ contains
     ! (needs to be different due to the possible need of an NVSHMEM allocator
     !  in one of the descriptors, rather than a simple cudaMaloc)
     !
-    nhalo(:) = 1
+    nhalo(:) = nh
     istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nhalo,max_wsize)
     allocate(work_halo(max_wsize))
     !

@@ -7,6 +7,7 @@
 module mod_initsolver
   use, intrinsic :: iso_c_binding, only: C_PTR
   use mod_fft  , only: fftini
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -20,7 +21,7 @@ module mod_initsolver
     implicit none
     integer , intent(in), dimension(3) :: ng,n_x_fft,n_y_fft,lo_z,hi_z
     real(rp), intent(in), dimension(3 ) :: dli
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     character(len=1), intent(in), dimension(0:1,3) :: cbc
     real(rp)        , intent(in), dimension(0:1,3) :: bc
     real(rp), intent(out), dimension(lo_z(1):,lo_z(2):) :: lambdaxy
@@ -36,7 +37,7 @@ module mod_initsolver
     real(rp), intent(out), dimension(:,:,0:) :: rhsbz
     real(rp), intent(out) :: normfft
     real(rp), dimension(3)        :: dl
-    real(rp), dimension(0:ng(3)+1) :: dzc,dzf
+    real(rp), dimension(1-nh:ng(3)+nh) :: dzc,dzf
     integer :: i,j
     real(rp), dimension(ng(1))      :: lambdax
     real(rp), dimension(ng(2))      :: lambday
@@ -97,15 +98,15 @@ module mod_initsolver
         ! new format: (r[0],r[n],r[1],i[1],...,r[n-1],i[n-1])
         ! note that i[0] = i[n] = 0 in a R2C DFT
         !
-        integer :: nh,iswap(n)
-        nh = (n+1)/2
+        integer :: nhh,iswap(n)
+        nhh = (n+1)/2
         iswap(1) = 1
-        iswap(2) = nh+(1-mod(n,2))
+        iswap(2) = nhh+(1-mod(n,2))
         do l=2,n-1
-          if(l <= nh) then ! real eigenvalue
+          if(l <= nhh) then ! real eigenvalue
             iswap(2*l-1                  ) = l
           else             ! imaginary eigenvalue
-            iswap(n-2*(l-(nh+1))-mod(n,2)) = l+1
+            iswap(n-2*(l-(nhh+1))-mod(n,2)) = l+1
           end if
         end do
         lambda(:) = lambda(iswap(:))
@@ -143,7 +144,7 @@ module mod_initsolver
     character(len=1), intent(in), dimension(0:1) :: bc
     integer , intent(in) :: n
     real(rp), intent(in) :: dzi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     character(len=1), intent(in) :: c_or_f ! c -> cell-centered; f-face-centered
     real(rp), intent(out), dimension(n) :: a,b,c
     integer :: k

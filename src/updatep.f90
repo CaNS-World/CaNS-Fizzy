@@ -5,6 +5,7 @@
 !
 ! -
 module mod_updatep
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -15,8 +16,8 @@ module mod_updatep
     ! updates the final pressure
     !
     implicit none
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: pp
-    real(rp), intent(inout), dimension(0:,0:,0:) :: p
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: pp
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
     !
     !$acc kernels default(present) async(1)
     p(:,:,:) = p(:,:,:) + pp(:,:,:)
@@ -29,9 +30,9 @@ module mod_updatep
     !
     implicit none
     real(rp), intent(in   ) :: dt,dto
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: p
-    real(rp), intent(inout), dimension(0:,0:,0:) :: po
-    real(rp), intent(out  ), dimension(0:,0:,0:) :: pp
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: p
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: po
+    real(rp), intent(out  ), dimension(1-nh:,1-nh:,1-nh:) :: pp
     real(rp) :: factor
     !
     factor = dt/dto
