@@ -350,7 +350,7 @@ beta12(1:2)     = 0., 0.
 These lines specify the physical and transport properties of the two-phase system.
 
 `sigma` sets the value of the surface tension at the two-phase interface.
-`rho12` sets the value of the density of each phase. The fluid with the heavier density should always be assigned to phase 1.
+`rho12` sets the value of the density of each phase. **The fluid with the heavier density should always be assigned to phase 1**.
 `mu12` sets the value of the dynamic viscosity of each phase.
 `ka12` sets the value of the thermal conductivity of each phase.
 `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
