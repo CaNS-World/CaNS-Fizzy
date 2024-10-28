@@ -3,7 +3,7 @@
 
 ## Synopsis
 
-**DiCaNS (Diffuse interface Canonical Navier-Stokes)** is a code for massively-parallel numerical simulations of two-phase fluid flows. It inherits the structure of the single-phase solver [CaNS](https://github.com/CaNS-World/CaNS), and extends it for two-phase capturing with an Accurate Conservative Diffuse Interface (ACDI) method. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. In two directions the grid is regular and the solver supports the following combination of (homogeneous) boundary conditions:
+**DiCaNS (Diffuse interface Canonical Navier-Stokes)** is a code for massively-parallel numerical simulations of two-phase flows. It inherits the structure of the single-phase solver [CaNS](https://github.com/CaNS-World/CaNS), and extends it for two-phase capturing with an Accurate Conservative Diffuse Interface (ACDI) method. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. In two directions the grid is regular and the solver supports the following combination of (homogeneous) boundary conditions for the flow velocity:
 
  * Neumann-Neumann
  * Dirichlet-Dirichlet
@@ -39,11 +39,11 @@ Some examples of flows that this code can solve are bubbles or droplets in:
 
 ## Motivation
 
-This project aimed first at being a modern alternative to the well-known FISHPACK routines (Paul Swarztrauber & Roland Sweet, NCAR) for solving a three-dimensional Helmholtz equation. After noticing some works simulating canonical flows with iterative solvers -- when faster direct solvers could have been used instead -- it seemed natural to create a versatile tool and make it available. This code can be used as a first base code for which solvers for more complex flows can be developed (e.g. extensions with fictitious domain methods).
+This numerical toolkit enables the simulation of two-phase flow in canonical configurations on modern HPC GPU architecture: the ACDI interface capturing method has been selected because its features allow to preserve the effciency and GPU scalability of the single phase FFT-based flow solver that lays at the foundation of the present code. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies or the implementation of different discretization schemes.
 
 ## Method
 
-The fluid flow is solved with a second-order finite difference pressure correction scheme, discretized in a MAC grid arrangement. The free surface between the two fluid phases is represented by a diffuse interface of specified thickness, preserved with a regularization flux, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme. See the references above for details.
+The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference pressure correction scheme, discretized in a MAC grid arrangement. The free surface between the two fluid phases is represented by a diffuse interface of specified thickness, preserved by a regularization flux, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme. See the references above for details.
 
 ## Usage
 
@@ -72,14 +72,16 @@ The prerequisites for compiling DiCaNS are the following:
 For most systems, DiCaNS can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries, and DiCaNS.
 
 #### Detailed instructions
-The `Makefile` in root directory is used to compile the code, and is expected to work out-of-the-box for most systems. The `build.conf` file in the root directory can be used to choose the Fortran compiler (MPI wrapper), and a few pre-defined profiles depending on the nature of the run (e.g., production vs debugging), and pre-processing options, see [`INFO_COMPILING.md`](docs/INFO_COMPILING.md) for more details. Concerning the pre-processing options, the following are available:
+The `Makefile` in root directory is used to compile the code, and is expected to work out-of-the-box for most systems. The `build.conf` file in the root directory can be used to choose the Fortran compiler (MPI wrapper), and a few pre-defined profiles depending on the nature of the run (e.g., production vs debugging), and pre-processing options. The following general pre-processing options are available:
 
  * `DEBUG`                    : performs some basic checks for debugging purposes
  * `TIMING`                   : wall-clock time per time step is computed
- * `PENCIL_AXIS`              : sets the default pencil direction, one of [1,2,3] for [X,Y,Z]-aligned pencils; X-aligned is the default and should be optimal for all cases except for Z implicit diffusion, where using Z-pencils is recommended
+ * `PENCIL_AXIS`              : sets the default pencil direction, one of [1,2,3] for [X,Y,Z]-aligned pencils; X-aligned is the default and should be optimal for all cases
  * `SINGLE_PRECISION`         : calculation will be carried out in single precision (the default precision is double)
  * `GPU`                      : enable GPU-accelerated runs
  * `USE_NVTX`                 : enable [NVTX](https://s.nvidia.com/nsight-visual-studio-edition/nvtx) tags for profiling
+
+See [`INFO_COMPILING.md`](docs/INFO_COMPILING.md) for more compilation details and a comprehensive description of all pre-processing options.
 
 ### Input file
 
