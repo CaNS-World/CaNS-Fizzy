@@ -11,7 +11,8 @@ module mod_output
   use mod_types
   implicit none
   private
-  public out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
+  public out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d, &
+         cmpt_total_mass,cmpt_total_energy
   character(len=*), parameter :: fmt_dp = '(*(es24.16e3,1x))', &
                                  fmt_sp = '(*(es15.8e2,1x))'
 #if !defined(_SINGLE_PRECISION)
@@ -769,8 +770,6 @@ module mod_output
     real(rp) :: vcell,mass1,mass2
     integer :: i,j,k
     !
-    ! calculate the total mass of the system
-    !
     mass1 = 0._rp
     mass2 = 0._rp
     !$acc data copy(mass1,mass2) async(1)
@@ -789,4 +788,38 @@ module mod_output
     mass12(:) = [mass1,mass2]
     call MPI_ALLREDUCE(MPI_IN_PLACE,mass12,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_total_mass
+  !
+  subroutine cmpt_total_energy(n,dl,dzf,rho12,psi,u,v,w,en12)
+    !
+    ! computes total kinetic energy of the system
+    !
+    implicit none
+    integer , intent(in ), dimension(3)        :: n
+    real(rp), intent(in ), dimension(3)        :: dl
+    real(rp), intent(in ), dimension(0:)       :: dzf
+    real(rp), intent(in ), dimension(2)        :: rho12
+    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
+    real(rp), intent(out), dimension(2)        :: en12
+    real(rp) :: vcell,ecell,en1,en2
+    integer :: i,j,k
+    !
+    en1 = 0._rp
+    en2 = 0._rp
+    !$acc data copy(en1,en2) async(1)
+    !$acc parallel loop collapse(3) default(present) reduction(+:en1,en2) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          vcell = dl(1)*dl(2)*dzf(k)
+          ecell = 0.5*((0.5*(u(i,j,k)+u(i-1,j,k)))**2+(0.5*(v(i,j,k)+v(i,j-1,k)))**2+(0.5*(w(i,j,k)+w(i,j,k-1)))**2)
+          en1 = en1 + rho12(1)*psi(i,j,k)*vcell*ecell
+          en2 = en2 + rho12(2)*(1.-psi(i,j,k))*vcell*ecell
+        end do
+      end do
+    end do
+    !$acc end data
+    !$acc wait(1)
+    en12(:) = [en1,en2]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,en12,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+  end subroutine cmpt_total_energy
 end module mod_output
