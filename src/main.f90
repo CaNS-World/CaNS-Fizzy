@@ -290,7 +290,7 @@ program cans
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
 #endif
-    call init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
+    call init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition succesfully set ***'
   else
     call load_one('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
