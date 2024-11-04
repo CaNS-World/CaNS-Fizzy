@@ -12,7 +12,7 @@ module mod_chkdt
   private
   public chkdt
   contains
-  subroutine chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
+  subroutine chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
     !
     ! computes maximum allowed time step
     ! see Kang et al. Journal of Scientific Computing 15, 323–360
@@ -21,7 +21,7 @@ module mod_chkdt
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dl
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    logical,  intent(in) :: is_solve_ns
+    logical,  intent(in) :: is_solve_ns,is_track_interface
     real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
     real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(out) :: dtmax
@@ -76,10 +76,10 @@ module mod_chkdt
       dtiv = maxval(mu12(:)/rho12(:))*2.*(3./dlmin**2)
       dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
       dtig = maxval(abs(gacc))/dlmin
-      dti = 0.5*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2))) !TODO: follow Kang's paper to include dtipsi in the single dti formula, if is_solve_ns = .true.
+      dti = 0.5*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))
       if(dti    == 0.) dti    = 1.
-      if(dtipsi == 0.) dtipsi = 1.
-      dtmax = min(dti**(-1),dtipsi**(-1))
+      dtmax = dti**(-1)
+      if(is_track_interface) dtmax = min(dtmax,dtipsi**(-1))
     end if
 #if defined(_SCALAR)
     if(present(ka12) .and. present(cp12)) &

@@ -342,7 +342,7 @@ program cans
 #include "out2d.h90"
 #include "out3d.h90"
   !
-  call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
+  call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
   dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
   if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
   dto = dt
@@ -440,7 +440,7 @@ program cans
     end if
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,is_solve_ns,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
       dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
       if(dtmax < small) then
