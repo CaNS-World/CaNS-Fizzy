@@ -10,7 +10,7 @@ module mod_forcing
   private
   public lscale_forcing
   contains
-  subroutine lscale_forcing(ftype,lo,hi,alpha,dt,rkpar,l,dl,zc,zf,u,v,w)
+  subroutine lscale_forcing(ftype,lo,hi,alpha,dt,dtrk,l,dl,zc,zf,u,v,w)
     use mod_param, only: pi
     implicit none
     integer, parameter :: FTYPE_ABC          = 1, &
@@ -18,18 +18,16 @@ module mod_forcing
     real(rp), parameter :: a = 1._rp, b = 1._rp, c = 1._rp, k0 = 2
     integer , intent(in) :: ftype
     integer , intent(in), dimension(3) :: lo,hi
-    real(rp), intent(in) :: alpha,dt
-    real(rp), intent(in), dimension(2) :: rkpar
+    real(rp), intent(in) :: alpha,dt,dtrk
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), intent(in), dimension(0:) :: zc,zf
     real(rp), intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: u,v,w
     !
-    real(rp) :: f0,factor
+    real(rp) :: f0
     real(rp) :: xxc,yyc,zzc,xxf,yyf,zzf
     integer  :: i,j,k
     !
     f0 = alpha*(2.*pi/l(3))**2
-    factor = rkpar(1)*dt+rkpar(2)*dt
     !
     select case(ftype)
     case(FTYPE_ABC)
@@ -40,9 +38,9 @@ module mod_forcing
             xxc = (i-0.5)*dl(1)/l(1)
             yyc = (j-0.5)*dl(2)/l(2)
             zzc = zc(k)/l(3)
-            u(i,j,k) = u(i,j,k) + factor*( f0*(a*sin(k0*zzc) + c*cos(k0*yyc)) )
-            v(i,j,k) = v(i,j,k) + factor*( f0*(b*sin(k0*xxc) + a*cos(k0*zzc)) )
-            w(i,j,k) = w(i,j,k) + factor*( f0*(c*sin(k0*yyc) + b*cos(k0*xxc)) )
+            u(i,j,k) = u(i,j,k) + dtrk*( f0*(a*sin(k0*zzc) + c*cos(k0*yyc)) )
+            v(i,j,k) = v(i,j,k) + dtrk*( f0*(b*sin(k0*xxc) + a*cos(k0*zzc)) )
+            w(i,j,k) = w(i,j,k) + dtrk*( f0*(c*sin(k0*yyc) + b*cos(k0*xxc)) )
           enddo
         enddo
       enddo
@@ -57,8 +55,8 @@ module mod_forcing
             yyf = yyc + 0.5*dl(2)/l(2)
             zzc = zc(k)/l(3)
             zzf = zf(k)/l(3)
-            u(i,j,k) = u(i,j,k) + factor*( f0*sin(k0*xxf)*cos(k0*yyc)*cos(k0*zzc) )
-            v(i,j,k) = v(i,j,k) - factor*( f0*cos(k0*xxc)*sin(k0*yyf)*cos(k0*zzc) )
+            u(i,j,k) = u(i,j,k) + dtrk*( f0*sin(k0*xxf)*cos(k0*yyc)*cos(k0*zzc) )
+            v(i,j,k) = v(i,j,k) - dtrk*( f0*cos(k0*xxc)*sin(k0*yyf)*cos(k0*zzc) )
           enddo
         enddo
       enddo

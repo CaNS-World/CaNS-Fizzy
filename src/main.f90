@@ -103,7 +103,7 @@ program cans
   end type rhs_bound
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
-  real(rp) :: dt,dto,dt_r,dti,dtmax,time,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dti,dtmax,dtrk,dtrki,time,divtot,divmax
   real(rp) :: gam,seps
   integer :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
@@ -366,6 +366,8 @@ po(:,:,:) = 0._rp
     dt_r = dt/dto
     do irk=1,3
       tm_coeff(:) = rkcoeff(:,irk)
+      dtrk = sum(tm_coeff(:))*dt
+      dtrki = dtrk**(-1)
       !
       ! phase field update
       !
@@ -415,13 +417,13 @@ po(:,:,:) = 0._rp
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pn,po,psio,kappao, &
                 acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
         if(is_forced_hit) then
-          call lscale_forcing(2,lo,hi,0.5_rp,dt,tm_coeff,l,dl,zc,zf,u,v,w)
+          call lscale_forcing(2,lo,hi,0.5_rp,dt,dtrk,l,dl,zc,zf,u,v,w)
         end if
         call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
         !$acc kernels async(1)
         pp(:,:,:) = p(:,:,:)
         !$acc end kernels
-        call fillps(n,dli,dzfi,dti,rho0,u,v,w,p)
+        call fillps(n,dli,dzfi,dtrki,rho0,u,v,w,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
         call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
         call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
@@ -429,7 +431,7 @@ po(:,:,:) = 0._rp
         call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
 #endif
         call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-        call correc(n,dli,dzci,rho0,rho12,dt,p,psi,u,v,w)
+        call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
         call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
         call updatep(pp,p)
         call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
