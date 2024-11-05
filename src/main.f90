@@ -47,7 +47,7 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_param          , only: l,small, &
+  use mod_param          , only: rkcoeff,small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
@@ -85,7 +85,7 @@ program cans
   use mod_types
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
-  real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,po,pp
+  real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,pp,pn,po
   real(rp) :: rho_av
 #if !defined(_OPENACC)
   type(C_PTR), dimension(2,2) :: arrplanp
@@ -102,7 +102,7 @@ program cans
   end type rhs_bound
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
-  real(rp) :: dt,dto,dti,dtmax,time,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dti,dtmax,dtrk,dtrki,time,divtot,divmax
   real(rp) :: gam,seps
   integer :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
@@ -132,7 +132,7 @@ program cans
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,phi,kappa,normx,normy,normz, &
                                              acdi_rgx,acdi_rgy,acdi_rgz
-  real(rp), allocatable, dimension(:,:,:,:) :: psio,kappao
+  real(rp), allocatable, dimension(:,:,:) :: psio
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -159,6 +159,10 @@ program cans
   po(:,:,:) = 0._rp
 #else
   pp(:,:,:) = 0._rp
+  allocate(pn,mold=pp)
+  allocate(po,mold=pp)
+  pn(:,:,:) = pp(:,:,:)
+  po(:,:,:) = pn(:,:,:)
 #endif
 #if defined(_SCALAR)
   allocate(s,mold=pp)
@@ -185,7 +189,7 @@ program cans
   allocate(psi,phi,kappa,normx,normy,normz,mold=pp)
 #if defined(_CONSERVATIVE_MOMENTUM)
   allocate(acdi_rgx,acdi_rgy,acdi_rgz,mold=pp)
-  if(.not. allocated(psio)) allocate(psio(0:n(1)+1,0:n(2)+1,0:n(3)+1,1))
+  if(.not. allocated(psio)) allocate(psio(0:n(1)+1,0:n(2)+1,0:n(3)+1))
 #endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
@@ -303,17 +307,21 @@ program cans
 #endif
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
-  !$acc enter data copyin(u,v,w,p) copyin(pp) async
+  !$acc enter data copyin(u,v,w,p,pp,pn,po) async
   !$acc wait
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+  !$acc kernels default(present) async(1)
+  pn(:,:,:) =  p(:,:,:)
+  po(:,:,:) = pn(:,:,:)
+  !$acc end kernels
 #if defined(_SCALAR)
   !$acc enter data copyin(s)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
   !$acc enter data copyin(psi) create(phi,kappa,normx,normy,normz)
   !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz)
-  !$acc enter data create(psio,kappao)
+  !$acc enter data create(psio)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !
   call acdi_cmpt_phi(n,seps,psi,phi)
@@ -324,8 +332,8 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
   !
 #if defined(_CONSERVATIVE_MOMENTUM)
-  !$acc kernels async(1)
-  psio(:,:,:,1)    = psi(:,:,:)
+  !$acc kernels default(present) async(1)
+  psio(:,:,:) = psi(:,:,:)
   !$acc end kernels
 #endif
   !
@@ -361,65 +369,74 @@ program cans
     istep = istep + 1
     time = time + dt
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
-    tm_coeff(:) = [2.+dt/dto,-dt/dto]/2.
-    !
-    ! phase field update
-    !
+    do irk=1,3
+      tm_coeff(:) = rkcoeff(:,irk)
+      dtrk = sum(tm_coeff(:))*dt
+      dtrki = dtrk**(-1)
+      dt_r = dtrk/dto
+      !
+      ! phase field update
+      !
 #if defined(_CONSERVATIVE_MOMENTUM)
-    !$acc kernels async(1)
-    psio(:,:,:,1)   = psi(:,:,:)
-    !$acc end kernels
-#endif
-    if(is_track_interface) then
-      call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,acdi_rgx,acdi_rgy,acdi_rgz)
-#if defined(_CONSERVATIVE_MOMENTUM)
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
-#endif
-      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
-      call acdi_cmpt_phi(n,seps,psi,phi)
-      call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
-      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
-      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
-      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
-    end if
-#if defined(_SCALAR)
-    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)
-    call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
-#endif
-    if(.not.is_solve_ns) then
-      call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
-      !$acc wait(1)
-      !$acc update device(u,v,w,p) async(1)
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-    else
-      rho_av = 0.
-      if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
-        call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
-      end if
-      call tm(tm_coeff,n,dli,dzci,dzfi,dt, &
-              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pp,psio, &
-              acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
-      if(is_forced_hit) then
-        call lscale_forcing(2,lo,hi,0.5_rp,dt,l,dl,zc,zf,u,v,w)
-      end if
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-      !$acc kernels async(1)
-      pp(:,:,:) = p(:,:,:)
+      !$acc kernels default(present) async(1)
+      psio(:,:,:)   = psi(:,:,:)
       !$acc end kernels
-      call fillps(n,dli,dzfi,dti,rho0,u,v,w,p)
-#if defined(_CONSTANT_COEFFS_POISSON)
-      call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
-      call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
-#else
-      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
 #endif
-      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-      call correc(n,dli,dzci,rho0,rho12,dt,p,psi,u,v,w)
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
-      call updatep(pp,p)
-      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-    end if
+      if(is_track_interface) then
+        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,acdi_rgx,acdi_rgy,acdi_rgz)
+#if defined(_CONSERVATIVE_MOMENTUM)
+        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
+#endif
+        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+        call acdi_cmpt_phi(n,seps,psi,phi)
+        call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+        call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normx)
+        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normy)
+        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,normz)
+      end if
+#if defined(_SCALAR)
+      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)
+      call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
+#endif
+      if(.not.is_solve_ns) then
+        call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
+        !$acc wait(1)
+        !$acc update device(u,v,w,p) async(1)
+        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
+      else
+        rho_av = 0.
+        if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
+          call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
+        end if
+        call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pn,po,psio, &
+                acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
+        if(is_forced_hit) then
+          call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
+        end if
+        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
+        !$acc kernels default(present) async(1)
+        pp(:,:,:) = p(:,:,:)
+        !$acc end kernels
+        call fillps(n,dli,dzfi,dtrki,rho0,u,v,w,p)
+#if defined(_CONSTANT_COEFFS_POISSON)
+        call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
+        call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
+#else
+        call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
+#endif
+        call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+        call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
+        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
+        call updatep(pp,p)
+        call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+      end if
+    end do
+    !$acc kernels default(present) async(1)
+    po(:,:,:) = pn(:,:,:)
+    pn(:,:,:) =  p(:,:,:)
+    !$acc end kernels
     !
     ! check simulation stopping criteria
     !
@@ -440,7 +457,7 @@ program cans
     end if
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps) !add the scalar time step check
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps)
       dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
       if(dtmax < small) then

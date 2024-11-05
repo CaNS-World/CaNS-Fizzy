@@ -982,7 +982,7 @@ module mod_mom
   end subroutine mom_xyz_ad
   !
   subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,pp,psi,kappa,s,dudt,dvdt,dwdt)
+                         p,psi,kappa,s,pn,po,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
@@ -992,8 +992,9 @@ module mod_mom
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
-    real(rp), intent(in   ), dimension(0:,0:,0:)    :: p,pp,psi,kappa,s
-    real(rp), intent(inout), dimension( :, :, :)    :: dudt,dvdt,dwdt
+    real(rp), intent(in   ), dimension(0:,0:,0:)           :: p,psi,kappa,s
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po
+    real(rp), intent(inout), dimension( :, :, :)           :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
     real(rp) :: dxi,dyi
@@ -1033,10 +1034,10 @@ module mod_mom
           p_ccp = p(i  ,j  ,k+1)
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
-          q_ccc = (1.+dt_r)*p_ccc-dt_r*pp(i  ,j  ,k  )
-          q_pcc = (1.+dt_r)*p_pcc-dt_r*pp(i+1,j  ,k  )
-          q_cpc = (1.+dt_r)*p_cpc-dt_r*pp(i  ,j+1,k  )
-          q_ccp = (1.+dt_r)*p_ccp-dt_r*pp(i  ,j  ,k+1)
+          q_ccc = (1.+dt_r)*pn(i  ,j  ,k  )-dt_r*po(i  ,j  ,k  )
+          q_pcc = (1.+dt_r)*pn(i+1,j  ,k  )-dt_r*po(i+1,j  ,k  )
+          q_cpc = (1.+dt_r)*pn(i  ,j+1,k  )-dt_r*po(i  ,j+1,k  )
+          q_ccp = (1.+dt_r)*pn(i  ,j  ,k+1)-dt_r*po(i  ,j  ,k+1)
 #endif
           !
 #if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)

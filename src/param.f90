@@ -20,6 +20,9 @@ real(rp), parameter :: eps = 0._rp
 #endif
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
 character(len=100), parameter :: datadir = 'data/'
+real(rp), parameter, dimension(2,3) :: rkcoeff = reshape([32._rp/60._rp,  0._rp        , &
+                                                          25._rp/60._rp, -17._rp/60._rp, &
+                                                          45._rp/60._rp, -25._rp/60._rp], shape(rkcoeff))
 !
 ! variables to be determined from the input file
 !
