@@ -3,22 +3,15 @@
 
 ## Synopsis
 
-**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows. It has been designed to be an efficient two-fluid Navier-Stokes solver taking [CaNS](https://github.com/CaNS-World/CaNS) as its base. Particular care is taken to ensure that important changes in core of CaNS are easily propagated here. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. To achieve this, the interface is tracked using an Accurate Conservative Diffuse Interface (ACDI) method described in the reference below. As in CaNS, along two directions the grid is regular and the solver supports the following combination of (homogeneous) boundary conditions for the flow velocity:
-
- * Neumann-Neumann
- * Dirichlet-Dirichlet
- * Neumann-Dirichlet
- * Periodic
-
-In the third domain direction, the solver is more flexible as it uses Gauss elimination. There the grid can also be non-uniform (e.g. fine at the boundary and coarser in the center).
+**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows. It has been designed to be an efficient two-fluid Navier-Stokes solver taking [CaNS](https://github.com/CaNS-World/CaNS) as its base, where it is ensured that important advancements in the base solver are easily incorporated. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. To achieve this, the two-fluid Navier-Stokes equations are solved using an efficient pressure-splitting technique. The interface between phases is captured using an Accurate Conservative Diffuse Interface (ACDI) method, and the two-fluid Navier-Stokes  and the two-fluid Navier-Stokes. See the references below for more details.
 
 **References**
 
 P. Costa. *A FFT-based finite-difference solver for massively-parallel direct numerical simulations of turbulent flows.* *Computers & Mathematics with Applications* 76: 1853--1862 (2018). [doi:10.1016/j.camwa.2018.07.034](https://doi.org/10.1016/j.camwa.2018.07.034) [[arXiv preprint]](https://arxiv.org/abs/1802.10323)
 
-S. Jain. *Accurate conservative phase-field method for simulation of two-phase flows.* *Journal of Computational Physics* 469: 111529 (2022). [doi.org/10.1016/j.jcp.2022.111529](https://doi.org/10.1016/j.jcp.2022.111529)
-
 G. Frantzis, & D. Grigoriadis. *An efficient method for two-fluid incompressible flows appropriate for the immersed boundary method.* Journal of Computational Physics 376 (2019): 28-53. [doi.org/10.1016/j.jcp.2018.09.035](https://doi.org/10.1016/j.jcp.2018.09.035).
+
+S. Jain. *Accurate conservative phase-field method for simulation of two-phase flows.* *Journal of Computational Physics* 469: 111529 (2022). [doi.org/10.1016/j.jcp.2022.111529](https://doi.org/10.1016/j.jcp.2022.111529)
 
 ## Features
 
@@ -32,20 +25,13 @@ Some features are:
  * GPU acceleration using OpenACC directives
  * A different canonical flow can be simulated just by changing the input files
 
-Some examples of flows that this code can solve are bubbles or droplets in:
-
- * periodic or developing channel
- * periodic or developing square duct
- * tri-periodic domain
- * lid-driven cavity
-
 ## Motivation
 
-This numerical toolkit enables the simulation of two-phase flow in canonical configurations on modern HPC GPU architecture: the ACDI interface capturing method has been selected because its features allow to preserve the effciency and GPU scalability of the single phase FFT-based flow solver that lays at the foundation of the present code. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies or the implementation of different discretization schemes.
+This numerical toolkit enables the simulation of two-phase flow in canonical configurations on modern computing architectures: the ACDI method for interface capturing has been selected because its features allow to preserve the effciency and GPU scalability of the single phase FFT-based flow solver that lays at the foundation of the present code. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies or the implementation of different discretization schemes.
 
 ## Method
 
-The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a MAC grid arrangement. The interface between the two fluid phases is represented by a diffuse interface of specified thickness, preserved by a regularization flux, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme, with several possible options concerning the discretiation of the advective terms. A pressure splitting technique is used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS. See the references above for details.
+The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a staggered grid arrangement. The interface between the two fluid phases is represented by a diffuse interface of specified thickness, preserved by a regularization flux, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme, with several possible options concerning the discretiation of the advective terms. A pressure splitting technique is used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS. See the references above for details.
 
 ## Usage
 
@@ -53,7 +39,7 @@ The two-phase flow is described by a one-fluid formulation, and is solved with a
 
 Since *CaNS-Fizzy* loads the external pencil decomposition libraries as Git Submodules, the repository should be cloned as follows:
 ```bash
-git clone --recursive https://github.com/p-costa/CaNS-CDI
+git clone --recursive https://github.com/CaNS-World/CaNS-Fizzy
 ```
 so the libraries are downloaded too. Alternatively, in case the repository has already been cloned without the Submodules (i.e., folders `cuDecomp` and `2decomp-fft` under `dependencies/` are empty), the following command can be used to update them:
 ```bash
