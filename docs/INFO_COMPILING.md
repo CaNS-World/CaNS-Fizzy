@@ -20,13 +20,11 @@ DEBUG=1                    # best = 1 (no significant performance penalty)
 TIMING=1                   # best = 1
 PENCIL_AXIS=1              # = 1/2/3 for X/Y/Z-aligned pencils
 SINGLE_PRECISION=0         # perform the whole calculation in single precision
-CONSTANT_COEFFS_POISSON=1
-MASK_DIVERGENCE_CHECK=1
+CONSTANT_COEFFS_POISSON=1  # the fast mode for solving the pressure equation
 #
 # GPU-related
 #
 GPU=0
-USE_NVTX=0
 ```
 
 In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifort`), `NVIDIA` (`nvfortran`), or `CRAY` (`ftn`); the predefined profiles for compiler options can be selected by choosing one of the `FFLAGS_*` option; finer control of the compiler flags may be achieved by building with, e.g., `make FFLAGS+=[OTHER_FLAGS]`, or by tweaking the profiles directly under `configs/flags.mk`. Similarly, the library paths (e.g., for *FFTW*) may need to be adapted in the `Makefile` (`LIBS` variable) or by building with `make LIBS+='-L[PATH_TO_LIB] -l[NAME_OF_LIB]'`. Finally, the following pre-processing options are available:
@@ -38,7 +36,6 @@ In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifort`), `NVID
  * `CONSTANT_COEFFS_POISSON`  : enables the use of a direct FFT solver for the pressure Poisson equation (if set to 0, an iterative multigrid solver based on the HYPRE library will be used)
  * `CONSERVATIVE_MOMENTUM`    : solves the momentum equation in divergence form
  * `GPU`                      : enable GPU accelerated runs (requires the `FCOMP=NVIDIA`)
- * `USE_NVTX`                 : enable [NVTX](https://docs.nvidia.com/nsight-visual-studio-edition/nvtx) markers to tag certain code regions and assist with profiling
 
 Typing `make libs` will build the 2DECOMP&FFT/cuDecomp libraries; then typing `make` will compile the code and copy the executable `cans` to a `run/` folder; `make run` will also copy the default input files `*.in` under `src/` to the same `run/` folder.
 
