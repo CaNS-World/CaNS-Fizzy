@@ -371,7 +371,7 @@ program cans
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
     do irk=1,3
       tm_coeff(:) = rkcoeff(:,irk)
-      dtrk = sum(tm_coeff(:))*dt
+      dtrk = sum(rkcoeff(:,1:irk))*dt
       dtrki = dtrk**(-1)
       dt_r = dtrk/dto
       !
