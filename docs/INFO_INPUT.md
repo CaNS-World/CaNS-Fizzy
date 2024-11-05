@@ -98,7 +98,7 @@ cfl = 0.95, dtmin = 1.e5, dt_f = -1
 This line controls the simulation time step.
 
 The time step is set to be equal to `min(cfl*dtmax,dtmin)`, i.e. the minimum value between `dtmin` and `cfl` times the maximum allowable time step `dtmax` (computed every `ickeck` time steps; see below).
-`dtmin` is therefore used when a constant time step, smaller than `cfl*dtmax`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dtmax`. Alternatively, the user can force the simulation to advance with a constant time step of arbitrary value, independent of the `dtmax` evaluation, by changing the value of `dt_f` from `-1` to the desired time step.
+`dtmin` is therefore used when a constant time step, smaller than `cfl*dtmax`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dtmax`. Alternatively, one can force the simulation to advance with a constant time step of arbitrary value, independent of the `dtmax` evaluation, by changing the value of `dt_f` from `-1` to the desired time step.
 
 ---
 
@@ -350,7 +350,7 @@ beta12(1:2)     = 0., 0.
 These lines specify the physical and transport properties of the two-phase system.
 
 `sigma` sets the value of the surface tension at the two-phase interface.
-`rho12` sets the value of the density of each phase. **The fluid with the heavier density should always be assigned to phase 1**.
+`rho12` sets the value of the density of each phase. _Note: the initial conditions have been designed to consider phase 1 as the densest one._
 `mu12` sets the value of the dynamic viscosity of each phase.
 `ka12` sets the value of the thermal conductivity of each phase.
 `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
