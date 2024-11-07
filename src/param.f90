@@ -55,6 +55,8 @@ character(len=1), protected, dimension(0:1,3)   ::  cbcpsi
 real(rp)        , protected, dimension(0:1,3)   ::   bcpsi
 character(len=1), protected, dimension(0:1,3)   ::  cbcsca
 real(rp)        , protected, dimension(0:1,3)   ::   bcsca
+character(len=1), protected, dimension(0:1,3,3) ::  cbcnor
+real(rp)        , protected, dimension(0:1,3,3) ::   bcnor
 !
 real(rp), protected, dimension(3) :: bforce,gacc
 real(rp), protected               :: ssource
@@ -107,7 +109,7 @@ contains
                   ssource
     namelist /two_fluid/ &
                   inipsi, &
-                  cbcpsi,bcpsi, &
+                  cbcpsi,cbcnor,bcnor,bcpsi, &
                   sigma,rho12,mu12, &
                   ka12,cp12,beta12, &
                   acdi_gam_factor,acdi_gam_min,acdi_eps_factor
@@ -139,7 +141,7 @@ contains
     ssource = 0.
     !
     inipsi = 'uni'
-    cbcpsi(:,:) = 'P'; bcpsi(:,:) = 0.
+    cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:) = 0.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     acdi_gam_factor = 1.; acdi_gam_min = 1.e-12; acdi_eps_factor = 0.51
@@ -167,6 +169,7 @@ contains
 #if defined(_CONSTANT_COEFFS_POISSON)
     rho0 = minval(rho12(:))
 #endif
+    !
 #if defined(_OPENACC)
     !
     ! read cuDecomp parameter file cudecomp.in, if it exists

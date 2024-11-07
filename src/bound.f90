@@ -10,7 +10,7 @@ module mod_bound
   use mod_types
   implicit none
   private
-  public boundp,bounduvw,updt_rhs_b
+  public bounduvw,boundnor,boundp,updt_rhs_b
   contains
   subroutine bounduvw(cbc,n,bc,nb,is_bound,is_correc,dl,dzc,dzf,u,v,w)
     !
@@ -59,7 +59,7 @@ module mod_bound
                          call set_bc(cbc(0,2,1),0,2,nh,.true. ,bc(0,2,1),dl(2),u)
       if(impose_norm_bc) call set_bc(cbc(0,2,2),0,2,nh,.false.,bc(0,2,2),dl(2),v)
                          call set_bc(cbc(0,2,3),0,2,nh,.true. ,bc(0,2,3),dl(2),w)
-     end if
+    end if
     if(is_bound(1,2)) then
                          call set_bc(cbc(1,2,1),1,2,nh,.true. ,bc(1,2,1),dl(2),u)
       if(impose_norm_bc) call set_bc(cbc(1,2,2),1,2,nh,.false.,bc(1,2,2),dl(2),v)
@@ -78,9 +78,70 @@ module mod_bound
     end if
   end subroutine bounduvw
   !
+  subroutine boundnor(cbc,n,bc,nb,is_bound,dl,dzc,nx,ny,nz)
+    !
+    ! imposes boundary conditions on cell-centered vector fields (e.g. inteface normal)
+    !
+    implicit none
+    character(len=1), intent(in), dimension(0:1,3,3) :: cbc
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in), dimension(0:1,3,3) :: bc
+    integer , intent(in), dimension(0:1,3  ) :: nb
+    logical , intent(in), dimension(0:1,3  ) :: is_bound
+    real(rp), intent(in), dimension(3 ) :: dl
+    real(rp), intent(in), dimension(0:) :: dzc
+    real(rp), intent(inout), dimension(0:,0:,0:) :: nx,ny,nz
+    integer :: idir,nh
+    !
+    nh = 1
+    !
+#if !defined(_OPENACC)
+    do idir = 1,3
+      call updthalo(nh,halo(idir),nb(:,idir),idir,nx)
+      call updthalo(nh,halo(idir),nb(:,idir),idir,ny)
+      call updthalo(nh,halo(idir),nb(:,idir),idir,nz)
+    end do
+#else
+    call updthalo_gpu(nh,cbc(0,:,1)//cbc(1,:,1)==['PP','PP','PP'],nx)
+    call updthalo_gpu(nh,cbc(0,:,2)//cbc(1,:,2)==['PP','PP','PP'],ny)
+    call updthalo_gpu(nh,cbc(0,:,3)//cbc(1,:,3)==['PP','PP','PP'],nz)
+#endif
+    !
+    if(is_bound(0,1)) then
+      call set_bc(cbc(0,1,1),0,1,nh,.true.,bc(0,1,1),dl(1),nx)
+      call set_bc(cbc(0,1,2),0,1,nh,.true.,bc(0,1,2),dl(1),ny)
+      call set_bc(cbc(0,1,3),0,1,nh,.true.,bc(0,1,3),dl(1),nz)
+    end if
+    if(is_bound(1,1)) then
+      call set_bc(cbc(1,1,1),1,1,nh,.true.,bc(1,1,1),dl(1),nx)
+      call set_bc(cbc(1,1,2),1,1,nh,.true.,bc(1,1,2),dl(1),ny)
+      call set_bc(cbc(1,1,3),1,1,nh,.true.,bc(1,1,3),dl(1),nz)
+    end if
+    if(is_bound(0,2)) then
+      call set_bc(cbc(0,2,1),0,2,nh,.true.,bc(0,2,1),dl(2),nx)
+      call set_bc(cbc(0,2,2),0,2,nh,.true.,bc(0,2,2),dl(2),ny)
+      call set_bc(cbc(0,2,3),0,2,nh,.true.,bc(0,2,3),dl(2),nz)
+    end if
+    if(is_bound(1,2)) then
+      call set_bc(cbc(1,2,1),1,2,nh,.true.,bc(1,2,1),dl(2),nx)
+      call set_bc(cbc(1,2,2),1,2,nh,.true.,bc(1,2,2),dl(2),ny)
+      call set_bc(cbc(1,2,3),1,2,nh,.true.,bc(1,2,3),dl(2),nz)
+    end if
+    if(is_bound(0,3)) then
+      call set_bc(cbc(0,3,1),0,3,nh,.true.,bc(0,3,1),dzc(0)   ,nx)
+      call set_bc(cbc(0,3,2),0,3,nh,.true.,bc(0,3,2),dzc(0)   ,ny)
+      call set_bc(cbc(0,3,3),0,3,nh,.true.,bc(0,3,3),dzf(0)   ,nz)
+    end if
+    if(is_bound(1,3)) then
+      call set_bc(cbc(1,3,1),1,3,nh,.true.,bc(1,3,1),dzc(n(3)),nx)
+      call set_bc(cbc(1,3,2),1,3,nh,.true.,bc(1,3,2),dzc(n(3)),ny)
+      call set_bc(cbc(1,3,3),1,3,nh,.true.,bc(1,3,3),dzf(n(3)),nz)
+    end if
+  end subroutine bounduvw
+  !
   subroutine boundp(cbc,n,bc,nb,is_bound,dl,dzc,p)
     !
-    ! imposes pressure boundary conditions
+    ! imposes pressure and scalar boundary conditions
     !
     implicit none
     character(len=1), intent(in), dimension(0:1,3) :: cbc
