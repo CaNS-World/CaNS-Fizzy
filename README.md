@@ -55,7 +55,7 @@ The prerequisites for compiling CaNS-Fizzy are the following:
  * FFTW3/cuFFT library for CPU/GPU runs
  * The `nvfortran` compiler (for GPU runs)
  * NCCL and NVSHMEM (optional, may be exploited by the cuDecomp library)
- * HYPRE library in case the variable-coefficients Poisson equation is solved without the pressure splitting technique
+ * HYPRE library in case the variable-coefficients Poisson equation is solved without the pressure splitting technique (only available for CPU runs)
 
 #### In short
 For most systems, CaNS-Fizzy can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries, and CaNS-Fizzy.

@@ -41,17 +41,23 @@ ssource         = 0.
 \
 
 &two_fluid
-inipsi          = 'bub3'
-cbcpsi(0:1,1:3) = 'P','P',  'P','P',  'P','P'
-bcpsi(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
-sigma           = 1.
-rho12(1:2)      = 1., 1.
-mu12(1:2)       = 100., 100.
-ka12(1:2)       = 0., 0.
-cp12(1:2)       = 0., 0.
-beta12(1:2)     = 0., 0.
-acdi_gam_factor = 1., acdi_gam_min = 0.
-acdi_eps_factor = 1.
+inipsi            = 'bub3'
+cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'P','P'
+cbcnor(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
+cbcnor(0:1,1:3,2) = 'P','P',  'P','P',  'P','P'
+cbcnor(0:1,1:3,3) = 'P','P',  'P','P',  'P','P'
+bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
+bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
+sigma             =  1.
+rho12(1:2)        =  1., 1.
+mu12(1:2)         =  100., 100.
+ka12(1:2)         =  0., 0.
+cp12(1:2)         =  0., 0.
+beta12(1:2)       =  0., 0.
+acdi_gam_factor   =  1., acdi_gam_min = 0.
+acdi_eps_factor   =  1.
 \
 ```
 
@@ -311,22 +317,36 @@ inipsi          = 'bub3'
 * `cap-wav-1d`: planar small-amplitude capillary wave
 * `zalesak-disk`: two-dimensional (lighter phase) slotted disk
 
-See `two_fluid.f90` for more details. For the `bub` and `drp` initial fields, the position and size of the films/bubbles/droplets are specified in the `spheres.in` file.
+See `two_fluid.f90` for more details. For the `bub` and `drp` initial fields, the position and size of the films/bubbles/droplets are specified in the `spheres.in` file, where each line corresponds to an individual bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius.
+For example, the following file introduces in the computational domain two bubbles/droplets, the first centered at `x=0.3`, `y=1.`, `z=0.5` and with a radius of `0.25`, the second centered at `x=1.5`, `y=0.6`, `z=1.` and with a radius of `0.5`.
+
+```fortran
+0.3 1.  0.5 0.25
+1.5 0.6 1.  0.5
+```
+
+If `spheres.in` is used to initialize a planar film (options `bub1` and `drp1`), then the radius value will represent the film thickness, and the film will be aligned along the XY plane.
 
 ---
 
 ```fortran
-cbcpsi(0:1,1:3) = 'P','P',  'P','P',  'P','P'
-bcpsi(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'P','P'
+cbcnor(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
+cbcnor(0:1,1:3,2) = 'P','P',  'P','P',  'P','P'
+cbcnor(0:1,1:3,3) = 'P','P',  'P','P',  'P','P'
+bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
+bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
+bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
 ```
 
-These lines set the boundary conditions (BC) for the volume fraction of phase 1.
+These lines set the boundary conditions (BC) for the volume fraction of phase 1 (`cbcpsi`) and for the three cartesian components of the interface normal (`cbcnor`).
 
-The **type** (BC) is set in `cbcpsi` by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
+The **type** (BC) is set by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
 
-* `X0` `X1` set the type of BC for the volume fraction on the **lower** and **upper** boundaries in `x`
-* `Y0` `Y1` set the type of BC for the volume fraction on the **lower** and **upper** boundaries in `y`
-* `Z0` `Z1` set the type of BC for the volume fraction on the **lower** and **upper** boundaries in `z`
+* `X0` `X1` set the type of BC on the **lower** and **upper** boundaries in `x`
+* `Y0` `Y1` set the type of BC on the **lower** and **upper** boundaries in `y`
+* `Z0` `Z1` set the type of BC on the **lower** and **upper** boundaries in `z`
 
 The following options are available:
 
@@ -334,7 +354,8 @@ The following options are available:
 * `D` Dirichlet
 * `N` Neumann
 
-The corresponding BC **values** are set in `bcpsi` (dummy for a periodic direction).
+The corresponding BC **values** (dummy for a periodic direction) are set in `bcpsi` for the volume fraction of phase 1 and in `bcnor` for the components of the interface normal.
+For consistency, the components of the interface normal should be periodic when the volume fraction boundary conditions are periodic. In order to conserve mass in the domain, a wall boundary requires a homogenous Neumann BC for the volume fraction and a homogeneous Dirichlet BC for the wall-normal component of the interface normal. In this case the BC for the wall-tangential components of the interface normal should be set to homogenous Neumann.
 
 ---
 
