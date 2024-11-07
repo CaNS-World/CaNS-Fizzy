@@ -1,15 +1,12 @@
-<!--- the logo -->
-<img src="assets/img/CaNS-logo.png" height=100>
-
 ## Synopsis
 
-**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows. It has been designed to be an efficient two-fluid Navier-Stokes solver taking [CaNS](https://github.com/CaNS-World/CaNS) as its base, where it is ensured that important advancements in the base solver are easily incorporated. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. To achieve this, the two-fluid Navier-Stokes equations are solved using an efficient pressure-splitting technique. The interface between phases is captured using an Accurate Conservative Diffuse Interface (ACDI) method, and the two-fluid Navier-Stokes  and the two-fluid Navier-Stokes. See the references below for more details.
+**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows. It has been designed to be an efficient two-fluid Navier-Stokes solver taking [CaNS](https://github.com/CaNS-World/CaNS) as its base, where it is ensured that important advancements in the base solver are easily incorporated. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. The two-fluid Navier-Stokes equations are solved using a pressure-splitting technique that enables the usage of fast solvers for constant-coefficients Poisson equations. The interface between phases is captured using an Accurate Conservative Diffuse Interface (ACDI) method. See the references below for more details.
 
 **References**
 
 P. Costa. *A FFT-based finite-difference solver for massively-parallel direct numerical simulations of turbulent flows.* *Computers & Mathematics with Applications* 76: 1853--1862 (2018). [doi:10.1016/j.camwa.2018.07.034](https://doi.org/10.1016/j.camwa.2018.07.034) [[arXiv preprint]](https://arxiv.org/abs/1802.10323)
 
-G. Frantzis, & D. Grigoriadis. *An efficient method for two-fluid incompressible flows appropriate for the immersed boundary method.* Journal of Computational Physics 376 (2019): 28-53. [doi.org/10.1016/j.jcp.2018.09.035](https://doi.org/10.1016/j.jcp.2018.09.035).
+G. Frantzis, & D. Grigoriadis. *An efficient method for two-fluid incompressible flows appropriate for the immersed boundary method.* *Journal of Computational Physics* 376 (2019): 28-53. [doi.org/10.1016/j.jcp.2018.09.035](https://doi.org/10.1016/j.jcp.2018.09.035).
 
 S. Jain. *Accurate conservative phase-field method for simulation of two-phase flows.* *Journal of Computational Physics* 469: 111529 (2022). [doi.org/10.1016/j.jcp.2022.111529](https://doi.org/10.1016/j.jcp.2022.111529)
 
@@ -27,7 +24,7 @@ Some features are:
 
 ## Motivation
 
-This numerical toolkit enables the simulation of two-phase flow in canonical configurations on modern computing architectures: the ACDI method for interface capturing has been selected because its features allow to preserve the effciency and GPU scalability of the single phase FFT-based flow solver that lays at the foundation of the present code. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies or the implementation of different discretization schemes.
+This numerical tool serves as an efficient base two-fluid Navier-Stokes solver for high-resolution simulations of turbulent multiphase flows. It enables the simulation of two-phase flow in canonical configurations on modern (GPU-based) parallel computing architectures, taking advantage of the efficiency of the base single-phase solver that was used as the starting point. The ACDI method for interface capturing has been selected due to its accuracy and suitability for GPU-based simulations. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies to, for instance, introduce complex geometries (such as immersed-boundary methods).
 
 ## Method
 
