@@ -141,7 +141,7 @@ contains
     ssource = 0.
     !
     inipsi = 'uni'
-    cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:) = 0.
+    cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     acdi_gam_factor = 1.; acdi_gam_min = 1.e-12; acdi_eps_factor = 0.51

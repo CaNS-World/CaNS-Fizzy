@@ -130,14 +130,14 @@ module mod_bound
     if(is_bound(0,3)) then
       call set_bc(cbc(0,3,1),0,3,nh,.true.,bc(0,3,1),dzc(0)   ,nx)
       call set_bc(cbc(0,3,2),0,3,nh,.true.,bc(0,3,2),dzc(0)   ,ny)
-      call set_bc(cbc(0,3,3),0,3,nh,.true.,bc(0,3,3),dzf(0)   ,nz)
+      call set_bc(cbc(0,3,3),0,3,nh,.true.,bc(0,3,3),dzc(0)   ,nz)
     end if
     if(is_bound(1,3)) then
       call set_bc(cbc(1,3,1),1,3,nh,.true.,bc(1,3,1),dzc(n(3)),nx)
       call set_bc(cbc(1,3,2),1,3,nh,.true.,bc(1,3,2),dzc(n(3)),ny)
-      call set_bc(cbc(1,3,3),1,3,nh,.true.,bc(1,3,3),dzf(n(3)),nz)
+      call set_bc(cbc(1,3,3),1,3,nh,.true.,bc(1,3,3),dzc(n(3)),nz)
     end if
-  end subroutine bounduvw
+  end subroutine boundnor
   !
   subroutine boundp(cbc,n,bc,nb,is_bound,dl,dzc,p)
     !
