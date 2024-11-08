@@ -374,12 +374,12 @@ beta12(1:2)     = 0., 0.
 
 These lines specify the physical and transport properties of the two-phase system.
 
-`sigma` sets the value of the surface tension coefficient at the two-phase interface.
-`rho12` sets the value of the density of each phase.
-`mu12` sets the value of the dynamic viscosity of each phase.
-`ka12` sets the value of the thermal conductivity of each phase.
-`cp12` sets the value of the constant pressure specfic heat capacity of each phase.
-`beta12` sets the value of the thermal expansion coeffcient of each phase.
+* `sigma` sets the value of the surface tension coefficient at the two-phase interface.
+* `rho12` sets the value of the density of each phase. (Note: the initial conditions assume `rho12(1)` as the densest phase)
+* `mu12` sets the value of the dynamic viscosity of each phase.
+* `ka12` sets the value of the thermal conductivity of each phase.
+* `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
+* `beta12` sets the value of the thermal expansion coeffcient of each phase.
 
 ---
 
@@ -390,9 +390,9 @@ acdi_eps_factor = 0.51
 
 These lines set the computational parameters specific to the conservative diffuse interface method for interface tracking. In general, these default values should be left unchanged.
 
-`acdi_gam_factor` sets the speed of the interface relaxation, relative to the maximum flow velocity. It should always be equal to or larger than `1`.
-`acdi_gam_min` sets a lower threshold for the speed of the interface relaxation.
-`acdi_eps_factor` sets the interface thickness relative to the maximum grid size. It should always be larger than `0.5`.
+* `acdi_gam_factor` sets the speed of the interface relaxation, relative to the maximum flow velocity. It should always be equal to or larger than `1`.
+* `acdi_gam_min` sets a lower threshold for the speed of the interface relaxation.
+* `acdi_eps_factor` sets the interface thickness relative to the maximum grid size. It should always be larger than `0.5`.
 
 
 # about the `&cudecomp` namelist under `input.nml`
