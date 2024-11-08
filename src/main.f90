@@ -32,7 +32,7 @@ program cans
   use, intrinsic :: ieee_arithmetic, only: is_nan => ieee_is_nan
   use mpi
   use decomp_2d
-  use mod_bound          , only: boundp,bounduvw,boundnor,updt_rhs_b
+  use mod_bound          , only: boundp,bounduvw,updt_rhs_b
   use mod_chkdiv         , only: chkdiv
   use mod_chkdt          , only: chkdt
   use mod_common_mpi     , only: myid,ierr
@@ -327,7 +327,9 @@ program cans
   call acdi_cmpt_phi(n,seps,psi,phi)
   call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
-  call boundnor(cbcnor,n,bcnor,nb,is_bound,dl,dzc,normx,normy,normz)
+  call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+  call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+  call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
   !
 #if defined(_CONSERVATIVE_MOMENTUM)
   !$acc kernels default(present) async(1)
@@ -389,7 +391,9 @@ program cans
         call acdi_cmpt_phi(n,seps,psi,phi)
         call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
         call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-        call boundnor(cbcnor,n,bcnor,nb,is_bound,dl,dzc,normx,normy,normz)
+        call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+        call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+        call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
       end if
 #if defined(_SCALAR)
       call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)
