@@ -8,6 +8,7 @@
 module mod_rk
   use mod_mom  , only: mom_xyz_ad,mom_xyz_oth
   use mod_utils, only: swap
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -24,16 +25,16 @@ module mod_rk
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dli
     real(rp), intent(in) :: dt,dt_r
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in   ), dimension(3)  :: bforce,gacc
     real(rp), intent(in   )                :: sigma,rho_av
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: psi,kappa,s
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: p
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po,psio
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: acdi_rgx,acdi_rgy,acdi_rgz
-    real(rp), intent(inout), dimension(0:,0:,0:)           :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)           :: psi,kappa,s
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)           :: p
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:), optional :: pn,po,psio
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:), optional :: acdi_rgx,acdi_rgy,acdi_rgz
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:)           :: u,v,w
     real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
                                                                     dudtrko_t,dvdtrko_t,dwdtrko_t
     real(rp), pointer      , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
@@ -144,13 +145,13 @@ module mod_rk
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in   )                :: dt
     real(rp), intent(in   )                :: ssource
     real(rp), intent(in   ), dimension(2)  :: rho12,ka12,cp12
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: psi
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(rp), intent(inout), dimension(0:,0:,0:) :: s
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: psi
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: s
     real(rp), target     , allocatable, dimension(:,:,:), save :: dsdtrk_t,dsdtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dsdtrk  ,dsdtrko
     logical, save :: is_first = .true.
@@ -200,13 +201,13 @@ module mod_rk
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in   ) :: gam,seps,dt
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
-    real(rp), intent(inout), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: rglrx,rglry,rglrz
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: phi
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: psi
+    real(rp), intent(out  ), dimension(1-nh:,1-nh:,1-nh:), optional :: rglrx,rglry,rglrz
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
@@ -237,7 +238,7 @@ module mod_rk
         end do
       end do
     end do
-    call clip_field([1,1,1],[0._rp,1._rp],psi)
+    call clip_field([nh,nh,nh],[0._rp,1._rp],psi)
     !
     ! swap d?dtrk <-> d?dtrko
     !

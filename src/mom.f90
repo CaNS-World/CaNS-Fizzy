@@ -6,6 +6,7 @@
 ! -
 module mod_mom
   use mpi
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -16,8 +17,8 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: dzfi
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     integer :: i,j,k
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm
@@ -46,8 +47,8 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: dzfi
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
     real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
@@ -76,8 +77,8 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: dzci
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     integer :: i,j,k
     real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
@@ -106,9 +107,9 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: rho12,mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm, &
                 dvdxp,dvdxm,dwdxp,dwdxm
@@ -156,9 +157,9 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: rho12,mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm, &
                 dudyp,dudym,dwdyp,dwdym
@@ -207,9 +208,9 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: rho12,mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     integer :: i,j,k
     real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm, &
@@ -259,7 +260,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: rhop,dpdl
     integer :: i,j,k
@@ -292,7 +293,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dyi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
     real(rp) :: rhop,dpdl
@@ -323,10 +324,10 @@ module mod_mom
   subroutine momz_p(nx,ny,nz,dzci,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in), dimension(1-nh:) :: dzci
     real(rp), intent(in) :: dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: rhop,dpdl
     integer :: i,j,k
@@ -360,7 +361,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi
     real(rp), intent(in) :: sigma,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: rhop,kappap
     integer :: i,j,k
@@ -388,7 +389,7 @@ module mod_mom
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dyi
     real(rp), intent(in) :: sigma,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: rhop,kappap
     integer :: i,j,k
@@ -414,9 +415,9 @@ module mod_mom
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in), dimension(1-nh:) :: dzci
     real(rp), intent(in) :: sigma,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: rhop,kappap
     integer :: i,j,k
@@ -443,7 +444,7 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: psip,rhop,factorp
     integer :: i,j,k
@@ -472,7 +473,7 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: psip,rhop,factorp
     integer :: i,j,k
@@ -501,7 +502,7 @@ module mod_mom
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in   ) :: psi,s
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: psip,rhop,factorp
     integer :: i,j,k
@@ -530,10 +531,11 @@ module mod_mom
     implicit none
     integer , intent(in ), dimension(3) :: n
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in ), dimension(2) :: rho12,mu12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w,psi
-    real(rp), intent(in ), dimension(0:,0:,0:), optional :: psio,acdi_rglrx,acdi_rglry,acdi_rglrz
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: psi
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:), optional :: psio,acdi_rglrx,acdi_rglry,acdi_rglrz
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
@@ -986,15 +988,15 @@ module mod_mom
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in   ) :: dt_r
     real(rp), intent(in   ), dimension(2) :: rho12,beta12
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: p,psi,kappa,s
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po
-    real(rp), intent(inout), dimension( :, :, :)           :: dudt,dvdt,dwdt
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:)           :: p,psi,kappa,s
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:), optional :: pn,po
+    real(rp), intent(inout), dimension( :, :, :)                    :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
     real(rp) :: dxi,dyi
@@ -1126,9 +1128,9 @@ module mod_mom
     integer , intent(in ), dimension(3) :: n
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
-    real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in )                   :: mu12(2)
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: psi,u,v,w
     real(rp), intent(out), dimension(3) :: taux,tauy,tauz
     real(rp) :: dudyp,dudym,dudzp,dudzm, &
                 dvdxp,dvdxm,dvdzp,dvdzm, &

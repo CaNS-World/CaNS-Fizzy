@@ -1,6 +1,13 @@
+! -
+!
+! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-License-Identifier: MIT
+!
+! -
 module mod_solver_vc
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mpi
+  use mod_param, only: nh
   use mod_types
   use, intrinsic :: iso_c_binding, only: C_PTR
   implicit none
@@ -29,11 +36,11 @@ module mod_solver_vc
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-1:)                   :: dzci,dzfi
+    real(rp)            , intent(in   ), dimension(lo(3)-nh:)                   :: dzci,dzfi
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
-    real(rp)            , intent(in   ), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: psi
-    real(rp)            , intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p,po ! updt_rhs_b done here!
+    real(rp)            , intent(in   ), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: psi
+    real(rp)            , intent(inout), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: p,po ! updt_rhs_b done here!
     !
     ! iterative solver created and destroyed every time step for now
     !
@@ -53,11 +60,11 @@ module mod_solver_vc
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-1:)                   :: dzci,dzfi
+    real(rp)            , intent(in   ), dimension(lo(3)-nh:)                  :: dzci,dzfi
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
-    real(rp)            , intent(in   ), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: psi
-    real(rp)            , intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p ! updt_rhs_b done here!
+    real(rp)            , intent(in   ), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: psi
+    real(rp)            , intent(inout), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: p ! updt_rhs_b done here!
     type(hypre_solver_t), intent(out  )                                        :: asolver
     integer, dimension(3,nstencil) :: offsets
     real(rp), dimension(product(hi(:)-lo(:)+1)*nstencil) :: matvalues
@@ -308,7 +315,7 @@ module mod_solver_vc
     implicit none
     type(hypre_solver_t), target, intent(in   )               :: asolver
     integer           ,         intent(in   ), dimension(3) :: lo,hi
-    real(rp)          ,         intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p,po
+    real(rp)          ,         intent(inout), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: p,po
     type(C_PTR), pointer :: solver,mat,rhs,sol
     integer    , pointer :: stype
     solver  => asolver%solver

@@ -5,6 +5,7 @@
 !
 ! -
 module mod_scal
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -15,10 +16,10 @@ module mod_scal
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     real(rp), intent(in) :: ssource
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
-    real(rp), dimension(0:,0:,0:), intent(in) :: psi,u,v,w,s
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(in) :: psi,u,v,w,s
     real(rp), dimension(:,:,:), intent(out) :: dsdt
     integer :: i,j,k
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
@@ -76,9 +77,9 @@ module mod_scal
     integer , intent(in ), dimension(3) :: n
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
-    real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh:)    :: dzci,dzfi
     real(rp), intent(in ), dimension(2) :: ka12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,s
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: psi,s
     real(rp), intent(out), dimension(3) :: flux
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
     real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm

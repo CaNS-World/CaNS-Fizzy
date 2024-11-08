@@ -8,6 +8,7 @@ module mod_initmpi
   use mpi
   use decomp_2d
   use mod_common_mpi, only: myid,ierr,halo,ipencil => ipencil_axis
+  use mod_param, only: nh
   use mod_types
   !@acc use openacc
   !@acc use cudecomp
@@ -98,7 +99,7 @@ module mod_initmpi
     conf%halo_comm_backend = cudecomp_h_comm_backend
     conf%transpose_axis_contiguous(:) = .false.
     istat = cudecompGridDescAutotuneOptionsSetDefaults(atune_conf)
-    atune_conf%halo_extents(:) = 1
+    atune_conf%halo_extents(:) = nh
     atune_conf%halo_periods(:) = periods(:)
     atune_conf%dtype = cudecomp_real_rp
     atune_conf%autotune_halo_backend = cudecomp_is_h_comm_autotune
@@ -179,7 +180,7 @@ module mod_initmpi
     hi_z(:)    = zend(:)
     n_z(:)     = zsize(:)
     do l=1,3
-      call makehalo(l,1,n(:),halo(l))
+      call makehalo(l,nh,n(:),halo(l))
     end do
     nb(:,ipencil) = MPI_PROC_NULL
     call MPI_CART_SHIFT(comm_cart,0,1,nb(0,ipencil_t(1)),nb(1,ipencil_t(1)),ierr)

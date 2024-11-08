@@ -18,7 +18,7 @@ module mod_sanity
   use mod_initflow  , only: add_noise
   use mod_initmpi   , only: initmpi
   use mod_initsolver, only: initsolver
-  use mod_param     , only: small
+  use mod_param     , only: small,nh
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -175,7 +175,7 @@ module mod_sanity
     implicit none
     integer , intent(in), dimension(3) :: ng,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
     real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in), dimension(0:) :: dzc,dzf,dzci,dzfi,dzci_g,dzfi_g
+    real(rp), intent(in), dimension(1-nh:) :: dzc,dzf,dzci,dzfi,dzci_g,dzfi_g
     integer , intent(in), dimension(0:1,3) :: nb
     logical , intent(in), dimension(0:1,3) :: is_bound
     character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
@@ -198,10 +198,10 @@ module mod_sanity
     logical :: passed,passed_loc
     passed = .true.
     !$acc wait
-    allocate(u(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-             v(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-             w(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-             p(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+    allocate(u(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+             v(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+             w(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
+             p(1-nh:n(1)+nh,1-nh:n(2)+nh,1-nh:n(3)+nh), &
              lambdaxy(n_z(1),n_z(2)), &
              a(n_z(3)),b(n_z(3)),c(n_z(3)), &
              rhsbx(n(2),n(3),0:1), &

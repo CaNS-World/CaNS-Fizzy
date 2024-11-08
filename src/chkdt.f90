@@ -7,6 +7,7 @@
 module mod_chkdt
   use mpi
   use mod_common_mpi, only:ierr
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -20,10 +21,10 @@ module mod_chkdt
     implicit none
     integer , intent(in), dimension(3) :: n
     real(rp), intent(in), dimension(3) :: dl
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh:) :: dzci,dzfi
     logical,  intent(in) :: is_solve_ns,is_track_interface
     real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
-    real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
     real(rp), intent(out) :: dtmax
     real(rp), intent(in ), optional :: ka12(2),cp12(2)
     real(rp) :: dxi,dyi,dzi

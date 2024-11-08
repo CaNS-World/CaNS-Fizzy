@@ -7,6 +7,7 @@
 module mod_bound
   use mpi
   use mod_common_mpi, only: ierr,halo,ipencil_axis
+  use mod_param, only: nh
   use mod_types
   implicit none
   private
@@ -24,12 +25,10 @@ module mod_bound
     logical , intent(in), dimension(0:1,3  ) :: is_bound
     logical , intent(in)                     :: is_correc
     real(rp), intent(in), dimension(3 ) :: dl
-    real(rp), intent(in), dimension(0:) :: dzc,dzf
-    real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:) :: dzc,dzf
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
     logical :: impose_norm_bc
-    integer :: idir,nh
-    !
-    nh = 1
+    integer :: idir
     !
 #if !defined(_OPENACC)
     do idir = 1,3
@@ -89,11 +88,9 @@ module mod_bound
     integer , intent(in), dimension(0:1,3) :: nb
     logical , intent(in), dimension(0:1,3) :: is_bound
     real(rp), intent(in), dimension(3 ) :: dl
-    real(rp), intent(in), dimension(0:) :: dzc
-    real(rp), intent(inout), dimension(0:,0:,0:) :: p
-    integer :: idir,nh
-    !
-    nh = 1
+    real(rp), intent(in), dimension(1-nh:) :: dzc
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
+    integer :: idir
     !
 #if !defined(_OPENACC)
     do idir = 1,3
@@ -297,14 +294,14 @@ module mod_bound
     integer , intent(in   )  :: idir
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(0:,0:   ) :: vel2d
-    real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
     integer :: i,j,k
     integer, dimension(3) :: n
     !
     select case(idir)
       case(1) ! x direction
         if(is_bound(0,1)) then
-          n(:) = shape(u) - 2*1
+          n(:) = shape(u) - 2*nh
           i = 0
           !$acc parallel loop collapse(2) default(present) async(1)
           do k=1,n(3)
@@ -315,7 +312,7 @@ module mod_bound
         end if
       case(2) ! y direction
         if(is_bound(0,2)) then
-          n(:) = shape(v) - 2*1
+          n(:) = shape(v) - 2*nh
           j = 0
           !$acc parallel loop collapse(2) default(present) async(1)
           do k=1,n(3)
@@ -326,7 +323,7 @@ module mod_bound
         end if
       case(3) ! z direction
         if(is_bound(0,3)) then
-          n(:) = shape(w) - 2*1
+          n(:) = shape(w) - 2*nh
           k = 0
           !$acc parallel loop collapse(2) default(present) async(1)
           do j=1,n(2)
@@ -345,7 +342,7 @@ module mod_bound
     integer , intent(in), dimension(3) :: n
     logical , intent(in), dimension(0:1,3) :: is_bound
     real(rp), intent(in), dimension(:,:,0:), optional :: rhsbx,rhsby,rhsbz
-    real(rp), intent(inout), dimension(0:,0:,0:) :: p
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
     integer , dimension(3) :: q
     integer :: idir
     integer :: nn

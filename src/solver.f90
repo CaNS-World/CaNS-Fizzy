@@ -8,6 +8,7 @@ module mod_solver
   use, intrinsic :: iso_c_binding, only: C_PTR
   use decomp_2d
   use mod_fft   , only: fft
+  use mod_param,  only: nh
   use mod_types
   implicit none
   private
@@ -25,7 +26,7 @@ module mod_solver
     real(rp), intent(in), dimension(:) :: a,b,c
     character(len=1), dimension(0:1,3), intent(in) :: bc
     character(len=1), intent(in), dimension(3) :: c_or_f
-    real(rp), intent(inout), dimension(0:,0:,0:) :: p
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
     real(rp), dimension(xsize(1),xsize(2),xsize(3)) :: px
     real(rp), dimension(ysize(1),ysize(2),ysize(3)) :: py
     real(rp), dimension(zsize(1),zsize(2),zsize(3)) :: pz
