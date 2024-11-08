@@ -59,7 +59,7 @@ module mod_bound
                          call set_bc(cbc(0,2,1),0,2,nh,.true. ,bc(0,2,1),dl(2),u)
       if(impose_norm_bc) call set_bc(cbc(0,2,2),0,2,nh,.false.,bc(0,2,2),dl(2),v)
                          call set_bc(cbc(0,2,3),0,2,nh,.true. ,bc(0,2,3),dl(2),w)
-     end if
+    end if
     if(is_bound(1,2)) then
                          call set_bc(cbc(1,2,1),1,2,nh,.true. ,bc(1,2,1),dl(2),u)
       if(impose_norm_bc) call set_bc(cbc(1,2,2),1,2,nh,.false.,bc(1,2,2),dl(2),v)
@@ -80,7 +80,7 @@ module mod_bound
   !
   subroutine boundp(cbc,n,bc,nb,is_bound,dl,dzc,p)
     !
-    ! imposes pressure boundary conditions
+    ! imposes boundary conditions for a scalar field
     !
     implicit none
     character(len=1), intent(in), dimension(0:1,3) :: cbc
