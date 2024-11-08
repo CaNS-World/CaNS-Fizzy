@@ -1,8 +1,8 @@
-# how to visualize the output binary files form *CaNS*
+# how to visualize the output binary files form *CaNS-Fizzy*
 
-in addition to the binary files for visualization, *CaNS* now generates a log file that contains information about the saved data (see `out2d.h90` and `out3d.h90` for more details); this new approach uses that log file to generate the `Xdmf` visualization file.
+In addition to the binary files for visualization, *CaNS-Fizzy* generates a log file that contains information about the saved data (see `out2d.h90` and `out3d.h90` for more details); this log file is in turn used to generate the `Xdmf` visualization file.
 
-the steps are as follows:
+The steps are as follows:
 
 1. after the simulation has run, copy the contents of `utils/visualize_fields/gen_xdmf_easy/write_xdmf.py` to the simulation `data` folder;
 2. run the file with `python write_xdmf.py`.
@@ -12,7 +12,7 @@ the steps are as follows:
 
 ### 3D fields
 
-when running the script `write_xdmf.py` we get the following prompts:
+When running the script `write_xdmf.py` we get the following prompts:
 
 ~~~
  $ python write_xdmf.py
@@ -29,7 +29,7 @@ by pressing <kbd>enter</kbd> three times, the default values in the square brack
 
 ### 2D fields
 
-the procedure for visualizing 2D field data that is saved by *CaNS* in `out2d.h90` is exactly the same; it is just that the correct log file should be selected. *CaNS* saves by default field data in a plane of constant `y=ly/2`, and logs the saves to a file named `log_visu_2d_slice_1.out`. If more planes are saved, the user should make sure that one log file per plane is saved by *CaNS* (e.g. if another plane is saved, the log file written in `out2d.h90` could be named `log_visu_2d_slice_2.out`); see `out2d.h90` for more details. The corresponding steps to generate the Xdmf file would be, for instance:
+The procedure for visualizing 2D field data that is saved by *CaNS-Fizzy* in `out2d.h90` is exactly the same; albeit the correct log file should be selected. The code saves by default field data in a plane of constant `y=ly/2`, and logs the saves to a file named `log_visu_2d_slice_1.out`. If more planes are saved, the user should make sure that one log file per plane is saved (e.g. if another plane is saved, the log file written in `out2d.h90` could be named `log_visu_2d_slice_2.out`); see `out2d.h90` for more details. The corresponding steps to generate the Xdmf file would be, for instance:
 
 ~~~
  $ python write_xdmf.py
@@ -45,7 +45,7 @@ A similar script also located in `utils/visualize_fields/gen_xdmf_easy`, named `
 ~~~
  $ python write_xdmf_restart.py
  Name of the pattern of the restart files to be visualized [fld?*.bin]:
- Names of stored variables [VEX VEY VEZ PRE]:
+ Names of stored variables [VEX VEY VEZ PRE PSI]:
  Name to be appended to the grid files to prevent overwriting [_fld]:
  Name of the output file [viewfld_DNS_fld.xmf]:
 ~~~

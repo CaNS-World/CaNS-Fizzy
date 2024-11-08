@@ -1,8 +1,8 @@
-# Compiling CaNS
+# Compiling CaNS-Fizzy
 
-For most systems, CaNS can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries and CaNS. `make clean` clears the CaNS build files, `make libsclean` clears the 2DECOMP/cuDecomp builds, and `make allclean` clears both.
+For most systems, CaNS-Fizzy can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries and the code. `make clean` clears the CaNS-Fizzy build files, `make libsclean` clears the 2DECOMP/cuDecomp builds, and `make allclean` clears both.
 
-The `Makefile` in root directory is used to compiled the code, and is expected to work out-of-the-box for most systems. The `build.conf` file in the root directory can be used to choose the Fortran compiler (MPI wrapper), a few pre-defined profiles depending on the nature of the run (e.g., production vs debugging), and pre-processing options:
+The `Makefile` in root directory is used to compile the code, and is expected to work out-of-the-box for most systems. The `build.conf` file in the root directory can be used to choose the Fortran compiler (MPI wrapper), a few pre-defined profiles depending on the nature of the run (e.g., production vs debugging), and pre-processing options:
 
 ```
 #
@@ -18,27 +18,24 @@ FFLAGS_DEBUG_MAX=0  # for thorough debugging
 #
 DEBUG=1                    # best = 1 (no significant performance penalty)
 TIMING=1                   # best = 1
-IMPDIFF=0                  #
-IMPDIFF_1D=0               #
 PENCIL_AXIS=1              # = 1/2/3 for X/Y/Z-aligned pencils
 SINGLE_PRECISION=0         # perform the whole calculation in single precision
+CONSTANT_COEFFS_POISSON=1  # the fast mode for solving the pressure equation
 #
 # GPU-related
 #
 GPU=0
-USE_NVTX=0
 ```
 
 In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifort`), `NVIDIA` (`nvfortran`), or `CRAY` (`ftn`); the predefined profiles for compiler options can be selected by choosing one of the `FFLAGS_*` option; finer control of the compiler flags may be achieved by building with, e.g., `make FFLAGS+=[OTHER_FLAGS]`, or by tweaking the profiles directly under `configs/flags.mk`. Similarly, the library paths (e.g., for *FFTW*) may need to be adapted in the `Makefile` (`LIBS` variable) or by building with `make LIBS+='-L[PATH_TO_LIB] -l[NAME_OF_LIB]'`. Finally, the following pre-processing options are available:
 
  * `DEBUG`                    : performs some basic checks for debugging purposes
  * `TIMING`                   : wall-clock time per time step is computed
- * `IMPDIFF`                  : diffusion term of the N-S equations is integrated in time with an implicit discretization (thereby improving the stability of the numerical algorithm for viscous-dominated flows)
- * `IMPDIFF_1D`               : same as above, but with implicit diffusion *only* along Z; *for optimal parallel performance this option should be combined with* `PENCIL_AXIS=3`
  * `PENCIL_AXIS`              : sets the default pencil direction, one of [1,2,3] for [X,Y,Z]-aligned pencils; X-aligned is the default and should be optimal for all cases except for Z implicit diffusion, where using Z-pencils is recommended
  * `SINGLE_PRECISION`         : calculation will be carried out in single precision (the default precision is double)
+ * `CONSTANT_COEFFS_POISSON`  : enables the use of a direct FFT solver for the pressure Poisson equation (if set to 0, an iterative multigrid solver based on the HYPRE library will be used. This option is only available for CPU compilation)
+ * `CONSERVATIVE_MOMENTUM`    : solves the momentum equation in divergence form
  * `GPU`                      : enable GPU accelerated runs (requires the `FCOMP=NVIDIA`)
- * `USE_NVTX`                 : enable [NVTX](https://docs.nvidia.com/nsight-visual-studio-edition/nvtx) markers to tag certain code regions and assist with profiling
 
 Typing `make libs` will build the 2DECOMP&FFT/cuDecomp libraries; then typing `make` will compile the code and copy the executable `cans` to a `run/` folder; `make run` will also copy the default input files `*.in` under `src/` to the same `run/` folder.
 
