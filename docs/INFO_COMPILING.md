@@ -1,6 +1,6 @@
 # Compiling CaNS-Fizzy
 
-For most systems, CaNS-Fizzy can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries and CaNS-Fizzy. `make clean` clears the CaNS-Fizzy build files, `make libsclean` clears the 2DECOMP/cuDecomp builds, and `make allclean` clears both.
+For most systems, CaNS-Fizzy can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries and the code. `make clean` clears the CaNS-Fizzy build files, `make libsclean` clears the 2DECOMP/cuDecomp builds, and `make allclean` clears both.
 
 The `Makefile` in root directory is used to compile the code, and is expected to work out-of-the-box for most systems. The `build.conf` file in the root directory can be used to choose the Fortran compiler (MPI wrapper), a few pre-defined profiles depending on the nature of the run (e.g., production vs debugging), and pre-processing options:
 
