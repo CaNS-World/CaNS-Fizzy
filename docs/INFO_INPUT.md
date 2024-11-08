@@ -359,7 +359,7 @@ The following options are available:
 The corresponding BC **values** (dummy for a periodic direction) are set in `bcpsi` for the volume fraction of phase 1 and in `bcnor` for the components of the interface normal.
 For consistency, the components of the interface normal should be periodic when the volume fraction boundary conditions are periodic.
 
-Note: to conserve mass in the domain, a solid wall boundary requires a homogenous Neumann BC for the volume fraction and a homogeneous Dirichlet BC for the wall-normal component of the interface normal. In this case, the BC for the wall-tangential components of the interface normal should be set to homogenous Neumann.
+Note: to conserve mass in the domain, a solid wall boundary requires a homogeneous Neumann BC for the volume fraction and a homogeneous Dirichlet BC for the wall-normal component of the interface normal. In this case, the BC for the wall-tangential components of the interface normal should be set to homogeneous Neumann.
 
 ---
 
