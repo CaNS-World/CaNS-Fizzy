@@ -1,27 +1,11 @@
-I would like to thank all the great feedback from those who have tried/used/studied CaNS.
-My original intent was to write a useful and fast base Navier-Stokes solver for research,
-but looking back it is clear that my expectations have been exceeded.
-Also, your inputs have led to many important extensions, improvements, and bug fixes.
+We would like to thank Jordi Poblador-Ibanez, Suhas Jain, Naoki Hori, and Bergmann Óli Aðalsteinsson for insightful discussions that led to practical improvements of the numerical method.
 
-The list of people to thank is too large to place here, as I risk being being unfair
-and missing names. If you feel you deserve a special token of appreciation, please
-write and I am happy to send out a few Portuguese Pasteis de Nata.
+This work was partially supported by a Cohesion Grant from the Mechanical Engineering Faculty at TU Delft awarded to Pedro Costa and Peter Wellens.
 
-								Pedro Costa (2022)
+This code is meant to serve as an efficient base multiphase Navier-Stokes solver to be used at our faculty and beyond, and maintained in synchrony with its parent single-phase solver CaNS. The idea is that scientists can easily incorporate more complex numerical methods and physics in this numerical tool, and that interesting developments can be easily incorporated here. He hope it will come in as useful to others as it has been for us.
 
----
+Giandomenico Lupo
+Peter Wellens
+Pedro Costa
 
-I would like to acknowledge Wim-Paul Breugem and Bendiks Jan Boersma from the TU
-Delft for fruitful discussions that motivated the development of this code.
-Although written from scratch, this code was deeply influenced by an in-house
-FORTRAN code for turbulent channel flow developed by WPB.
-
-The routines for performing global transpositions are based on the 2decomp&fft
-library (http://www.2decomp.org/decomp.html). Some modifications to these
-routines have been performed in the CFD code AFiD
-(https://github.com/PhysicsofFluids/AFiD), and ported to this code.
-
-Moreover, the initialization of Multi-Threaded FFTs with the FFTW guru interface
-was inspired by AFiD's implementation.
-
-								Pedro Costa (2017)
+November 2024
