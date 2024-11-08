@@ -317,15 +317,17 @@ inipsi          = 'bub3'
 * `cap-wav-1d`: planar small-amplitude capillary wave
 * `zalesak-disk`: two-dimensional (lighter phase) slotted disk
 
-See `two_fluid.f90` for more details. For the `bub` and `drp` initial fields, the position and size of the films/bubbles/droplets are specified in the `spheres.in` file, where each line corresponds to an individual bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius.
-For example, the following file introduces in the computational domain two bubbles/droplets, the first centered at `x=0.3`, `y=1.`, `z=0.5` and with a radius of `0.25`, the second centered at `x=1.5`, `y=0.6`, `z=1.` and with a radius of `0.5`.
+See `two_fluid.f90` for more details. For the `bub[1-3]` and `drp[1-3]` initial fields, the position and size of the films/bubbles/droplets can be specified by a `spheres.in` file, where each line corresponds to an individual spherical/circular/planar bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius.
+For example, the following file introduces in the computational domain two bubbles/droplets, the first centered at `[x,y,z] = [0.3,1.,0.5]` with a radius of `0.25`, and the second centered at `[1.5,0.6,1.]` with radius `0.5`.
 
 ```fortran
 0.3 1.  0.5 0.25
 1.5 0.6 1.  0.5
 ```
 
-If `spheres.in` is used to initialize a planar film (options `bub1` and `drp1`), then the radius value will represent the film thickness, and the film will be aligned along the XY plane.
+In the case of a planar film (the one-dimensional limit of the sphere), the radius will represent the film thickness, and the film will be aligned along the X-Y plane.
+
+Finally, if the `spheres.in` file is not specified, the solver will initialize a single sphere, located at the center of the domain, with a size of `0.25` times the smallest domain length, excluding homogeneous directions for 2D and 1D initializations.
 
 ---
 
@@ -355,7 +357,9 @@ The following options are available:
 * `N` Neumann
 
 The corresponding BC **values** (dummy for a periodic direction) are set in `bcpsi` for the volume fraction of phase 1 and in `bcnor` for the components of the interface normal.
-For consistency, the components of the interface normal should be periodic when the volume fraction boundary conditions are periodic. In order to conserve mass in the domain, a wall boundary requires a homogenous Neumann BC for the volume fraction and a homogeneous Dirichlet BC for the wall-normal component of the interface normal. In this case the BC for the wall-tangential components of the interface normal should be set to homogenous Neumann.
+For consistency, the components of the interface normal should be periodic when the volume fraction boundary conditions are periodic.
+
+Note: to conserve mass in the domain, a solid wall boundary requires a homogenous Neumann BC for the volume fraction and a homogeneous Dirichlet BC for the wall-normal component of the interface normal. In this case, the BC for the wall-tangential components of the interface normal should be set to homogenous Neumann.
 
 ---
 
@@ -370,8 +374,8 @@ beta12(1:2)     = 0., 0.
 
 These lines specify the physical and transport properties of the two-phase system.
 
-`sigma` sets the value of the surface tension at the two-phase interface.
-`rho12` sets the value of the density of each phase. _Note: the initial conditions have been designed to consider phase 1 as the densest one._
+`sigma` sets the value of the surface tension coefficient at the two-phase interface.
+`rho12` sets the value of the density of each phase.
 `mu12` sets the value of the dynamic viscosity of each phase.
 `ka12` sets the value of the thermal conductivity of each phase.
 `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
@@ -384,7 +388,7 @@ acdi_gam_factor = 1., acdi_gam_min = 0.
 acdi_eps_factor = 0.51
 ```
 
-These lines set the computational parameters specific to the phase field solver.
+These lines set the computational parameters specific to the conservative diffuse interface method for interface tracking. In general, these default values should be left unchanged.
 
 `acdi_gam_factor` sets the speed of the interface relaxation, relative to the maximum flow velocity. It should always be equal to or larger than `1`.
 `acdi_gam_min` sets a lower threshold for the speed of the interface relaxation.
