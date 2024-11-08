@@ -440,8 +440,6 @@ program cans
     po(:,:,:) = pn(:,:,:)
     pn(:,:,:) =  p(:,:,:)
     !$acc end kernels
-#else
-    po(:,:,:) = p(:,:,:)
 #endif
     !
     ! check simulation stopping criteria
