@@ -38,3 +38,11 @@
   call write_visu_2d(datadir,'p_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Pressure_P', &
                      2,ng(2)/2,ng,time,istep, &
                      p(1:n(1),1:n(2),1:n(3)))
+  call write_visu_2d(datadir,'psi_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Psi', &
+                     2,ng(2)/2,ng,time,istep, &
+                     psi(1:n(1),1:n(2),1:n(3)))
+#if defined(_SCALAR)
+  call write_visu_2d(datadir,'sca_slice_fld_'//fldnum//'.bin','log_visu_2d_slice_1.out','Temperature', &
+                     2,ng(2)/2,ng,time,istep, &
+                     s(1:n(1),1:n(2),1:n(3)))
+#endif

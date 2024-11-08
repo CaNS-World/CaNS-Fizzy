@@ -244,7 +244,7 @@ module mod_two_fluid
     end do
   end subroutine cmpt_curv_fd2
   !
-  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,dzf_g,zc_g,psi)
+  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,zc_g,psi)
     use mod_common_mpi, only: myid
     !
     ! computes initial conditions for the volume fraction field psi
@@ -252,10 +252,10 @@ module mod_two_fluid
     implicit none
     character(len=*), intent(in) :: inipsi
     character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
-    real(rp), intent(in)               :: seps
-    integer , intent(in), dimension(3) :: lo,hi
-    real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), dimension(0:), intent(out) :: dzf_g,zc_g
+    real(rp), intent(in)                :: seps
+    integer , intent(in), dimension(3)  :: lo,hi
+    real(rp), intent(in), dimension(3)  :: l,dl
+    real(rp), intent(in), dimension(0:) :: zc_g
     real(rp), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:), intent(out) :: psi
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
