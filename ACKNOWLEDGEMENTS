@@ -2,7 +2,7 @@ We would like to thank Jordi Poblador-Ibanez, Suhas Jain, Naoki Hori, and Bergma
 
 This work was partially supported by a Cohesion Grant from the Mechanical Engineering Faculty at TU Delft awarded to Pedro Costa and Peter Wellens.
 
-This code is meant to serve as an efficient base multiphase Navier-Stokes solver to be used at our faculty and beyond, and maintained in synchrony with its parent single-phase solver CaNS. The idea is that scientists can easily incorporate more complex numerical methods and physics in this numerical tool, and that interesting developments can be easily incorporated here. He hope it will come in as useful to others as it has been for us.
+This code is meant to serve as an efficient base multiphase Navier-Stokes solver to be used at our faculty and beyond, and maintained in synchrony with its parent single-phase solver CaNS. The idea is that scientists can easily incorporate more complex numerical methods and physics in this numerical tool, and that interesting developments can be easily incorporated here. We hope it will come in as useful to others as it has been for us.
 
 Giandomenico Lupo
 Peter Wellens

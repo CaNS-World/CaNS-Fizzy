@@ -34,7 +34,7 @@ Additionally, the `&scalar` namelist contains the computational parameters for s
 
 ```fortran
 &scalar
-inisca          = 'dht'
+inisca          = 'dhc'
 cbcsca(0:1,1:3) = 'P','P',  'P','P',  'D','D'
 bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   1.,0.
 ssource         = 0.
@@ -255,7 +255,7 @@ This line sets the grid of computational subdomains.
 ---
 
 ```fortran
-inisca          = 'dht'
+inisca          = 'dhc'
 ```
 
 `inisca` **chooses the initial scalar field** (e.g. temperature). The following options are available:
