@@ -29,7 +29,7 @@ by pressing <kbd>enter</kbd> three times, the default values in the square brack
 
 ### 2D fields
 
-The procedure for visualizing 2D field data that is saved by *CaNS-Fizzy* in `out2d.h90` is exactly the same; albeit the correct log file should be selected. *CaNS-Fizzy* saves by default field data in a plane of constant `y=ly/2`, and logs the saves to a file named `log_visu_2d_slice_1.out`. If more planes are saved, the user should make sure that one log file per plane is saved by *CaNS-Fizzy* (e.g. if another plane is saved, the log file written in `out2d.h90` could be named `log_visu_2d_slice_2.out`); see `out2d.h90` for more details. The corresponding steps to generate the Xdmf file would be, for instance:
+The procedure for visualizing 2D field data that is saved by *CaNS-Fizzy* in `out2d.h90` is exactly the same; albeit the correct log file should be selected. The code saves by default field data in a plane of constant `y=ly/2`, and logs the saves to a file named `log_visu_2d_slice_1.out`. If more planes are saved, the user should make sure that one log file per plane is saved (e.g. if another plane is saved, the log file written in `out2d.h90` could be named `log_visu_2d_slice_2.out`); see `out2d.h90` for more details. The corresponding steps to generate the Xdmf file would be, for instance:
 
 ~~~
  $ python write_xdmf.py
