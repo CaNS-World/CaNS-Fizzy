@@ -311,10 +311,12 @@ program cans
   !$acc wait
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+#if defined(_CONSTANT_COEFFS_POISSON)
   !$acc kernels default(present) async(1)
   pn(:,:,:) =  p(:,:,:)
   po(:,:,:) = pn(:,:,:)
   !$acc end kernels
+#endif
 #if defined(_SCALAR)
   !$acc enter data copyin(s)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
@@ -433,10 +435,14 @@ program cans
         call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
       end if
     end do
+#if defined(_CONSTANT_COEFFS_POISSON)
     !$acc kernels default(present) async(1)
     po(:,:,:) = pn(:,:,:)
     pn(:,:,:) =  p(:,:,:)
     !$acc end kernels
+#else
+    po(:,:,:) = p(:,:,:)
+#endif
     !
     ! check simulation stopping criteria
     !
