@@ -27,7 +27,6 @@ contains
     implicit none
     integer :: istat
     integer(i8) :: wsize,max_wsize
-    integer :: nhalo(3)
     !
     ! allocate cuDecomp workspace buffer for transposes (reused for FFTs)
     !
@@ -47,8 +46,7 @@ contains
     ! (needs to be different due to the possible need of an NVSHMEM allocator
     !  in one of the descriptors, rather than a simple cudaMaloc)
     !
-    nhalo(:) = nh
-    istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nhalo,max_wsize)
+    istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nh,max_wsize)
     allocate(work_halo(max_wsize))
     !
     istat = cudecompMalloc(handle,gd_halo,work_halo_cuda,max_wsize)

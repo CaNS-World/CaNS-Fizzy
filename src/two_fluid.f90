@@ -32,23 +32,23 @@ module mod_two_fluid
     !$acc end kernels
   end subroutine update_property
   !
-  subroutine clip_field(nhalo,minmax,p)
+  subroutine clip_field(nh,minmax,p)
     !
     ! clips a scalar field to certain maximum and minimum values
     !
     implicit none
-    integer , intent(in   ), dimension(3) :: nhalo
+    integer , intent(in   ), dimension(3) :: nh
     real(rp), intent(in   ), dimension(2) :: minmax
-    real(rp), intent(inout), dimension(1-nhalo(1):,1-nhalo(2):,1-nhalo(3):) :: p
+    real(rp), intent(inout), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: p
     real(rp) :: rmin,rmax
     integer :: n1,n2,n3,nh1,nh2,nh3,i,j,k
     !
-    n1 = size(p,1)-2*nhalo(1)
-    n2 = size(p,2)-2*nhalo(2)
-    n3 = size(p,3)-2*nhalo(3)
-    nh1 = nhalo(1)
-    nh2 = nhalo(2)
-    nh3 = nhalo(3)
+    n1 = size(p,1)-2*nh(1)
+    n2 = size(p,2)-2*nh(2)
+    n3 = size(p,3)-2*nh(3)
+    nh1 = nh(1)
+    nh2 = nh(2)
+    nh3 = nh(3)
     rmin = minmax(1); rmax = minmax(2)
     !
     !$acc parallel loop collapse(3) default(present) firstprivate(rmin,rmax) async(1)

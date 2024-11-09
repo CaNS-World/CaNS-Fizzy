@@ -92,15 +92,13 @@ contains
     !
     use mod_types, only: i8,rp
     integer, intent(in), dimension(3) :: n,n_z
-    integer :: nhalo(3)
     integer(i8) :: itotal,itemp,rp_size
     rp_size = f_sizeof(1._rp)
     itotal = 0
     !
     ! 1. 'main' arrays: u,v,w,p,pp
     !
-    nhalo(:) = nh
-    itotal = itotal + product(n(:)+2*nhalo(:))*rp_size*5
+    itotal = itotal + product(n(:)+2*nh(:))*rp_size*5
     !
     ! 2. grids arrays: zc,zf,dzc,dzf,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f (tiny footprint)
     !
