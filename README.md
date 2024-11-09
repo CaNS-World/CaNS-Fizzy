@@ -24,7 +24,7 @@ Some features are:
 
 ## Motivation
 
-This numerical tool serves as an efficient base Navier-Stokes solver for high-resolution simulations of turbulent flows with two immiscible incompressible fluid phases. It enables the simulation of two-phase flow in canonical configurations on modern (GPU-based) parallel computing architectures, taking advantage of the efficiency of the base single-phase solver that was used as the starting point. The ACDI method for interface capturing has been selected due to its accuracy and suitability for GPU-based simulations. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies to, for instance, introduce complex geometries (such as immersed-boundary methods). Future extensions of the solver with different interface-tracking methods are planned.
+This numerical tool serves as an efficient base Navier-Stokes solver for high-resolution simulations of turbulent flows with two immiscible incompressible fluid phases. It enables the simulation of two-phase flow in canonical configurations on modern (GPU-based) parallel computing architectures, taking advantage of the efficiency of the base single-phase solver that was used as the starting point. The ACDI method for interface capturing has been selected due to its accuracy and suitability for GPU-based simulations. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies to, for instance, introduce complex geometries (such as immersed-boundary methods). Future extensions of the solver with other interface-capturing methods are planned.
 
 ## Method
 
