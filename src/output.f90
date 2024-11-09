@@ -8,6 +8,7 @@ module mod_output
   use mpi
   use decomp_2d_io
   use mod_common_mpi, only:ierr,myid
+  use mod_param     , only:nh
   use mod_types
   implicit none
   private
@@ -69,12 +70,12 @@ module mod_output
     !
     implicit none
     character(len=*), intent(in) :: fname
-    integer , intent(in), dimension(3) :: ng,lo,hi
-    integer , intent(in) :: idir
-    real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(0:       ) :: z_g
-    real(rp), intent(in), dimension(lo(3)-1:) :: dz
-    real(rp), intent(in), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p
+    integer , intent(in), dimension(3)         :: ng,lo,hi
+    integer , intent(in)                       :: idir
+    real(rp), intent(in), dimension(3)         :: l,dl
+    real(rp), intent(in), dimension(nh-1:    ) :: z_g
+    real(rp), intent(in), dimension(lo(3)-nh:) :: dz
+    real(rp), intent(in), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: p
     real(rp), allocatable, dimension(:) :: p1d
     integer :: i,j,k
     integer :: iunit
@@ -314,8 +315,8 @@ module mod_output
     integer , intent(in), dimension(3) :: ng,lo,hi
     integer , intent(in) :: idir
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(0:) :: z_g
-    real(rp), intent(in), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: u,v,w
+    real(rp), intent(in), dimension(nh-1:) :: z_g
+    real(rp), intent(in), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: u,v,w
     real(rp), allocatable, dimension(:) :: um,vm,wm,u2,v2,w2,uw
     integer :: i,j,k
     integer :: iunit
@@ -326,7 +327,7 @@ module mod_output
     select case(idir)
     case(3)
       grid_area_ratio = dl(1)*dl(2)/(l(1)*l(2))
-      allocate(um(0:q+1),vm(0:q+1),wm(0:q+1),u2(0:q+1),v2(0:q+1),w2(0:q+1),uw(0:q+1))
+      allocate(um(nh-1:q+1),vm(nh-1:q+1),wm(nh-1:q+1),u2(nh-1:q+1),v2(nh-1:q+1),w2(nh-1:q+1),uw(nh-1:q+1))
       um(:) = 0.
       vm(:) = 0.
       wm(:) = 0.
@@ -383,8 +384,8 @@ module mod_output
     integer , intent(in), dimension(3) :: ng,lo,hi
     integer , intent(in) :: idir
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(0:) :: z_g
-    real(rp), intent(in), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: u,v,w
+    real(rp), intent(in), dimension(nh-1:) :: z_g
+    real(rp), intent(in), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: u,v,w
     real(rp), allocatable, dimension(:,:) :: um,vm,wm,u2,v2,w2,uv,uw,vw
     integer :: i,j,k
     integer :: iunit
@@ -518,10 +519,10 @@ module mod_output
     !
     implicit none
     character(len=*), intent(in) :: fname
-    integer, intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(3) :: dl,l
-    real(rp), intent(in), dimension(0:) :: zc
-    real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w,p,s,psi
+    integer , intent(in), dimension(3)                 :: n
+    real(rp), intent(in), dimension(3)                 :: dl,l
+    real(rp), intent(in), dimension(nh-1:)             :: zc
+    real(rp), intent(in), dimension(nh-1:,nh-1:,nh-1:) :: u,v,w,p,s,psi
     real(rp), allocatable, dimension(:) :: u1_1,u1_2,v1_1,v1_2,w1_1,w1_2,p1_1,p1_2,s1_1,s1_2,c1_1,c1_2, &
                                            u2_1,u2_2,v2_1,v2_2,w2_1,w2_2,p2_1,p2_2,s2_1,s2_2,c2_1,c2_2
     integer :: i,j,k,ii,jj
@@ -628,10 +629,10 @@ module mod_output
     ! computes some volume-averaged profiles along z (assumes constant grid spacing)
     !
     implicit none
-    integer , intent(in ), dimension(3) :: n
-    real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi
+    integer , intent(in ), dimension(3)                 :: n
+    real(rp), intent(in ), dimension(3)                 :: dli
+    real(rp), intent(in ), dimension(nh-1:)             :: dzci,dzfi
+    real(rp), intent(in ), dimension(nh-1:,nh-1:,nh-1:) :: psi
     real(rp), intent(out) :: area
     real(rp), dimension(8) :: mx,my,mz
     real(rp) :: dpsidx,dpsidy,dpsidz
@@ -708,12 +709,12 @@ module mod_output
     ! not too difficult to port to GPU, if later needed
     !
     implicit none
-    integer , intent(in )               :: iphase ! phase 1 or 2?
-    integer , intent(in ), dimension(3) :: lo,hi
-    real(rp), intent(in ), dimension(3) :: dl
-    real(rp), intent(in ), dimension(lo(3)-1:) :: dzf_g,zc_g
-    real(rp), intent(in ), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: psi,u,v,w
-    real(rp), intent(out), dimension(3) :: pos,vel
+    integer , intent(in )                                           :: iphase ! phase 1 or 2?
+    integer , intent(in ), dimension(3)                             :: lo,hi
+    real(rp), intent(in ), dimension(3)                             :: dl
+    real(rp), intent(in ), dimension(lo(3)-nh:)                     :: dzf_g,zc_g
+    real(rp), intent(in ), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: psi,u,v,w
+    real(rp), intent(out), dimension(3)                             :: pos,vel
     real(rp) :: aux,sgn,xc,yc,zc,vol_loc,vol
     integer  :: i,j,k
     !
@@ -761,12 +762,12 @@ module mod_output
     ! computes total mass of the system
     !
     implicit none
-    integer , intent(in ), dimension(3)        :: n
-    real(rp), intent(in ), dimension(3)        :: dl
-    real(rp), intent(in ), dimension(0:)       :: dzf
-    real(rp), intent(in ), dimension(2)        :: rho12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out), dimension(2)        :: mass12
+    integer , intent(in ), dimension(3)                 :: n
+    real(rp), intent(in ), dimension(3)                 :: dl
+    real(rp), intent(in ), dimension(nh-1:)             :: dzf
+    real(rp), intent(in ), dimension(2)                 :: rho12
+    real(rp), intent(in ), dimension(nh-1:,nh-1:,nh-1:) :: psi
+    real(rp), intent(out), dimension(2)                 :: mass12
     real(rp) :: vcell,mass1,mass2
     integer :: i,j,k
     !
@@ -794,12 +795,12 @@ module mod_output
     ! computes total kinetic energy of the system
     !
     implicit none
-    integer , intent(in ), dimension(3)        :: n
-    real(rp), intent(in ), dimension(3)        :: dl
-    real(rp), intent(in ), dimension(0:)       :: dzf
-    real(rp), intent(in ), dimension(2)        :: rho12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
-    real(rp), intent(out), dimension(2)        :: en12
+    integer , intent(in ), dimension(3)                 :: n
+    real(rp), intent(in ), dimension(3)                 :: dl
+    real(rp), intent(in ), dimension(nh-1:)             :: dzf
+    real(rp), intent(in ), dimension(2)                 :: rho12
+    real(rp), intent(in ), dimension(nh-1:,nh-1:,nh-1:) :: psi,u,v,w
+    real(rp), intent(out), dimension(2)                 :: en12
     real(rp) :: vcell,ecell,en1,en2
     integer :: i,j,k
     !
