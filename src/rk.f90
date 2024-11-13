@@ -14,7 +14,7 @@ module mod_rk
   public rk,rk_scal,rk_2fl
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt,dt_r, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pn,po,psio, &
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,psio,s, &
                 acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
     !
     ! RK3 scheme for time integration of the momentum equations
@@ -29,9 +29,9 @@ module mod_rk
     real(rp), intent(in   )                :: sigma,rho_av
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: psi,kappa,s
+    real(rp), intent(in   ), dimension(0:,0:,0:)           :: psi,kappa
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: p
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po,psio
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po,psio,s
     real(rp), intent(in   ), dimension(0:,0:,0:), optional :: acdi_rgx,acdi_rgy,acdi_rgz
     real(rp), intent(inout), dimension(0:,0:,0:)           :: u,v,w
     real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
@@ -63,7 +63,7 @@ module mod_rk
     !
     ! advection, diffusion and regularization terms
     !
-    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rgx,acdi_rgy,acdi_rgz,u,v,w,psi,psio(:,:,:),dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rgx,acdi_rgy,acdi_rgz,u,v,w,psi,psio,dudtrk,dvdtrk,dwdtrk)
     !
     if(is_first) then
       !$acc kernels default(present) async(1)
@@ -156,17 +156,18 @@ module mod_rk
     logical, save :: is_first = .true.
     real(rp) :: factor1,factor2,factor12
     integer :: i,j,k
-    real(rp), dimension(2) :: rhocp12
+    real(rp), dimension(2), save :: rhocp12
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
-    rhocp12 = rho12(:)*cp12(:)
     if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dsdtrk_t(n(1),n(2),n(3)),dsdtrko_t(n(1),n(2),n(3)))
       !$acc enter data create(dsdtrk_t,dsdtrko_t) async(1)
       dsdtrk  => dsdtrk_t
       dsdtrko => dsdtrko_t
+      rhocp12(:) = rho12(:)*cp12(:)
+      !$acc wait(1)
     end if
     call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ssource,ka12,rhocp12,psi,u,v,w,s,dsdtrk)
     if(is_first) then

@@ -23,7 +23,7 @@ module mod_scal
     integer :: i,j,k
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
-    real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm
+    real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c
     real(rp) :: ka,dka,rhocp,drhocp
     !
     ka    = ka12(2)   ; dka    = ka12(1)-ka12(2)
@@ -32,7 +32,7 @@ module mod_scal
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(usip,usim,vsjp,vsjm,wskp,wskm) &
     !$acc private(dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm) &
-    !$acc private(kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp) async(1)
+    !$acc private(kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -57,14 +57,14 @@ module mod_scal
           dsdzp = (s(i,j,k+1)-s(i,j,k  ))*dzci(k  )
           dsdzm = (s(i,j,k  )-s(i,j,k-1))*dzci(k-1)
           !
-          rhocp = rhocp+drhocp*psi(i,j,k)
+          rhocp_c = rhocp+drhocp*psi(i,j,k)
           !
           dsdt(i,j,k) = dxi*(     -usip + usim ) + &
                         dyi*(     -vsjp + vsjm ) + &
                         dzfi(k)*( -wskp + wskm ) + &
                         ( (kaxp*dsdxp-kaxm*dsdxm)*dxi + &
                           (kayp*dsdyp-kaym*dsdym)*dyi + &
-                          (kazp*dsdzp-kazm*dsdzm)*dzfi(k) + ssource )/rhocp
+                          (kazp*dsdzp-kazm*dsdzm)*dzfi(k) + ssource )/rhocp_c
         end do
       end do
     end do
