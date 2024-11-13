@@ -387,7 +387,7 @@ program cans
       if(is_track_interface) then
         call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,acdi_rgx,acdi_rgy,acdi_rgz)
 #if defined(_CONSERVATIVE_MOMENTUM)
-        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
+        call bounduvw(cbcnor,n,bcnor,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
 #endif
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
         call acdi_cmpt_phi(n,seps,psi,phi)
