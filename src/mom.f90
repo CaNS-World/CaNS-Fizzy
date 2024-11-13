@@ -992,8 +992,8 @@ module mod_mom
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: p,psi,kappa,s
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po
+    real(rp), intent(in   ), dimension(0:,0:,0:)           :: p,psi,kappa
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: s,pn,po
     real(rp), intent(inout), dimension( :, :, :)           :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
