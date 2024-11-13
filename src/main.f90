@@ -188,8 +188,8 @@ program cans
            rhsbp%z(n(1),n(2),0:1))
   allocate(psi,phi,kappa,normx,normy,normz,mold=pp)
 #if defined(_CONSERVATIVE_MOMENTUM)
+  allocate(psio,mold=pp)
   allocate(acdi_rgx,acdi_rgy,acdi_rgz,mold=pp)
-  if(.not. allocated(psio)) allocate(psio(0:n(1)+1,0:n(2)+1,0:n(3)+1))
 #endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
@@ -318,13 +318,15 @@ program cans
   !$acc end kernels
 #endif
 #if defined(_SCALAR)
-  !$acc enter data copyin(s)
+  !$acc enter data copyin(s) async(1)
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
+  !$acc wait
 #endif
-  !$acc enter data copyin(psi) create(phi,kappa,normx,normy,normz)
-  !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz)
-  !$acc enter data create(psio)
+  !$acc enter data copyin(psi) create(phi,kappa,normx,normy,normz) async(1)
+  !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz) async(1)
+  !$acc enter data create(psio) async(1)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+  !$acc wait
   !
   call acdi_cmpt_phi(n,seps,psi,phi)
   call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
@@ -347,7 +349,7 @@ program cans
   !
   write(fldnum,'(i7.7)') istep
   !$acc wait
-  !$acc update self(u,v,w,p,psi,kappa)
+  !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out1d.h90"
 #include "out2d.h90"
 #include "out3d.h90"
@@ -387,7 +389,7 @@ program cans
       if(is_track_interface) then
         call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,acdi_rgx,acdi_rgy,acdi_rgz)
 #if defined(_CONSERVATIVE_MOMENTUM)
-        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
+        call bounduvw(cbcnor,n,bcnor,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
 #endif
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
         call acdi_cmpt_phi(n,seps,psi,phi)
@@ -412,7 +414,7 @@ program cans
           call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
         end if
         call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,s,p,pn,po,psio, &
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,psio,s, &
                 acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
         if(is_forced_hit) then
           call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
@@ -501,17 +503,17 @@ program cans
     write(fldnum,'(i7.7)') istep
     if(mod(istep,iout1d) == 0) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa)
+      !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out1d.h90"
     end if
     if(mod(istep,iout2d) == 0) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa)
+      !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out2d.h90"
     end if
     if(mod(istep,iout3d) == 0) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa)
+      !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out3d.h90"
     end if
     if(mod(istep,isave ) == 0.or.(is_done.and..not.kill)) then
@@ -531,7 +533,7 @@ program cans
         end if
       end if
       !$acc wait
-      !$acc update self(u,v,w,p,psi)
+      !$acc update self(u,v,w,p,psi,s)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
       call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
