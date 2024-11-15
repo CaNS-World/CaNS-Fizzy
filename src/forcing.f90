@@ -20,7 +20,7 @@ module mod_forcing
     integer , intent(in), dimension(3) :: lo,hi
     real(rp), intent(in) :: alpha,dt
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(0:) :: zc,zf
+    real(rp), intent(in), dimension(lo(3)-1:) :: zc,zf
     real(rp), intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: u,v,w
     !
     real(rp) :: f0,factor
