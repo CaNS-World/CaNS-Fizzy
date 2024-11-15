@@ -289,7 +289,6 @@ program cans
   if(.not.restart) then
     istep = 0
     time = 0.
-    !$acc update self(zc,dzc,dzf)
     call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
 #if defined(_SCALAR)
     call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
