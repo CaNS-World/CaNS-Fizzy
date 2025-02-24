@@ -10,7 +10,7 @@ module mod_scal
   private
   public scal_ad,cmpt_scalflux
   contains
-  subroutine scal_ad(nx,ny,nz,dxi,dyi,dzci,dzfi,ssource,ka12,rhocp12,psi,u,v,w,s,dsdt)
+  subroutine scal_ad(nx,ny,nz,dxi,dyi,dzci,dzfi,ssource,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
@@ -18,7 +18,8 @@ module mod_scal
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
     real(rp), intent(in) :: ssource
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
-    real(rp), dimension(0:,0:,0:), intent(in) :: psi,u,v,w,s
+    real(rp), intent(in), dimension(0:,0:,0:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in), dimension(0:,0:,0:) :: psi,u,v,w,s
     real(rp), dimension(:,:,:), intent(out) :: dsdt
     integer :: i,j,k
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
@@ -29,19 +30,25 @@ module mod_scal
     ka    = ka12(2)   ; dka    = ka12(1)-ka12(2)
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     !
-    !$acc parallel loop collapse(3) default(present) &
-    !$acc private(usip,usim,vsjp,vsjm,wskp,wskm) &
-    !$acc private(dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm) &
-    !$acc private(kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c) async(1)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-          usim  = 0.5*(s(i-1,j,k)+s(i,j,k))*u(i-1,j,k)
-          usip  = 0.5*(s(i+1,j,k)+s(i,j,k))*u(i  ,j,k)
-          vsjm  = 0.5*(s(i,j-1,k)+s(i,j,k))*v(i,j-1,k)
-          vsjp  = 0.5*(s(i,j+1,k)+s(i,j,k))*v(i,j  ,k)
-          wskm  = 0.5*(s(i,j,k-1)+s(i,j,k))*w(i,j,k-1)
-          wskp  = 0.5*(s(i,j,k+1)+s(i,j,k))*w(i,j,k  )
+#if defined(_CONSISTENT_ADVECTION)
+          usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
+          usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
+          vsjm = 0.5*(rhocp*v(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(s(i,j-1,k)+s(i,j,k))
+          vsjp = 0.5*(rhocp*v(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(s(i,j+1,k)+s(i,j,k))
+          wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
+          wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
+#else
+          usip = 0.5*u(i  ,j,k)*(s(i+1,j,k)+s(i,j,k))
+          usim = 0.5*u(i-1,j,k)*(s(i-1,j,k)+s(i,j,k))
+          vsjm = 0.5*v(i,j-1,k)*(s(i,j-1,k)+s(i,j,k))
+          vsjp = 0.5*v(i,j  ,k)*(s(i,j+1,k)+s(i,j,k))
+          wskp = 0.5*w(i,j,k  )*(s(i,j,k+1)+s(i,j,k))
+          wskm = 0.5*w(i,j,k-1)*(s(i,j,k-1)+s(i,j,k))
+#endif
           !
           kaxp = ka+dka*0.5*(psi(i+1,j,k)+psi(i  ,j,k))
           kaxm = ka+dka*0.5*(psi(i  ,j,k)+psi(i-1,j,k))
@@ -57,14 +64,19 @@ module mod_scal
           dsdzp = (s(i,j,k+1)-s(i,j,k  ))*dzci(k  )
           dsdzm = (s(i,j,k  )-s(i,j,k-1))*dzci(k-1)
           !
-          rhocp_c = rhocp+drhocp*psi(i,j,k)
-          !
+#if defined(_CONSISTENT_ADVECTION)
           dsdt(i,j,k) = dxi*(     -usip + usim ) + &
                         dyi*(     -vsjp + vsjm ) + &
                         dzfi(k)*( -wskp + wskm ) + &
+#else
+          rhocp_c = rhocp+drhocp*psi(i,j,k)
+          dsdt(i,j,k) = ( dxi*(     -usip + usim ) + &
+                          dyi*(     -vsjp + vsjm ) + &
+                          dzfi(k)*( -wskp + wskm ) )*rhocp_c + &
+#endif
                         ( (kaxp*dsdxp-kaxm*dsdxm)*dxi + &
                           (kayp*dsdyp-kaym*dsdym)*dyi + &
-                          (kazp*dsdzp-kazm*dsdzm)*dzfi(k) + ssource )/rhocp_c
+                          (kazp*dsdzp-kazm*dsdzm)*dzfi(k) + ssource )
         end do
       end do
     end do

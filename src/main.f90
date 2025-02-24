@@ -130,9 +130,8 @@ program cans
   !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,phi,kappa,normx,normy,normz, &
-                                             acdi_rgx,acdi_rgy,acdi_rgz
-  real(rp), allocatable, dimension(:,:,:) :: psio
+  real(rp), allocatable, dimension(:,:,:) :: psi,psio,phi,kappa,normx,normy,normz, &
+                                             psiflx_x,psiflx_y,psiflx_z
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -187,9 +186,9 @@ program cans
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
   allocate(psi,phi,kappa,normx,normy,normz,mold=pp)
-#if defined(_CONSERVATIVE_MOMENTUM)
   allocate(psio,mold=pp)
-  allocate(acdi_rgx,acdi_rgy,acdi_rgz,mold=pp)
+#if defined(_CONSISTENT_ADVECTION)
+  allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
 #endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
@@ -322,8 +321,7 @@ program cans
   !$acc wait
 #endif
   !$acc enter data copyin(psi) create(phi,kappa,normx,normy,normz) async(1)
-  !$acc enter data create(acdi_rgx,acdi_rgy,acdi_rgz) async(1)
-  !$acc enter data create(psio) async(1)
+  !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !$acc wait
   !
@@ -333,12 +331,6 @@ program cans
   call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
   call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
-  !
-#if defined(_CONSERVATIVE_MOMENTUM)
-  !$acc kernels default(present) async(1)
-  psio(:,:,:) = psi(:,:,:)
-  !$acc end kernels
-#endif
   !
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   gam = max(gam,acdi_gam_min)
@@ -380,15 +372,13 @@ program cans
       !
       ! phase field update
       !
-#if defined(_CONSERVATIVE_MOMENTUM)
       !$acc kernels default(present) async(1)
       psio(:,:,:)   = psi(:,:,:)
       !$acc end kernels
-#endif
       if(is_track_interface) then
-        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,acdi_rgx,acdi_rgy,acdi_rgz)
-#if defined(_CONSERVATIVE_MOMENTUM)
-        call bounduvw(cbcnor,n,bcnor,nb,is_bound,.false.,dl,dzc,dzf,acdi_rgx,acdi_rgy,acdi_rgz)
+        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
+#if defined(_CONSISTENT_ADVECTION)
+        call bounduvw(cbcnor,n,bcnor,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
 #endif
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
         call acdi_cmpt_phi(n,seps,psi,phi)
@@ -397,9 +387,17 @@ program cans
         call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
         call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
         call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      else
+#if defined(_CONSISTENT_ADVECTION)
+        !$acc kernels default(present) async(1)
+        psiflx_x(:,:,:) = 0.
+        psiflx_y(:,:,:) = 0.
+        psiflx_z(:,:,:) = 0.
+        !$acc end kernels
+#endif
       end if
 #if defined(_SCALAR)
-      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,s)
+      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
       call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
       if(.not.is_solve_ns) then
@@ -413,8 +411,8 @@ program cans
           call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
         end if
         call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,psio,s, &
-                acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+                psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
         if(is_forced_hit) then
           call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
         end if
@@ -504,6 +502,20 @@ program cans
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out1d.h90"
+block
+  use mod_output, only: cmpt_mean_mass,cmpt_mean_energy
+  real(rp), dimension(2) :: en12,mass12
+  call cmpt_mean_mass(n,l,dl,dzf,rho12,psi,mass12)
+  call cmpt_mean_energy(n,l,dl,dzf,rho12,psi,u,v,w,en12)
+  var(1) = 1.*istep
+  var(2) = time
+  var(3) = en12(1)
+  var(4) = en12(2)
+  call out0d(trim(datadir)//'log_energy.out',4,var)
+  var(3) = mass12(1)
+  var(4) = mass12(2)
+  call out0d(trim(datadir)//'log_mass.out',4,var)
+end block
     end if
     if(mod(istep,iout2d) == 0) then
       !$acc wait
