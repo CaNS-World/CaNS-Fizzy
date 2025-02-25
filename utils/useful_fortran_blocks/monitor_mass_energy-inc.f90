@@ -1,7 +1,8 @@
 block
+  use mod_output, only: cmpt_total_mass,cmpt_total_energy
   real(rp), dimension(2) :: en12,mass12
-  call cmpt_total_energy(n,dl,dzf,rho12,psi,u,v,w,en12)
   call cmpt_total_mass(n,dl,dzf,rho12,psi,mass12)
+  call cmpt_total_energy(n,dl,dzf,rho12,psi,u,v,w,en12)
   var(1) = 1.*istep
   var(2) = time
   var(3) = en12(1)
