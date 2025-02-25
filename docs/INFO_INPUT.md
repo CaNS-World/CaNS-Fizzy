@@ -314,10 +314,13 @@ inipsi          = 'bub3'
 * `drp1`: planar film (heavier phase)
 * `drp2`: two-dimensional (heavier phase) droplets
 * `drp3`: three-dimensional (heavier phase) droplets
+* `dis1`: planar film (same as `drp1`)
+* `dis2`: two-dimensional dispersed circles (same as `drp2`)
+* `dis3`: three-dimensional dispersed spheres (same as `drp3`)
 * `cap-wav-1d`: planar small-amplitude capillary wave
 * `zalesak-disk`: two-dimensional (lighter phase) slotted disk
 
-See `two_fluid.f90` for more details. For the `bub[1-3]` and `drp[1-3]` initial fields, the position and size of the films/bubbles/droplets can be specified by a `spheres.in` file, where each line corresponds to an individual spherical/circular/planar bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius.
+See `two_fluid.f90` for more details. For the `bub[1-3]`, `drp[1-3]`, and `dis[1-3]` initial fields, the position and size of the films/bubbles/droplets can be specified by a `spheres.in` file, where each line corresponds to an individual spherical/circular/planar bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius. **Note:** _The recommended way to initialize a dispersed multiphase flow is to use `dis?`, with phase 1 being the dispersed phase, and phase 2 the continuous one. This is important because `inivel` above considers phase 2 as the continuous one._
 For example, the following file introduces in the computational domain two bubbles/droplets, the first centered at `[x,y,z] = [0.3,1.,0.5]` with a radius of `0.25`, and the second centered at `[1.5,0.6,1.]` with radius `0.5`.
 
 ```fortran

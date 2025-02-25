@@ -290,19 +290,19 @@ module mod_two_fluid
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
-    case('drp3')
+    case('drp3','dis3')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
       is_swap_pf = .true.
-    case('drp2')
+    case('drp2','dis2')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.true. ,.false.,.true. ] ! cylinder in xz plane
       !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder in xy plane
       !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder in yz plane
       is_sphere = .true.
       is_swap_pf = .true.
-    case('drp1')
+    case('drp1','dis1')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
