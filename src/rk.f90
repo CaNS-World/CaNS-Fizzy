@@ -161,7 +161,7 @@ module mod_rk
       rhocp12(:) = rho12(:)*cp12(:)
       !$acc wait(1)
     end if
-    call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ssource,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdtrk)
+    call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdtrk)
     if(is_first) then
       !$acc kernels default(present) async(1)
       dsdtrko(:,:,:) = dsdtrk(:,:,:)

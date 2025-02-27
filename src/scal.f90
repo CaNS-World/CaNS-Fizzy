@@ -10,13 +10,12 @@ module mod_scal
   private
   public scal_ad,cmpt_scalflux
   contains
-  subroutine scal_ad(nx,ny,nz,dxi,dyi,dzci,dzfi,ssource,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
+  subroutine scal_ad(nx,ny,nz,dxi,dyi,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in) :: ssource
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
     real(rp), intent(in), dimension(0:,0:,0:), optional :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in), dimension(0:,0:,0:) :: psi,u,v,w,s
@@ -76,7 +75,7 @@ module mod_scal
 #endif
                         ( (kaxp*dsdxp-kaxm*dsdxm)*dxi + &
                           (kayp*dsdyp-kaym*dsdym)*dyi + &
-                          (kazp*dsdzp-kazm*dsdzm)*dzfi(k) + ssource )
+                          (kazp*dsdzp-kazm*dsdzm)*dzfi(k) )
         end do
       end do
     end do
