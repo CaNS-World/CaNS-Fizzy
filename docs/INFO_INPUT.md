@@ -8,7 +8,7 @@ Consider the following input file as example (corresponds to a turbulent plane c
 ng(1:3) = 512, 256, 144
 l(1:3) = 6., 3., 1.
 gtype = 1, gr = 0.
-cfl = 0.95, dtmin = 1.e5, dt_f = -1
+cfl = 0.95, dtmax = 1.e5, dt_f = -1
 is_solve_ns = T, is_track_interface = T
 inivel = 'poi'
 is_wallturb = T, is_forced_hit = F
@@ -98,13 +98,13 @@ These lines set the computational grid.
 ---
 
 ```fortran
-cfl = 0.95, dtmin = 1.e5, dt_f = -1
+cfl = 0.95, dtmax = 1.e5, dt_f = -1
 ```
 
 This line controls the simulation time step.
 
-The time step is set to be equal to `min(cfl*dtmax,dtmin)`, i.e. the minimum value between `dtmin` and `cfl` times the maximum allowable time step `dtmax` (computed every `ickeck` time steps; see below).
-`dtmin` is therefore used when a constant time step, smaller than `cfl*dtmax`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dtmax`. Alternatively, one can force the simulation to advance with a constant time step of arbitrary value, independent of the `dtmax` evaluation, by changing the value of `dt_f` from `-1` to the desired time step.
+The time step is set to be equal to `min(cfl*dtmax,dtmax)`, i.e. the minimum value between `dtmax` and `cfl` times the maximum allowable time step `dtmax` (computed every `ickeck` time steps; see below).
+`dtmax` is therefore used when a constant time step, smaller than `cfl*dtmax`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dtmax`. Alternatively, one can force the simulation to advance with a constant time step of arbitrary value, independent of the `dtmax` evaluation, by changing the value of `dt_f` from `-1` to the desired time step.
 
 ---
 
@@ -197,7 +197,7 @@ These lines set the frequency of time step checking and output:
 * every `iout3d` time steps **3d scalar fields** are written to a file
 * every `isave`  time steps a **checkpoint file** is written (`fld_???????.bin`), and a symbolic link for the restart file, `fld.bin`, will point to this last save so that, by default, the last saved checkpoint file is used to restart the simulation
 
-1d, 2d and 3d outputs can be tweaked modifying files `out?d.h90`, and re-compiling the source. See also `output.f90` for more details.
+1d, 2d and 3d outputs can be tweaked modifying files `out?d.h90`, and re-compiling the source. See also `output.f90` for more details. _Set any of these variables to `0` to skip the corresponding operation._
 
 ---
 

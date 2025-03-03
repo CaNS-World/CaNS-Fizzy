@@ -30,7 +30,7 @@ integer , protected, dimension(3) :: ng
 real(rp), protected, dimension(3) :: l
 integer , protected :: gtype
 real(rp), protected :: gr
-real(rp), protected :: cfl,dtmin,dt_f
+real(rp), protected :: cfl,dtmax,dt_f
 logical , protected :: is_solve_ns,is_track_interface
 !
 character(len=100), protected :: inivel,inisca
@@ -92,7 +92,7 @@ contains
                   ng, &
                   l, &
                   gtype,gr, &
-                  cfl,dtmin,dt_f, &
+                  cfl,dtmax,dt_f, &
                   is_solve_ns,is_track_interface, &
                   inivel, &
                   is_wallturb,is_forced_hit, &
@@ -124,7 +124,7 @@ contains
     ng(:) = [128,128,128]
     l(:)  = [1. ,1. ,1. ]
     gtype = 1; gr = 0.
-    cfl = 0.95; dtmin = 1.e9; dt_f = -1.
+    cfl = 0.95; dtmax = 1.e9; dt_f = -1.
     is_solve_ns = .true.; is_track_interface = .true.
     inivel = 'zer'
     is_wallturb = .false.; is_forced_hit = .false.

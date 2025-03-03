@@ -53,7 +53,7 @@ program cans
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
                                  is_solve_ns,is_track_interface, &
-                                 cfl,dtmin,dt_f, &
+                                 cfl,dtmax,dt_f, &
                                  inivel,inisca,inipsi, &
                                  is_wallturb,is_forced_hit, &
                                  dims, &
@@ -102,7 +102,7 @@ program cans
   end type rhs_bound
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
-  real(rp) :: dt,dto,dt_r,dti,dtmax,dtrk,dtrki,time,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dti,dt_cfl,dtrk,dtrki,time,divtot,divmax
   real(rp) :: gam,seps
   integer :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
@@ -341,13 +341,19 @@ program cans
   write(fldnum,'(i7.7)') istep
   !$acc wait
   !$acc update self(u,v,w,p,psi,kappa,s)
+  if(iout1d > 0.and.mod(istep,max(iout1d,1)) == 0) then
 #include "out1d.h90"
+  end if
+  if(iout2d > 0.and.mod(istep,max(iout2d,1)) == 0) then
 #include "out2d.h90"
+  end if
+  if(iout3d > 0.and.mod(istep,max(iout3d,1)) == 0) then
 #include "out3d.h90"
+  end if
   !
-  call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
-  dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
-  if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
+  call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+  dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
+  if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
   dto = dt
   dti = 1./dt
   kill = .false.
@@ -460,10 +466,10 @@ program cans
     end if
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps)
-      dt = min(cfl*dtmax,dtmin); if(dt_f > 0.) dt = dt_f
-      if(myid == 0) print*, 'dtmax = ', dtmax, 'dt = ', dt
-      if(dtmax < small) then
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps)
+      dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
+      if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
+      if(dt_cfl < small) then
         if(myid == 0) print*, 'ERROR: time step is too small.'
         if(myid == 0) print*, 'Aborting...'
         is_done = .true.
@@ -484,7 +490,7 @@ program cans
     !
     ! output routines below
     !
-    if(mod(istep,iout0d) == 0) then
+    if(iout0d > 0.and.mod(istep,max(iout0d,1)) == 0) then
       !allocate(var(4))
       var(1) = 1.*istep
       var(2) = dt
@@ -498,7 +504,7 @@ program cans
       call out0d(trim(datadir)//'log_acdi.out',4,var)
     end if
     write(fldnum,'(i7.7)') istep
-    if(mod(istep,iout1d) == 0) then
+    if(iout1d > 0.and.mod(istep,max(iout1d,1)) == 0) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out1d.h90"
@@ -517,17 +523,17 @@ block
   call out0d(trim(datadir)//'log_mass.out',4,var)
 end block
     end if
-    if(mod(istep,iout2d) == 0) then
+    if(iout2d > 0.and.mod(istep,max(iout2d,1)) == 0) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out2d.h90"
     end if
-    if(mod(istep,iout3d) == 0) then
+    if(iout3d > 0.and.mod(istep,max(iout3d,1)) == 0) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out3d.h90"
     end if
-    if(mod(istep,isave ) == 0.or.(is_done.and..not.kill)) then
+    if(isave > 0.and.((mod(istep,max(isave,1)) == 0).or.(is_done.and..not.kill))) then
       if(is_overwrite_save) then
         filename = 'fld'
       else
