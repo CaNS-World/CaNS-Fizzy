@@ -378,7 +378,7 @@ program cans
       if(is_track_interface) then
         call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
 #if defined(_CONSISTENT_ADVECTION)
-        call bounduvw(cbcnor,n,bcnor,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
 #endif
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
         call acdi_cmpt_phi(n,seps,psi,phi)
