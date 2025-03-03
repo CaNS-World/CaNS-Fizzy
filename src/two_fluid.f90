@@ -338,7 +338,7 @@ module mod_two_fluid
       end do
     case('zalesak-disk')
       !
-      ! Zalesak's disk (WIP, not working yet)
+      ! Zalesak's disk
       !
       block
         real(rp) :: sw,sl,shift,xxc_slot,zzc_slot
@@ -491,7 +491,7 @@ module mod_two_fluid
   pure elemental real(rp) function smooth_step_erf(r,eps) result(res)
     !$acc routine seq
     !
-    ! smooth step function based on the error function
+    ! smooth step function based on the hyperbolic tangent function
     !
     implicit none
     !
