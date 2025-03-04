@@ -86,15 +86,9 @@ module mod_rk
           rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
           rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
           rhoz_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j,k+1))
-#if defined(_CONSISTENT_ADVECTION)
           u(i,j,k) = u(i,j,k)*rhox_n/rhox_p + (factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
           v(i,j,k) = v(i,j,k)*rhoy_n/rhoy_p + (factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
           w(i,j,k) = w(i,j,k)*rhoz_n/rhoz_p + (factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
-#else
-          u(i,j,k) = u(i,j,k)*rhox_n/rhox_p + factor1*dudtrk(i,j,k)/rhox_p + factor2*dudtrko(i,j,k)/rhox_n
-          v(i,j,k) = v(i,j,k)*rhoy_n/rhoy_p + factor1*dvdtrk(i,j,k)/rhox_p + factor2*dvdtrko(i,j,k)/rhox_n
-          w(i,j,k) = w(i,j,k)*rhoz_n/rhoz_p + factor1*dwdtrk(i,j,k)/rhox_p + factor2*dwdtrko(i,j,k)/rhox_n
-#endif
         end do
       end do
     end do
@@ -175,11 +169,7 @@ module mod_rk
         do i=1,n(1)
           rhocp_p = rhocp + drhocp*psi( i,j,k)
           rhocp_n = rhocp + drhocp*psio(i,j,k)
-#if defined(_CONSISTENT_ADVECTION)
           s(i,j,k) = s(i,j,k)*rhocp_n/rhocp_p + (factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
-#else
-          s(i,j,k) = s(i,j,k)*rhocp_n/rhocp_p + factor1*dsdtrk(i,j,k)/rhocp_p + factor2*dsdtrko(i,j,k)/rhocp_n + factor12*ssource/rhocp_p
-#endif
         end do
       end do
     end do

@@ -195,11 +195,9 @@ module mod_acdi
           rglr = (rglrxp-rglrxm)*dxi + (rglryp-rglrym)*dyi + (rglrzp-rglrzm)*dzfi_c
           !
           dpsidt(i,j,k) = -adv + rglr
-#if defined(_CONSISTENT_ADVECTION)
           flux_x(i,j,k) = upsiip - rglrxp
           flux_y(i,j,k) = vpsijp - rglryp
           flux_z(i,j,k) = wpsikp - rglrzp
-#endif
         end do
       end do
     end do

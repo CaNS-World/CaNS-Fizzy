@@ -33,21 +33,12 @@ module mod_scal
     do k=1,nz
       do j=1,ny
         do i=1,nx
-#if defined(_CONSISTENT_ADVECTION)
           usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
           usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
           vsjm = 0.5*(rhocp*v(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(s(i,j-1,k)+s(i,j,k))
           vsjp = 0.5*(rhocp*v(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(s(i,j+1,k)+s(i,j,k))
           wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
           wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
-#else
-          usip = 0.5*u(i  ,j,k)*(s(i+1,j,k)+s(i,j,k))
-          usim = 0.5*u(i-1,j,k)*(s(i-1,j,k)+s(i,j,k))
-          vsjm = 0.5*v(i,j-1,k)*(s(i,j-1,k)+s(i,j,k))
-          vsjp = 0.5*v(i,j  ,k)*(s(i,j+1,k)+s(i,j,k))
-          wskp = 0.5*w(i,j,k  )*(s(i,j,k+1)+s(i,j,k))
-          wskm = 0.5*w(i,j,k-1)*(s(i,j,k-1)+s(i,j,k))
-#endif
           !
           kaxp = ka+dka*0.5*(psi(i+1,j,k)+psi(i  ,j,k))
           kaxm = ka+dka*0.5*(psi(i  ,j,k)+psi(i-1,j,k))
@@ -63,16 +54,9 @@ module mod_scal
           dsdzp = (s(i,j,k+1)-s(i,j,k  ))*dzci(k  )
           dsdzm = (s(i,j,k  )-s(i,j,k-1))*dzci(k-1)
           !
-#if defined(_CONSISTENT_ADVECTION)
           dsdt(i,j,k) = dxi*(     -usip + usim ) + &
                         dyi*(     -vsjp + vsjm ) + &
                         dzfi(k)*( -wskp + wskm ) + &
-#else
-          rhocp_c = rhocp+drhocp*psi(i,j,k)
-          dsdt(i,j,k) = ( dxi*(     -usip + usim ) + &
-                          dyi*(     -vsjp + vsjm ) + &
-                          dzfi(k)*( -wskp + wskm ) )*rhocp_c + &
-#endif
                         ( (kaxp*dsdxp-kaxm*dsdxm)*dxi + &
                           (kayp*dsdyp-kaym*dsdym)*dyi + &
                           (kazp*dsdzp-kazm*dsdzm)*dzfi(k) )

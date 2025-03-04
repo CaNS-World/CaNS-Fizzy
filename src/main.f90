@@ -187,9 +187,7 @@ program cans
            rhsbp%z(n(1),n(2),0:1))
   allocate(psi,phi,kappa,normx,normy,normz,mold=pp)
   allocate(psio,mold=pp)
-#if defined(_CONSISTENT_ADVECTION)
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
-#endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -383,9 +381,7 @@ program cans
       !$acc end kernels
       if(is_track_interface) then
         call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
-#if defined(_CONSISTENT_ADVECTION)
         call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
-#endif
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
         call acdi_cmpt_phi(n,seps,psi,phi)
         call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
@@ -394,13 +390,11 @@ program cans
         call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
         call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
       else
-#if defined(_CONSISTENT_ADVECTION)
         !$acc kernels default(present) async(1)
         psiflx_x(:,:,:) = 0.
         psiflx_y(:,:,:) = 0.
         psiflx_z(:,:,:) = 0.
         !$acc end kernels
-#endif
       end if
 #if defined(_SCALAR)
       call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
