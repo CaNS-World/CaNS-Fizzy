@@ -134,7 +134,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(2)  :: rho12,ka12,cp12
     real(rp), intent(in   ), dimension(0:,0:,0:) :: psi
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: psio,psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(0:,0:,0:) :: s
     real(rp), target     , allocatable, dimension(:,:,:), save :: dsdtrk_t,dsdtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dsdtrk  ,dsdtrko
@@ -179,9 +179,13 @@ module mod_rk
     call swap(dsdtrk,dsdtrko)
   end subroutine rk_scal
   !
-  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
-    use mod_acdi     , only: acdi_transport_pf
-    use mod_two_fluid, only: clip_field
+  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
+#if !defined(_INTERFACE_CAPTURING_VOF)
+    use mod_acdi        , only: acdi_transport_pf
+#else
+    use mod_vof_thinc_qq, only: vof_thinc_transport_psi
+#endif
+    use mod_two_fluid   , only: clip_field
     !
     ! RK3 scheme for time integration of the phase field
     !
@@ -190,12 +194,12 @@ module mod_rk
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
-    real(rp), intent(in   ) :: gam,seps,dt
+    real(rp), intent(in   ) :: gam,seps,beta,dt
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: phi
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(out  ), dimension(0:,0:,0:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
@@ -211,7 +215,11 @@ module mod_rk
       dpsidtrk  => dpsidtrk_t
       dpsidtrko => dpsidtrko_t
     end if
+#if !defined(_INTERFACE_CAPTURING_VOF)
     call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
+#else
+    call vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
+#endif
     if(is_first) then
       !$acc kernels default(present) async(1)
       dpsidtrko(:,:,:) = dpsidtrk(:,:,:)

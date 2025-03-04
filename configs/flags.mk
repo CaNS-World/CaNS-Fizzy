@@ -139,6 +139,10 @@ ifeq ($(strip $(SPLIT_VISCOUS_DIFUSSION)),1)
 DEFINES += -D_SPLIT_VISCOUS_DIFFUSION
 endif
 
+ifeq ($(strip $(INTERFACE_CAPTURING_VOF)),1)
+DEFINES += -D_INTERFACE_CAPTURING_VOF
+endif
+
 ifeq ($(strip $(OPENMP)),1)
 ifeq      ($(strip $(FCOMP)),GNU)
 override FFLAGS += -fopenmp
