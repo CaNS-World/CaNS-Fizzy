@@ -61,7 +61,7 @@ module mod_acdi
     gam = sqrt(velmax)*gam_factor
   end subroutine acdi_set_gamma
   !
-  subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt,rglrx,rglry,rglrz)
+  subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt,flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the phase field transport equation
     !
@@ -75,7 +75,7 @@ module mod_acdi
     real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: rglrx,rglry,rglrz
+    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: flux_x,flux_y,flux_z
     integer :: i,j,k
     real(rp) :: dxi,dyi
     real(rp) :: adv,diff,sharp,rglr
@@ -195,10 +195,10 @@ module mod_acdi
           rglr = (rglrxp-rglrxm)*dxi + (rglryp-rglrym)*dyi + (rglrzp-rglrzm)*dzfi_c
           !
           dpsidt(i,j,k) = -adv + rglr
-#if defined(_CONSERVATIVE_MOMENTUM)
-          rglrx(i,j,k) = rglrxp
-          rglry(i,j,k) = rglryp
-          rglrz(i,j,k) = rglrzp
+#if defined(_CONSISTENT_ADVECTION)
+          flux_x(i,j,k) = upsiip - rglrxp
+          flux_y(i,j,k) = vpsijp - rglryp
+          flux_z(i,j,k) = wpsikp - rglrzp
 #endif
         end do
       end do

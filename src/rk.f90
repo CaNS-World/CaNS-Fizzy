@@ -14,8 +14,8 @@ module mod_rk
   public rk,rk_scal,rk_2fl
   contains
   subroutine rk(rkpar,n,dli,dzci,dzfi,dt,dt_r, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,psio,s, &
-                acdi_rgx,acdi_rgy,acdi_rgz,u,v,w)
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+                psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
     !
     ! RK3 scheme for time integration of the momentum equations
     !
@@ -31,13 +31,14 @@ module mod_rk
     real(rp), intent(in   )                :: rho0
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: psi,kappa
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: p
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po,psio,s
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: acdi_rgx,acdi_rgy,acdi_rgz
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po,s
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(0:,0:,0:)           :: u,v,w
     real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
                                                                     dudtrko_t,dvdtrko_t,dwdtrko_t
     real(rp), pointer      , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
                                                                     dudtrko  ,dvdtrko  ,dwdtrko
+    real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     logical, save :: is_first = .true.
     real(rp) :: factor1,factor2,factor12
     integer :: i,j,k
@@ -63,7 +64,7 @@ module mod_rk
     !
     ! advection, diffusion and regularization terms
     !
-    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,acdi_rgx,acdi_rgy,acdi_rgz,u,v,w,psi,psio,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
     !
     if(is_first) then
       !$acc kernels default(present) async(1)
@@ -74,42 +75,29 @@ module mod_rk
       is_first = .false.
     end if
     !
-#if defined(_CONSERVATIVE_MOMENTUM)
-    block
-      real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p,factor_rho
-      rho = rho12(2); drho = rho12(1)-rho12(2)
-      !$acc parallel loop collapse(3) default(present) async(1)
-      do k=1,n(3)
-        do j=1,n(2)
-          do i=1,n(1)
-            rhox_n = rho + drho*0.5*(psio(i,j,k)+psio(i+1,j,k))
-            rhoy_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j+1,k))
-            rhoz_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j,k+1))
-            rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
-            rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
-            rhoz_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j,k+1))
-            factor_rho = rhox_n/rhox_p
-            u(i,j,k) = u(i,j,k)*factor_rho + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)*factor_rho
-            factor_rho = rhoy_n/rhoy_p
-            v(i,j,k) = v(i,j,k)*factor_rho + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)*factor_rho
-            factor_rho = rhoz_n/rhoz_p
-            w(i,j,k) = w(i,j,k)*factor_rho + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)*factor_rho
-          end do
-        end do
-      end do
-    end block
-#else
+    rho = rho12(2); drho = rho12(1)-rho12(2)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          u(i,j,k) = u(i,j,k) + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)
-          v(i,j,k) = v(i,j,k) + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)
-          w(i,j,k) = w(i,j,k) + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)
+          rhox_n = rho + drho*0.5*(psio(i,j,k)+psio(i+1,j,k))
+          rhoy_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j+1,k))
+          rhoz_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j,k+1))
+          rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
+          rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
+          rhoz_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j,k+1))
+#if defined(_CONSISTENT_ADVECTION)
+          u(i,j,k) = u(i,j,k)*rhox_n/rhox_p + (factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
+          v(i,j,k) = v(i,j,k)*rhoy_n/rhoy_p + (factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
+          w(i,j,k) = w(i,j,k)*rhoz_n/rhoz_p + (factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
+#else
+          u(i,j,k) = u(i,j,k)*rhox_n/rhox_p + factor1*dudtrk(i,j,k)/rhox_p + factor2*dudtrko(i,j,k)/rhox_n
+          v(i,j,k) = v(i,j,k)*rhoy_n/rhoy_p + factor1*dvdtrk(i,j,k)/rhox_p + factor2*dvdtrko(i,j,k)/rhox_n
+          w(i,j,k) = w(i,j,k)*rhoz_n/rhoz_p + factor1*dwdtrk(i,j,k)/rhox_p + factor2*dwdtrko(i,j,k)/rhox_n
+#endif
         end do
       end do
     end do
-#endif
     !
     ! swap d?dtrk <-> d?dtrko
     !
@@ -126,16 +114,18 @@ module mod_rk
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          u(i,j,k) = u(i,j,k) + factor12*dudtrk(i,j,k)
-          v(i,j,k) = v(i,j,k) + factor12*dvdtrk(i,j,k)
-          w(i,j,k) = w(i,j,k) + factor12*dwdtrk(i,j,k)
+          rhox_p = rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k))
+          rhoy_p = rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k))
+          rhoz_p = rho + drho*0.5*(psi(i,j,k)+psi(i,j,k+1))
+          u(i,j,k) = u(i,j,k) + factor12*dudtrk(i,j,k)/rhox_p
+          v(i,j,k) = v(i,j,k) + factor12*dvdtrk(i,j,k)/rhoy_p
+          w(i,j,k) = w(i,j,k) + factor12*dwdtrk(i,j,k)/rhoz_p
         end do
       end do
     end do
   end subroutine rk
   !
-  subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dt, &
-                     ssource,rho12,ka12,cp12,psi,u,v,w,s)
+  subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
     use mod_scal, only: scal_ad
     !
     ! RK3 scheme for time integration of the scalar field
@@ -150,13 +140,15 @@ module mod_rk
     real(rp), intent(in   ), dimension(2)  :: rho12,ka12,cp12
     real(rp), intent(in   ), dimension(0:,0:,0:) :: psi
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(0:,0:,0:) :: s
     real(rp), target     , allocatable, dimension(:,:,:), save :: dsdtrk_t,dsdtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dsdtrk  ,dsdtrko
+    real(rp), dimension(2), save :: rhocp12
+    real(rp) :: rhocp,drhocp,rhocp_n,rhocp_p
     logical, save :: is_first = .true.
     real(rp) :: factor1,factor2,factor12
     integer :: i,j,k
-    real(rp), dimension(2), save :: rhocp12
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
@@ -169,18 +161,25 @@ module mod_rk
       rhocp12(:) = rho12(:)*cp12(:)
       !$acc wait(1)
     end if
-    call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ssource,ka12,rhocp12,psi,u,v,w,s,dsdtrk)
+    call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdtrk)
     if(is_first) then
       !$acc kernels default(present) async(1)
       dsdtrko(:,:,:) = dsdtrk(:,:,:)
       !$acc end kernels
       is_first = .false.
     end if
+    rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          s(i,j,k) = s(i,j,k) + factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource
+          rhocp_p = rhocp + drhocp*psi( i,j,k)
+          rhocp_n = rhocp + drhocp*psio(i,j,k)
+#if defined(_CONSISTENT_ADVECTION)
+          s(i,j,k) = s(i,j,k)*rhocp_n/rhocp_p + (factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
+#else
+          s(i,j,k) = s(i,j,k)*rhocp_n/rhocp_p + factor1*dsdtrk(i,j,k)/rhocp_p + factor2*dsdtrko(i,j,k)/rhocp_n + factor12*ssource/rhocp_p
+#endif
         end do
       end do
     end do
@@ -190,14 +189,13 @@ module mod_rk
     call swap(dsdtrk,dsdtrko)
   end subroutine rk_scal
   !
-  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,rglrx,rglry,rglrz)
+  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
     use mod_acdi     , only: acdi_transport_pf
     use mod_two_fluid, only: clip_field
     !
     ! RK3 scheme for time integration of the phase field
     !
     implicit none
-    logical , parameter :: is_cmpt_wallflux = .false.
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
@@ -207,7 +205,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
     real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: rglrx,rglry,rglrz
+    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: psiflx_x,psiflx_y,psiflx_z
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
     real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
     logical, save :: is_first = .true.
@@ -223,7 +221,7 @@ module mod_rk
       dpsidtrk  => dpsidtrk_t
       dpsidtrko => dpsidtrko_t
     end if
-    call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,rglrx,rglry,rglrz)
+    call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
     if(is_first) then
       !$acc kernels default(present) async(1)
       dpsidtrko(:,:,:) = dpsidtrk(:,:,:)

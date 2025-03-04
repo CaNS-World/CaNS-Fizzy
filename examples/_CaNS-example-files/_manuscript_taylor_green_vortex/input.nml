@@ -2,7 +2,7 @@
 ng(1:3) = 512, 512, 512
 l(1:3) =  6.2831853071795, 6.283185307179586, 6.283185307179586
 gtype = 1, gr = 0.
-cfl = 0.95, dtmin = 1.e5
+cfl = 0.95, dtmax = 1.e5
 visci = 1600.
 inivel = 'tgv'
 is_wallturb = F
@@ -22,9 +22,9 @@ bforce(1:3) = 0., 0., 0.
 is_forced(1:3) = F, F, F
 velf(1:3) = 0., 0., 0.
 dims(1:2) = 0, 0
-\
+/
 
 &cudecomp
 cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
 cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
-\
+/

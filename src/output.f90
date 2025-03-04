@@ -12,7 +12,7 @@ module mod_output
   implicit none
   private
   public out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d, &
-         cmpt_total_mass,cmpt_total_energy
+         cmpt_mean_mass,cmpt_mean_energy
   character(len=*), parameter :: fmt_dp = '(*(es24.16e3,1x))', &
                                  fmt_sp = '(*(es15.8e2,1x))'
 #if !defined(_SINGLE_PRECISION)
@@ -756,13 +756,13 @@ module mod_output
     call MPI_ALLREDUCE(MPI_IN_PLACE,vel,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_mean_pos_and_vel
   !
-  subroutine cmpt_total_mass(n,dl,dzf,rho12,psi,mass12)
+  subroutine cmpt_mean_mass(n,l,dl,dzf,rho12,psi,mass12)
     !
-    ! computes total mass of the system
+    ! computes mean mass of the system
     !
     implicit none
     integer , intent(in ), dimension(3)        :: n
-    real(rp), intent(in ), dimension(3)        :: dl
+    real(rp), intent(in ), dimension(3)        :: l,dl
     real(rp), intent(in ), dimension(0:)       :: dzf
     real(rp), intent(in ), dimension(2)        :: rho12
     real(rp), intent(in ), dimension(0:,0:,0:) :: psi
@@ -785,17 +785,17 @@ module mod_output
     end do
     !$acc end data
     !$acc wait(1)
-    mass12(:) = [mass1,mass2]
+    mass12(:) = [mass1,mass2]/product(l(:))
     call MPI_ALLREDUCE(MPI_IN_PLACE,mass12,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-  end subroutine cmpt_total_mass
+  end subroutine cmpt_mean_mass
   !
-  subroutine cmpt_total_energy(n,dl,dzf,rho12,psi,u,v,w,en12)
+  subroutine cmpt_mean_energy(n,l,dl,dzf,rho12,psi,u,v,w,en12)
     !
-    ! computes total kinetic energy of the system
+    ! computes mean kinetic energy of the system
     !
     implicit none
     integer , intent(in ), dimension(3)        :: n
-    real(rp), intent(in ), dimension(3)        :: dl
+    real(rp), intent(in ), dimension(3)        :: l,dl
     real(rp), intent(in ), dimension(0:)       :: dzf
     real(rp), intent(in ), dimension(2)        :: rho12
     real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
@@ -819,7 +819,7 @@ module mod_output
     end do
     !$acc end data
     !$acc wait(1)
-    en12(:) = [en1,en2]
+    en12(:) = [en1,en2]/product(l(:))
     call MPI_ALLREDUCE(MPI_IN_PLACE,en12,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-  end subroutine cmpt_total_energy
+  end subroutine cmpt_mean_energy
 end module mod_output
