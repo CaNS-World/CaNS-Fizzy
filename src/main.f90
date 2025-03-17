@@ -403,7 +403,7 @@ program cans
 #endif
       end if
 #if defined(_SCALAR)
-      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
+      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
       call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
       if(.not.is_solve_ns) then
