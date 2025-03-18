@@ -390,7 +390,7 @@ module mod_initflow
     case('cou','dhc')
       call couette(   n(3),zc/l(3),1._rp,s1d)
       s1d(:) = s1d(:) + 0.5 ! from 0 to 1
-      s1d(:) = bcsca(0,3)*(1.-s1d(:)) + bcsca(1,3)*(s1d(:))
+      s1d(:) = bcsca(0,3)*(s1d(:)) + bcsca(1,3)*(1.-s1d(:))
     case('uni')
       s1d(:) = sref
     case('zer')
