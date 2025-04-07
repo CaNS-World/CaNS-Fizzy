@@ -62,11 +62,15 @@ program cans
                                  ng,l,dl,dli, &
                                  read_input, &
                                  rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12, &
-                                 acdi_gam_factor,acdi_gam_min,acdi_eps_factor
+                                 psi_thickness_factor, &
+                                 acdi_gam_factor,acdi_gam_min, &
+                                 vof_thinc_beta
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
+#if !defined(_INTERFACE_CAPTURING_VOF)
   use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
+#endif
   use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
@@ -185,11 +189,12 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi,phi,kappa,normx,normy,normz,mold=pp)
+  allocate(psi,kappa,normx,normy,normz,mold=pp)
   allocate(psio,mold=pp)
-#if defined(_CONSISTENT_ADVECTION)
-  allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
+#if !defined(_INTERFACE_CAPTURING_VOF)
+  allocate(phi,mold=pp)
 #endif
+  allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -275,7 +280,9 @@ program cans
                           nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #endif
   !
-  call acdi_set_epsilon(dl,dzfi,acdi_eps_factor,seps)
+#if !defined(_INTERFACE_CAPTURING_VOF)
+  call acdi_set_epsilon(dl,dzfi,psi_thickness_factor,seps)
+#endif
   !
   fexts(1) = 'u'
   fexts(2) = 'v'
@@ -325,16 +332,22 @@ program cans
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !$acc wait
   !
+#if !defined(_INTERFACE_CAPTURING_VOF)
   call acdi_cmpt_phi(n,seps,psi,phi)
   call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+#else
+  call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+#endif
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
   call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
   !
+#if !defined(_INTERFACE_CAPTURING_VOF)
   call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
   gam = max(gam,acdi_gam_min)
   if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
+#endif
   !
   ! post-process and write initial condition
   !
@@ -382,25 +395,25 @@ program cans
       psio(:,:,:)   = psi(:,:,:)
       !$acc end kernels
       if(is_track_interface) then
-        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
-#if defined(_CONSISTENT_ADVECTION)
+        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
         call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
-#endif
         call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+#if !defined(_INTERFACE_CAPTURING_VOF)
         call acdi_cmpt_phi(n,seps,psi,phi)
         call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+#else
+        call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+#endif
         call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
         call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
         call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
         call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
       else
-#if defined(_CONSISTENT_ADVECTION)
         !$acc kernels default(present) async(1)
         psiflx_x(:,:,:) = 0.
         psiflx_y(:,:,:) = 0.
         psiflx_z(:,:,:) = 0.
         !$acc end kernels
-#endif
       end if
 #if defined(_SCALAR)
       call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
@@ -460,10 +473,12 @@ program cans
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
     dto = dt
+#if !defined(_INTERFACE_CAPTURING_VOF)
     if(mod(istep,1) == 0) then
       call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
       gam = max(gam,acdi_gam_min)
     end if
+#endif
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps)
@@ -497,31 +512,19 @@ program cans
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
       !
+#if !defined(_INTERFACE_CAPTURING_VOF)
       var(1) = 1.*istep
       var(2) = time
       var(3) = gam
       var(4) = seps
       call out0d(trim(datadir)//'log_acdi.out',4,var)
+#endif
     end if
     write(fldnum,'(i7.7)') istep
     if(iout1d > 0.and.mod(istep,max(iout1d,1)) == 0) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa,s)
 #include "out1d.h90"
-block
-  use mod_output, only: cmpt_mean_mass,cmpt_mean_energy
-  real(rp), dimension(2) :: en12,mass12
-  call cmpt_mean_mass(n,l,dl,dzf,rho12,psi,mass12)
-  call cmpt_mean_energy(n,l,dl,dzf,rho12,psi,u,v,w,en12)
-  var(1) = 1.*istep
-  var(2) = time
-  var(3) = en12(1)
-  var(4) = en12(2)
-  call out0d(trim(datadir)//'log_energy.out',4,var)
-  var(3) = mass12(1)
-  var(4) = mass12(2)
-  call out0d(trim(datadir)//'log_mass.out',4,var)
-end block
     end if
     if(iout2d > 0.and.mod(istep,max(iout2d,1)) == 0) then
       !$acc wait

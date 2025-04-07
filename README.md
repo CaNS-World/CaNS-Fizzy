@@ -1,6 +1,6 @@
 ## Synopsis
 
-**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows with heat transfer. It has been designed to be an efficient Navier-Stokes solver for two fluid phases taking [CaNS](https://github.com/CaNS-World/CaNS) as its base, where it is ensured that important advancements in the base solver are easily incorporated. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. To achieve this, the Navier-Stokes equations are solved using a pressure-splitting technique that enables using fast solvers for constant-coefficients Poisson/Helmholtz equations. The interface between phases is captured using an Accurate Conservative Diffuse Interface (ACDI) method. See the references below for more details.
+**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows with heat transfer. It has been designed to be an efficient Navier-Stokes solver for two fluid phases taking [CaNS](https://github.com/CaNS-World/CaNS) as its base, where it is ensured that important advancements in the base solver are easily incorporated. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. To achieve this, the Navier-Stokes equations are solved using a pressure-splitting technique that enables using fast solvers for constant-coefficients Poisson/Helmholtz equations. The interface between phases may be captured using one of two approaches: the Accurate Conservative Diffuse Interface (ACDI) method, or the THINC/QQ volume-of-fluid method. See the references below for more details.
 
 **References**
 
@@ -8,7 +8,14 @@ P. Costa. *A FFT-based finite-difference solver for massively-parallel direct nu
 
 G. Frantzis & D. Grigoriadis. *An efficient method for two-fluid incompressible flows appropriate for the immersed boundary method.* *Journal of Computational Physics* 376 (2019): 28-53. [doi.org/10.1016/j.jcp.2018.09.035](https://doi.org/10.1016/j.jcp.2018.09.035).
 
-S. Jain. *Accurate conservative phase-field method for simulation of two-phase flows.* *Journal of Computational Physics* 469: 111529 (2022). [doi.org/10.1016/j.jcp.2022.111529](https://doi.org/10.1016/j.jcp.2022.111529)
+
+S. Jain. *Accurate conservative phase-field method for simulation of two-phase flows.* *Journal of Computational Physics* 469 (2022): 111529. [doi.org/10.1016/j.jcp.2022.111529](https://doi.org/10.1016/j.jcp.2022.111529)
+
+Bin & Xiao. *Toward efficient and accurate interface capturing on arbitrary hybrid unstructured grids: The THINC method with quadratic surface representation and Gaussian quadrature* *Journal of Computational Physics* 349 (2017): 415-440. [doi.org/10.1016/j.jcp.2017.08.028](https://doi.org/10.1016/j.jcp.2017.08.028)
+
+## News
+
+**[07/03/2025]:** Fizzy has been extended with a new interface-capturing approach based on the based on the THINC/QQ volume-of-fluid method. See the updated [`docs/INFO_INPUT.md`](docs/INFO_INPUT.md) and [`docs/INFO_COMPILING.md`](docs/INFO_COMPILING.md) for more details on how to switch between interface capturing approaches.
 
 ## Features
 
@@ -21,20 +28,22 @@ Some features are:
  * [2DECOMP&FFT](https://github.com/xcompact3d/2decomp-fft) library used for performing global data transpositions on CPUs and some of the data I/O
  * GPU acceleration using OpenACC directives
  * A different canonical flow can be simulated just by changing the input files
+ * Mass transport-consistent discretization of advection terms that enable simulations at high density contrasts
+ * Two options for interface-capturing algorithms: ACDI (diffuse interface method) and THINC/QQ (volume-of-fluid method)
 
 ## Motivation
 
-This numerical tool serves as an efficient base Navier-Stokes solver for high-resolution simulations of turbulent flows with two immiscible incompressible fluid phases. It enables the simulation of two-phase flow in canonical configurations on modern (GPU-based) parallel computing architectures, taking advantage of the efficiency of the base single-phase solver that was used as the starting point. The ACDI method for interface capturing has been selected due to its accuracy and suitability for GPU-based simulations. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies to, for instance, introduce complex geometries (such as immersed-boundary methods). Future extensions of the solver with other interface-capturing methods are planned.
+This numerical tool serves as an efficient base Navier-Stokes solver for high-resolution simulations of turbulent flows with two immiscible incompressible fluid phases. It enables the simulation of two-phase flow in canonical configurations on modern (GPU-based) parallel computing architectures, taking advantage of the efficiency of the base single-phase solver that was used as the starting point. The interface-capruting methods have been selected due to their accuracy and suitability for GPU-based simulations. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies to, for instance, introduce complex geometries (such as immersed-boundary methods). Future extensions of the solver with other interface-capturing methods are planned.
 
 ## Method
 
-The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a staggered grid arrangement. The interface between the two fluid phases is represented by a diffuse interface of specified thickness, preserved by a regularization flux, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme, with several possible options concerning the discretiation of the advective terms. A pressure splitting technique is used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS. See the references above for details.
+The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a staggered grid arrangement. The interface between the two fluid phases is represented by a diffuse interface of specified thickness, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme, with several possible options concerning the discretiation of the advective terms. A pressure splitting technique may be used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS. See the references above for details.
 
 ## Usage
 
-### Downloading *CaNS-Fizzy*
+### Downloading *Fizzy*
 
-Since *CaNS-Fizzy* loads the external pencil decomposition libraries as Git Submodules, the repository should be cloned as follows:
+Since *Fizzy* loads the external pencil decomposition libraries as Git Submodules, the repository should be cloned as follows:
 ```bash
 git clone --recursive https://github.com/CaNS-World/CaNS-Fizzy
 ```
@@ -46,7 +55,7 @@ git submodule update --init --recursive
 ### Compilation
 
 #### Prerequisites
-The prerequisites for compiling CaNS-Fizzy are the following:
+The prerequisites for compiling Fizzy are the following:
 
  * MPI
  * FFTW3/cuFFT library for CPU/GPU runs
@@ -55,7 +64,7 @@ The prerequisites for compiling CaNS-Fizzy are the following:
  * HYPRE library in case the variable-coefficients Poisson equation is solved without the pressure splitting technique (only available for CPU runs)
 
 #### In short
-For most systems, CaNS-Fizzy can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries, and CaNS-Fizzy.
+For most systems, Fizzy can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries, and Fizzy.
 
 #### Detailed instructions
 The `Makefile` in root directory is used to compile the code, and is expected to work out-of-the-box for most systems. The `build.conf` file in the root directory can be used to choose the Fortran compiler (MPI wrapper), and a few pre-defined profiles depending on the nature of the run (e.g., production vs debugging), and pre-processing options. The following general pre-processing options are available:

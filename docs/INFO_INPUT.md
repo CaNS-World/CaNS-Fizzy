@@ -27,7 +27,7 @@ bcpre(0:1,1:3  ) =  0.,0.,   0.,0.,   0.,0.
 bforce(1:3) = 0., 0., 0.
 gacc(1:3) = 0., 0., 0.
 dims(1:2) = 2, 2
-\
+/
 ```
 
 Additionally, the `&scalar` namelist contains the computational parameters for scalar transport (e.g. temperature), while the physical and transport properties of the two phases and the numerical parameters of the two-phase solver are specified in the `&two_fluid` namelist.
@@ -38,7 +38,7 @@ inisca          = 'dhc'
 cbcsca(0:1,1:3) = 'P','P',  'P','P',  'D','D'
 bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   1.,0.
 ssource         = 0.
-\
+/
 
 &two_fluid
 inipsi            = 'bub3'
@@ -56,9 +56,8 @@ mu12(1:2)         =  100., 100.
 ka12(1:2)         =  0., 0.
 cp12(1:2)         =  0., 0.
 beta12(1:2)       =  0., 0.
-acdi_gam_factor   =  1., acdi_gam_min = 0.
-acdi_eps_factor   =  1.
-\
+psi_thickness_factor = 1.
+/
 ```
 
 <details>
@@ -387,16 +386,12 @@ These lines specify the physical and transport properties of the two-phase syste
 ---
 
 ```fortran
-acdi_gam_factor = 1., acdi_gam_min = 0.
-acdi_eps_factor = 0.51
+psi_thickness_factor = 0.51
 ```
 
-These lines set the computational parameters specific to the conservative diffuse interface method for interface tracking. In general, these default values should be left unchanged.
+This value sets the interface thickness (the higher, the thicker). It corresponds to the non-dimensional epsilon parameter (`eps`) from the ACDI method which, for ACDI, should always be larger than `0.5`; for the THINC/QQ VoF method, a corresponding `beta` parameter is related related to this factor by `beta = 1./(2*eps)`. This parameter controls the interface thickness as given by the hyperbolic tangent function: `h = 0.5*(1.+tanh(r/(2.*eps))) = 0.5*(1.+tanh(r*beta))`, with `r` being the signed distance to the interface in computational space. The recommended default values are `psi_thickness_factor = 0.51` for ACDI (`eps = 0.51`), and `psi_thickness_factor = 0.5` to `0.25` (`beta = 1` to `2`), for the THINC/QQ VoF.
 
-* `acdi_gam_factor` sets the speed of the interface relaxation, relative to the maximum flow velocity. It should always be equal to or larger than `1`.
-* `acdi_gam_min` sets a lower threshold for the speed of the interface relaxation.
-* `acdi_eps_factor` sets the interface thickness relative to the maximum grid size. It should always be larger than `0.5`.
-
+Note: see the compile-time option `INTERFACE_CAPTURING_VOF` in [`docs/INFO_COMPILING.md`](INFO_COMPILING.md) for how to switch to VoF for interface capturing.
 
 # about the `&cudecomp` namelist under `input.nml`
 

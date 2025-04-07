@@ -69,7 +69,8 @@ character(len=100), protected     :: inipsi
 real(rp), protected               :: sigma
 real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, dimension(2) :: ka12,cp12,beta12
-real(rp), protected               :: acdi_gam_factor,acdi_gam_min,acdi_eps_factor
+real(rp), protected               :: acdi_gam_factor,acdi_gam_min,vof_thinc_beta
+real(rp), protected               :: psi_thickness_factor
 real(rp), protected               :: rho0 ! not an input
 #if defined(_OPENACC)
 !
@@ -112,7 +113,7 @@ contains
                   cbcpsi,cbcnor,bcnor,bcpsi, &
                   sigma,rho12,mu12, &
                   ka12,cp12,beta12, &
-                  acdi_gam_factor,acdi_gam_min,acdi_eps_factor
+                  psi_thickness_factor
 #if defined(_OPENACC)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
@@ -144,7 +145,10 @@ contains
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
-    acdi_gam_factor = 1.; acdi_gam_min = 1.e-12; acdi_eps_factor = 0.51
+    psi_thickness_factor = 0.51; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12
+#if defined(_INTERFACE_CAPTURING_VOF)
+    psi_thickness_factor = 0.50 ! 0.25?
+#endif
     !
     ! read input file
     !
@@ -169,6 +173,7 @@ contains
 #if defined(_CONSTANT_COEFFS_POISSON)
     rho0 = minval(rho12(:))
 #endif
+    vof_thinc_beta = 1._rp/(2._rp*psi_thickness_factor)
     !
 #if defined(_OPENACC)
     !

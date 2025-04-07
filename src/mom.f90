@@ -605,7 +605,6 @@ module mod_mom
           c_ppc = psi(i+1,j+1,k  )
           c_pcp = psi(i+1,j  ,k+1)
           !
-#if defined(_CONSISTENT_ADVECTION)
           flx_x_mcc = rho*u_mcc + drho*psiflx_x(i-1,j  ,k  )
           flx_x_ccc = rho*u_ccc + drho*psiflx_x(i  ,j  ,k  )
           flx_x_pcc = rho*u_pcc + drho*psiflx_x(i+1,j  ,k  )
@@ -629,7 +628,6 @@ module mod_mom
           flx_z_pcc = rho*w_pcc + drho*psiflx_z(i+1,j  ,k  )
           flx_z_cpm = rho*w_cpm + drho*psiflx_z(i  ,j+1,k-1)
           flx_z_cpc = rho*w_cpc + drho*psiflx_z(i  ,j+1,k  )
-#endif
           !
           dzci_c = dzci(k  )
           dzci_m = dzci(k-1)
@@ -642,7 +640,6 @@ module mod_mom
           !
           ! advection
           !
-#if defined(_CONSISTENT_ADVECTION)
           !
           ! mass--momentum-consistent flx
           !
@@ -669,34 +666,6 @@ module mod_mom
           wwkp = 0.25*(flx_z_ccc+flx_z_ccp)*(w_ccc+w_ccp)
           wwkm = 0.25*(flx_z_ccc+flx_z_ccm)*(w_ccc+w_ccm)
           dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
-#else
-          rhoxp = rho + drho*psixp
-          uuip  = 0.25*(u_pcc+u_ccc)*(u_ccc+u_pcc)
-          uuim  = 0.25*(u_mcc+u_ccc)*(u_ccc+u_mcc)
-          vujp  = 0.25*(v_pcc+v_ccc)*(u_ccc+u_cpc)
-          vujm  = 0.25*(v_pmc+v_cmc)*(u_ccc+u_cmc)
-          wukp  = 0.25*(w_pcc+w_ccc)*(u_ccc+u_ccp)
-          wukm  = 0.25*(w_pcm+w_ccm)*(u_ccc+u_ccm)
-          dudt_aux = (dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm ))*rhoxp
-          !
-          rhoyp = rho + drho*psiyp
-          uvip  = 0.25*(u_ccc+u_cpc)*(v_ccc+v_pcc)
-          uvim  = 0.25*(u_mcc+u_mpc)*(v_ccc+v_mcc)
-          vvjp  = 0.25*(v_ccc+v_cpc)*(v_ccc+v_cpc)
-          vvjm  = 0.25*(v_ccc+v_cmc)*(v_ccc+v_cmc)
-          wvkp  = 0.25*(w_ccc+w_cpc)*(v_ccc+v_ccp)
-          wvkm  = 0.25*(w_ccm+w_cpm)*(v_ccc+v_ccm)
-          dvdt_aux = (dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm ))*rhoyp
-          !
-          rhozp = rho + drho*psizp
-          uwip  = 0.25*(u_ccc+u_ccp)*(w_ccc+w_pcc)
-          uwim  = 0.25*(u_mcc+u_mcp)*(w_ccc+w_mcc)
-          vwjp  = 0.25*(v_ccc+v_ccp)*(w_ccc+w_cpc)
-          vwjm  = 0.25*(v_cmc+v_cmp)*(w_ccc+w_cmc)
-          wwkp  = 0.25*(w_ccc+w_ccp)*(w_ccc+w_ccp)
-          wwkm  = 0.25*(w_ccc+w_ccm)*(w_ccc+w_ccm)
-          dwdt_aux = (dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm ))*rhozp
-#endif
           !
           ! diffusion
           !
