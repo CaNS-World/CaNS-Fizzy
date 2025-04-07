@@ -1001,7 +1001,7 @@ module mod_mom
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
     real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
-    real(rp), intent(in )                   :: mu12(2)
+    real(rp), intent(in ), dimension(2)     :: mu12
     real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
     real(rp), intent(out), dimension(3) :: taux,tauy,tauz
     real(rp) :: dudyp,dudym,dudzp,dudzm, &
