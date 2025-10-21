@@ -84,13 +84,14 @@ program cans
 #endif
   use mod_timer          , only: timer_tic,timer_toc,timer_print
   use mod_updatep        , only: updatep
-  use mod_utils          , only: bulk_mean,bulk_mean_12
+  use mod_utils          , only: bulk_mean_12_stag
   !@acc use mod_utils    , only: device_memory_footprint
   use mod_types
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
   real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,pp,pn,po
-  real(rp) :: rho_av
+  real(rp), dimension(3) :: rho_av
+  logical , dimension(3) :: is_cmpt_rho_av
 #if !defined(_OPENACC)
   type(C_PTR), dimension(2,2) :: arrplanp
 #else
@@ -425,10 +426,14 @@ program cans
         !$acc update device(u,v,w,p) async(1)
         call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
       else
-        rho_av = 0.
-        if(any(abs(gacc(:))>0. .and. cbcpre(0,:)//cbcpre(1,:) == 'PP')) then
-          call bulk_mean_12(n,grid_vol_ratio_c,psi,rho12,rho_av)
-        end if
+        rho_av(:) = 0.
+        is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
+        if(is_cmpt_rho_av(1)) &
+          call bulk_mean_12_stag(n,1,grid_vol_ratio_c,psi,rho12,rho_av(1))
+        if(is_cmpt_rho_av(2)) &
+          call bulk_mean_12_stag(n,2,grid_vol_ratio_c,psi,rho12,rho_av(2))
+        if(is_cmpt_rho_av(3)) &
+          call bulk_mean_12_stag(n,3,grid_vol_ratio_f,psi,rho12,rho_av(3))
         call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
                 psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)

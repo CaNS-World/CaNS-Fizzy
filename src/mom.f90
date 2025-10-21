@@ -249,11 +249,11 @@ module mod_mom
     end do
   end subroutine momz_d
   !
-  subroutine momx_p(nx,ny,nz,dxi,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dudt)
+  subroutine momx_p(nx,ny,nz,dxi,dt_r,bforce,gacc,rho0,rhox_av,rho12,psi,p,pp,dudt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dxi,dt_r
-    real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
+    real(rp), intent(in) :: bforce,gacc,rho0,rhox_av,rho12(2)
     real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: rhop,dpdl
@@ -269,7 +269,7 @@ module mod_mom
           rhop = rho + drho*0.5*(psi(i+1,j,k)+psi(i,j,k))
           dpdl = (p(i+1,j,k)-p(i,j,k))*dxi
           !
-          dudt(i,j,k) = dudt(i,j,k) + bforce + gacc*(rhop-rho_av) &
+          dudt(i,j,k) = dudt(i,j,k) + bforce + gacc*(rhop-rhox_av) &
 #if defined(_CONSTANT_COEFFS_POISSON)
                         -dpdl*rhop/rho0 - (1.-rhop/rho0)*( ((1.+dt_r)*p(i+1,j,k)-dt_r*(pp(i+1,j,k))) - &
                                                            ((1.+dt_r)*p(i  ,j,k)-dt_r*(pp(i  ,j,k))) &
@@ -282,11 +282,11 @@ module mod_mom
     end do
   end subroutine momx_p
   !
-  subroutine momy_p(nx,ny,nz,dyi,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dvdt)
+  subroutine momy_p(nx,ny,nz,dyi,dt_r,bforce,gacc,rho0,rhoy_av,rho12,psi,p,pp,dvdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in) :: dyi,dt_r
-    real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
+    real(rp), intent(in) :: bforce,gacc,rho0,rhoy_av,rho12(2)
     real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
@@ -302,7 +302,7 @@ module mod_mom
           rhop = rho + drho*0.5*(psi(i,j+1,k)+psi(i,j,k))
           dpdl = (p(i,j+1,k)-p(i,j,k))*dyi
           !
-          dvdt(i,j,k) = dvdt(i,j,k) + bforce + gacc*(rhop-rho_av) &
+          dvdt(i,j,k) = dvdt(i,j,k) + bforce + gacc*(rhop-rhoy_av) &
 #if defined(_CONSTANT_COEFFS_POISSON)
                         -dpdl*rhop/rho0 - (1.-1.*rhop/rho0)*( ((1.+dt_r)*p(i,j+1,k)-dt_r*(pp(i,j+1,k))) - &
                                                               ((1.+dt_r)*p(i,j  ,k)-dt_r*(pp(i,j  ,k))) &
@@ -315,12 +315,12 @@ module mod_mom
     end do
   end subroutine momy_p
   !
-  subroutine momz_p(nx,ny,nz,dzci,dt_r,bforce,gacc,rho0,rho_av,rho12,psi,p,pp,dwdt)
+  subroutine momz_p(nx,ny,nz,dzci,dt_r,bforce,gacc,rho0,rhoz_av,rho12,psi,p,pp,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
     real(rp), intent(in), dimension(0:) :: dzci
     real(rp), intent(in) :: dt_r
-    real(rp), intent(in) :: bforce,gacc,rho0,rho_av,rho12(2)
+    real(rp), intent(in) :: bforce,gacc,rho0,rhoz_av,rho12(2)
     real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: rhop,dpdl
@@ -336,7 +336,7 @@ module mod_mom
           rhop = rho + drho*0.5*(psi(i,j,k+1)+psi(i,j,k))
           dpdl = (p(i,j,k+1)-p(i,j,k))*dzci(k)
           !
-          dwdt(i,j,k) = dwdt(i,j,k) + bforce + gacc*(rhop-rho_av) &
+          dwdt(i,j,k) = dwdt(i,j,k) + bforce + gacc*(rhop-rhoz_av) &
 #if defined(_CONSTANT_COEFFS_POISSON)
                         -dpdl*rhop/rho0 - (1.-1.*rhop/rho0)*( ((1.+dt_r)*p(i,j,k+1)-dt_r*(pp(i,j,k+1))) - &
                                                               ((1.+dt_r)*p(i,j,k  )-dt_r*(pp(i,j,k  ))) &
@@ -860,7 +860,7 @@ module mod_mom
     real(rp), intent(in   ), dimension(2) :: rho12,beta12
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
-    real(rp), intent(in   ) :: rho0,rho_av
+    real(rp), intent(in   ) :: rho0,rho_av(3)
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: p,psi,kappa
     real(rp), intent(in   ), dimension(0:,0:,0:), optional :: s,pn,po
     real(rp), intent(inout), dimension( :, :, :)           :: dudt,dvdt,dwdt
@@ -872,7 +872,7 @@ module mod_mom
                 q_ccc,q_pcc,q_cpc,q_ccp, &
                 s_ccc,s_pcc,s_cpc,s_ccp, &
                 k_ccc,k_pcc,k_cpc,k_ccp, &
-                bforcex,bforcey,bforcez,gaccx,gaccy,gaccz, &
+                bforcex,bforcey,bforcez,gaccx,gaccy,gaccz,rhox_av,rhoy_av,rhoz_av, &
                 dzci_c,dzci_m,dzfi_c,dzfi_p, &
                 psixp,psiyp,psizp
     real(rp) :: rhoxp,rhoyp,rhozp, &
@@ -889,6 +889,7 @@ module mod_mom
     dxi = dli(1)
     dyi = dli(2)
     surf_factor = sigma*2./(rho12(1)+rho12(2))
+    rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
     !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
     !                                        all scalars should be firstprivate/private
@@ -948,9 +949,9 @@ module mod_mom
           dpdx = (p_pcc-p_ccc)*dxi
           dpdy = (p_cpc-p_ccc)*dyi
           dpdz = (p_ccp-p_ccc)*dzci_c
-          dudt_aux = bforcex + (rhoxp-rho_av)*gaccx
-          dvdt_aux = bforcey + (rhoyp-rho_av)*gaccy
-          dwdt_aux = bforcez + (rhozp-rho_av)*gaccz
+          dudt_aux = bforcex + (rhoxp-rhox_av)*gaccx
+          dvdt_aux = bforcey + (rhoyp-rhoy_av)*gaccy
+          dwdt_aux = bforcez + (rhozp-rhoz_av)*gaccz
           !
           skappaxp = 0.5*(k_pcc+k_ccc)*surf_factor
           skappayp = 0.5*(k_cpc+k_ccc)*surf_factor
