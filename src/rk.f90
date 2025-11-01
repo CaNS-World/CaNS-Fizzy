@@ -26,7 +26,7 @@ module mod_rk
     real(rp), intent(in) :: dt,dt_r
     real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
     real(rp), intent(in   ), dimension(3)  :: bforce,gacc
-    real(rp), intent(in   )                :: sigma,rho_av
+    real(rp), intent(in   )                :: sigma,rho_av(3)
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: psi,kappa
