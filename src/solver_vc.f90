@@ -43,8 +43,8 @@ module mod_solver_vc
     !
     ! iterative solver created and destroyed every time step for now
     !
-    call create_solver(maxiter,maxerror,stype,asolver)
     call init_matrix_3d(ng,lo,hi,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
+    call create_solver(maxiter,maxerror,stype,asolver)
     call setup_solver(asolver)
     call solve_helmholtz(asolver,lo,hi,p,po)
     call finalize_matrix(asolver)
@@ -230,14 +230,14 @@ module mod_solver_vc
       call HYPRE_StructSMGCreate(asolver%comm_hypre,solver,ierr)
       call HYPRE_StructSMGSetMaxIter(solver,maxiter,ierr)
       call HYPRE_StructSMGSetTol(solver,maxerror,ierr)
-      call hypre_structSMGsetLogging(solver,1,ierr)
-      call HYPRE_StructSMGSetPrintLevel(solver,1,ierr)
+      !call hypre_structSMGsetLogging(solver,1,ierr)
+      !call HYPRE_StructSMGSetPrintLevel(solver,1,ierr)
     else if ( stype == HYPRESolverPFMG ) then
       call HYPRE_StructPFMGCreate(asolver%comm_hypre,solver,ierr)
       call HYPRE_StructPFMGSetMaxIter(solver,maxiter,ierr)
       call HYPRE_StructPFMGSetTol(solver,maxerror,ierr)
-      call HYPRE_structPFMGsetLogging(solver,1,ierr)
-      call HYPRE_StructPFMGSetPrintLevel(solver,1,ierr)
+      !call HYPRE_structPFMGsetLogging(solver,1,ierr)
+      !call HYPRE_StructPFMGSetPrintLevel(solver,1,ierr)
       call HYPRE_StructPFMGSetRelChange(solver,1,ierr)
       ! Relaxiation Method: 2 is the fastest if symm matrix
       ! 0: Jacobi
