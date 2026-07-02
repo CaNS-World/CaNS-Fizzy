@@ -17,7 +17,7 @@ module mod_rk
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
                 psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
     !
-    ! RK3 scheme for time integration of the momentum equations
+    ! AB2 scheme for time integration of the momentum equations
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
@@ -122,7 +122,7 @@ module mod_rk
   subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
     use mod_scal, only: scal_ad
     !
-    ! RK3 scheme for time integration of the scalar field
+    ! AB2 scheme for time integration of the scalar field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
@@ -187,7 +187,7 @@ module mod_rk
 #endif
     use mod_two_fluid   , only: clip_field
     !
-    ! RK3 scheme for time integration of the phase field
+    ! AB2 scheme for time integration of the phase field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar

@@ -28,9 +28,6 @@ module mod_correc
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     rhop = rho0
-    !
-    !factor = rkcoeffab(rkiter)*dt
-    !
     factori = dt*dli(1)
     factorj = dt*dli(2)
     !factork = dt*dzci!dli(3)
