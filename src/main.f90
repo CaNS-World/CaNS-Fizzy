@@ -47,7 +47,7 @@ program cans
   use mod_load           , only: load_one
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_param          , only: rkcoeff,small, &
+  use mod_param          , only: small, &
                                  nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
@@ -107,9 +107,9 @@ program cans
   end type rhs_bound
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
-  real(rp) :: dt,dto,dt_r,dti,dt_cfl,dtrk,dtrk_acc,dtrki,time,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dti,dt_cfl,dtrk,dtrki,time,divtot,divmax
   real(rp) :: gam,seps
-  integer :: irk,istep
+  integer :: istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f
@@ -384,81 +384,79 @@ program cans
     istep = istep + 1
     time = time + dt
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
-    do irk=1,3
-      tm_coeff(:) = rkcoeff(:,irk)
-      dtrk = sum(tm_coeff(:))*dt
-      dtrk_acc = sum(rkcoeff(:,1:irk))*dt
-      dtrki = dtrk**(-1)
-      dt_r = dtrk_acc/dto
-      !
-      ! phase field update
-      !
-      !$acc kernels default(present) async(1)
-      psio(:,:,:)   = psi(:,:,:)
-      !$acc end kernels
-      if(is_track_interface) then
-        call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
-        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
-        call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+    dt_r = dt/dto
+    tm_coeff(1) = 1. + 0.5*dt_r
+    tm_coeff(2) =    - 0.5*dt_r
+    dtrk = dt
+    dtrki = dtrk**(-1)
+    !
+    ! phase field update
+    !
+    !$acc kernels default(present) async(1)
+    psio(:,:,:)   = psi(:,:,:)
+    !$acc end kernels
+    if(is_track_interface) then
+      call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
 #if !defined(_INTERFACE_CAPTURING_VOF)
-        call acdi_cmpt_phi(n,seps,psi,phi)
-        call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+      call acdi_cmpt_phi(n,seps,psi,phi)
+      call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
 #else
-        call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+      call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-        call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
-        call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-        call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-        call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
-      else
-        !$acc kernels default(present) async(1)
-        psiflx_x(:,:,:) = 0.
-        psiflx_y(:,:,:) = 0.
-        psiflx_z(:,:,:) = 0.
-        !$acc end kernels
-      end if
+      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+      call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+      call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+      call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+    else
+      !$acc kernels default(present) async(1)
+      psiflx_x(:,:,:) = 0.
+      psiflx_y(:,:,:) = 0.
+      psiflx_z(:,:,:) = 0.
+      !$acc end kernels
+    end if
 #if defined(_SCALAR)
-      call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
-      call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
+    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
+    call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
 #endif
-      if(.not.is_solve_ns) then
-        call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
-        !$acc wait(1)
-        !$acc update device(u,v,w,p) async(1)
-        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-      else
-        rho_av(:) = 0.
-        is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
-        if(is_cmpt_rho_av(1)) &
-          call bulk_mean_12_stag(n,1,grid_vol_ratio_c,psi,rho12,rho_av(1))
-        if(is_cmpt_rho_av(2)) &
-          call bulk_mean_12_stag(n,2,grid_vol_ratio_c,psi,rho12,rho_av(2))
-        if(is_cmpt_rho_av(3)) &
-          call bulk_mean_12_stag(n,3,grid_vol_ratio_f,psi,rho12,rho_av(3))
-        call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
-                psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
-        if(is_forced_hit) then
-          call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
-        end if
-        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-        !$acc kernels default(present) async(1)
-        pp(:,:,:) = p(:,:,:)
-        !$acc end kernels
-        call fillps(n,dli,dzfi,dtrki,rho0,u,v,w,p)
-#if defined(_CONSTANT_COEFFS_POISSON)
-        call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
-        call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
-#else
-        call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
-#endif
-        call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-        call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
-        call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
-        call updatep(pp,p)
-        call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+    if(.not.is_solve_ns) then
+      call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
+      !$acc wait(1)
+      !$acc update device(u,v,w,p) async(1)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
+    else
+      rho_av(:) = 0.
+      is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
+      if(is_cmpt_rho_av(1)) &
+        call bulk_mean_12_stag(n,1,grid_vol_ratio_c,psi,rho12,rho_av(1))
+      if(is_cmpt_rho_av(2)) &
+        call bulk_mean_12_stag(n,2,grid_vol_ratio_c,psi,rho12,rho_av(2))
+      if(is_cmpt_rho_av(3)) &
+        call bulk_mean_12_stag(n,3,grid_vol_ratio_f,psi,rho12,rho_av(3))
+      call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
+              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+              psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
+      if(is_forced_hit) then
+        call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
       end if
-    end do
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
+      !$acc kernels default(present) async(1)
+      pp(:,:,:) = p(:,:,:)
+      !$acc end kernels
+      call fillps(n,dli,dzfi,dtrki,rho0,u,v,w,p)
+#if defined(_CONSTANT_COEFFS_POISSON)
+      call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
+      call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
+#else
+      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
+#endif
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+      call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
+      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
+      call updatep(pp,p)
+      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+    end if
 #if defined(_CONSTANT_COEFFS_POISSON)
     !$acc kernels default(present) async(1)
     po(:,:,:) = pn(:,:,:)
