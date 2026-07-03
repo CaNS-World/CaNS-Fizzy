@@ -220,7 +220,7 @@ contains
         cudecomp_t_comm_backend = CUDECOMP_TRANSPOSE_COMM_MPI_P2P
       end select
     end if
-    if(cudecomp_h_comm_backend >= 1 .and. cudecomp_h_comm_backend <= 4) then
+    if(cudecomp_h_comm_backend >= 1 .and. cudecomp_h_comm_backend <= 5) then
       cudecomp_is_h_comm_autotune = .false. ! do not autotune if backend is prescribed
       select case(cudecomp_h_comm_backend)
       case(1)
