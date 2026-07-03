@@ -17,10 +17,7 @@ def test_rising_bubble():
     v_ref=np.loadtxt("c1g2l3s.txt")
     err = directed_hausdorff(v,v_ref)[0]
     err_max = 1.e-1
-    try:
-        assert err < err_max, "Error is too large."
-    except AssertionError as msg:
-        print(msg)
+    assert err < err_max, f"Error is too large: {err} >= {err_max}."
     #
     # plotting
     #

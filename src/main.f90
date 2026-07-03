@@ -48,7 +48,7 @@ program cans
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
   use mod_param          , only: small, &
-                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor, &
+                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
@@ -339,7 +339,7 @@ program cans
 #else
   call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-  call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+  call boundp(cbccur,n,bccur,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
   call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
@@ -366,7 +366,14 @@ program cans
   end if
   !
   call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
-  dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
+  dt = min(cfl*dt_cfl,dtmax)
+  if(dt_f > 0.) then
+    if(dt_f > dt) then
+      if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
+      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+    end if
+    dt = dt_f
+  end if
   if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
   dto = dt
   dti = 1./dt
@@ -405,7 +412,7 @@ program cans
 #else
       call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-      call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
+      call boundp(cbccur,n,bccur,nb,is_bound,dl,dzc,kappa)
       call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
       call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
       call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
@@ -486,7 +493,17 @@ program cans
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
-      dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
+      dt = min(cfl*dt_cfl,dtmax)
+      if(dt_f > 0.) then
+        if(dt_f > dt) then
+          if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
+          if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+          is_done = .true.
+          kill = .true.
+        else
+          dt = dt_f
+        end if
+      end if
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
       if(dt_cfl < small) then
         if(myid == 0) print*, 'ERROR: time step is too small.'
