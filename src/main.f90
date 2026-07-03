@@ -107,7 +107,7 @@ program cans
   end type rhs_bound
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
-  real(rp) :: dt,dto,dt_r,dti,dt_cfl,dtrk,dtrki,time,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dti,dt_cfl,dtrk,dtrk_acc,dtrki,time,divtot,divmax
   real(rp) :: gam,seps
   integer :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
@@ -386,9 +386,10 @@ program cans
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
     do irk=1,3
       tm_coeff(:) = rkcoeff(:,irk)
-      dtrk = sum(rkcoeff(:,1:irk))*dt
+      dtrk = sum(tm_coeff(:))*dt
+      dtrk_acc = sum(rkcoeff(:,1:irk))*dt
       dtrki = dtrk**(-1)
-      dt_r = dtrk/dto
+      dt_r = dtrk_acc/dto
       !
       ! phase field update
       !
