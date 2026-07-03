@@ -13,9 +13,6 @@ def test_deforming_circle():
     dz = zw[1]-zw[0]
     err = np.sum(abs(data_beg[:,0,:]-data_end[:,0,:]))*dx*dz/(lx*lz)
     err_max = 1.e-1
-    try:
-        assert err < err_max, "Error is too large."
-    except AssertionError as msg:
-        print(msg)
+    assert err < err_max, f"Error is too large: {err} >= {err_max}."
 if __name__ == "__main__":
     test_deforming_circle()

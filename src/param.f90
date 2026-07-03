@@ -50,6 +50,8 @@ character(len=1), protected, dimension(0:1,3)   ::  cbcpre
 real(rp)        , protected, dimension(0:1,3)   ::   bcpre
 character(len=1), protected, dimension(0:1,3)   ::  cbcpsi
 real(rp)        , protected, dimension(0:1,3)   ::   bcpsi
+character(len=1), protected, dimension(0:1,3)   ::  cbccur
+real(rp)        , protected, dimension(0:1,3)   ::   bccur
 character(len=1), protected, dimension(0:1,3)   ::  cbcsca
 real(rp)        , protected, dimension(0:1,3)   ::   bcsca
 character(len=1), protected, dimension(0:1,3,3) ::  cbcnor
@@ -140,6 +142,7 @@ contains
     !
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
+    cbccur(:,:) = 'P'; bccur(:,:) = 0.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     psi_thickness_factor = 0.51; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12
@@ -166,6 +169,8 @@ contains
     !
     dl(:) = l(:)/(1.*ng(:))
     dli(:) = dl(:)**(-1)
+    cbccur(:,:) = cbcpsi(:,:)
+    bccur(:,:) = bcpre(:,:)
     rho0 = 1.
 #if defined(_CONSTANT_COEFFS_POISSON)
     rho0 = minval(rho12(:))
