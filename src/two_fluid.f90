@@ -203,9 +203,9 @@ module mod_two_fluid
           dpsidy = (psiyp-psiym)*dli(2)
           dpsidz = (psizp-psizm)*dzfi(k)
           norm   = sqrt(dpsidx**2+dpsidy**2+dpsidz**2)
-          dpsidx = dpsidx/norm
-          dpsidy = dpsidy/norm
-          dpsidz = dpsidz/norm
+          normx(i,j,k) = dpsidx/norm
+          normy(i,j,k) = dpsidy/norm
+          normz(i,j,k) = dpsidz/norm
         end do
       end do
     end do
