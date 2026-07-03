@@ -165,6 +165,6 @@ module mod_scal
     !$acc end data
     !$acc wait(1)
     flux(:) = [flux_x,flux_y,flux_z]
-    call MPI_ALLREDUCE(MPI_IN_PLACE,flux(3),3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call MPI_ALLREDUCE(MPI_IN_PLACE,flux,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_scalflux
 end module mod_scal

@@ -78,14 +78,21 @@ module mod_solver_vc
     !
     comm_hypre = MPI_COMM_WORLD
     !
-    sgn(:,:) = 0._rp
+    sgn(:,:)    = 0._rp
+    factor(:,:) = 0._rp
     do q=1,3
       do qq=0,1
         if(is_bound(qq,q)) then
           select case(cbc(qq,q))
           case('N')
             sgn(qq,q)    =  1._rp
-            factor(qq,q) = 1.d0/dli(q)*bc(qq,q) ! N.B.: only valid for constant grid spacing
+            if(q == 3) then
+              if(qq == 0) factor(qq,q) =  dzci(lo(3)-1)**(-1)*bc(qq,q)
+              if(qq == 1) factor(qq,q) = -dzci(hi(3)  )**(-1)*bc(qq,q)
+            else
+              if(qq == 0) factor(qq,q) =  dli(q)**(-1)*bc(qq,q)
+              if(qq == 1) factor(qq,q) = -dli(q)**(-1)*bc(qq,q)
+            end if
           case('D')
             sgn(qq,q)    = -1._rp
             factor(qq,q) = -2.d0*bc(qq,q)

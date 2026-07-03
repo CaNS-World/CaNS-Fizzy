@@ -339,7 +339,7 @@ program cans
 #else
   call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,kappa)
+  call boundp(cbcpsi,n,bcpre,nb,is_bound,dl,dzc,kappa)
   call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
   call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
   call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
@@ -485,7 +485,7 @@ program cans
 #endif
     if(mod(istep,icheck) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps)
+      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
       dt = min(cfl*dt_cfl,dtmax); if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
       if(dt_cfl < small) then
