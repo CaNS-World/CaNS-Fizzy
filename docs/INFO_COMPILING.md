@@ -22,6 +22,7 @@ PENCIL_AXIS=1              # = 1/2/3 for X/Y/Z-aligned pencils
 SINGLE_PRECISION=0         # perform the whole calculation in single precision
 CONSTANT_COEFFS_POISSON=1  # the fast mode for solving the pressure equation
 INTERFACE_CAPTURING_VOF=0  # uses the THINC/QQ volume-of-fluid method to track the interface instead of the ACDI method
+SDF_NORMALS=1              # computes interface normals from an approximate signed-distance field (default)
 #
 # GPU-related
 #
@@ -36,6 +37,7 @@ In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifort`), `NVID
  * `SINGLE_PRECISION`         : calculation will be carried out in single precision (the default precision is double)
  * `CONSTANT_COEFFS_POISSON`  : enables the use of a direct FFT solver for the pressure Poisson equation (if set to 0, an iterative multigrid solver based on the HYPRE library will be used. This option is only available for CPU compilation)
  * `INTERFACE_CAPTURING_VOF`  : uses the THINC/QQ volume-of-fluid method to track the interface
+ * `SDF_NORMALS`              : computes interface normals and curvature from an approximate signed-distance field for both ACDI and VoF; when disabled, the phase indicator is used directly
  * `SCALAR`                   : enables the transport equation for a scalar field (e.g., temperature)
  * `BOUSSINESQ_BUOYANCY`      : enables thermal convection within each phase under the Boussinesq approximation
  * `GPU`                      : enables GPU accelerated runs (requires the `FCOMP=NVIDIA`)

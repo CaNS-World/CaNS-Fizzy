@@ -197,7 +197,7 @@ module mod_rk
     real(rp), intent(in   ) :: gam,seps,beta,dt
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: phi
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
     real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(0:,0:,0:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
@@ -218,7 +218,7 @@ module mod_rk
 #if !defined(_INTERFACE_CAPTURING_VOF)
     call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
 #else
-    call vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
+    call vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
 #endif
     if(is_first) then
       !$acc kernels default(present) async(1)
