@@ -36,7 +36,7 @@ module mod_vof_thinc_qq
 #endif
   !
   contains
-  subroutine vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,dpsidt,flux_x,flux_y,flux_z)
+  subroutine vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidt,flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the VoF transport equation
     !
@@ -50,12 +50,16 @@ module mod_vof_thinc_qq
     real(rp), intent(in   )                      :: beta
     real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
     real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: phi
+    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: phi
+    real(rp), intent(inout), dimension(0:,0:,0:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
     real(rp), intent(out  ), dimension(0:,0:,0:) :: flux_x,flux_y,flux_z
     integer  :: i,j,k,ii,jj,kk
     real(rp) :: xx,yy,zz
     real(rp) :: vel_x,vel_y,vel_z, &
+#if !defined(_SDF_NORMALS)
+                lpsi_x,lpsi_y,lpsi_z, &
+#endif
                 lnormx_x,lnormy_y,lnormz_z, &
                 d_x,d_y,d_z,lflux_x,lflux_y,lflux_z
     !
@@ -93,9 +97,18 @@ module mod_vof_thinc_qq
           lnormy_y = normy(i,jj,k)
           lnormz_z = normz(i,j,kk)
           !
+#if defined(_SDF_NORMALS)
           d_x = phi(ii,j,k)
           d_y = phi(i,jj,k)
           d_z = phi(i,j,kk)
+#else
+          lpsi_x = psi(ii,j,k)
+          lpsi_y = psi(i,jj,k)
+          lpsi_z = psi(i,j,kk)
+          d_x = -.5_rp/beta*log(1._rp/(lpsi_x+eps)-1._rp+eps)
+          d_y = -.5_rp/beta*log(1._rp/(lpsi_y+eps)-1._rp+eps)
+          d_z = -.5_rp/beta*log(1._rp/(lpsi_z+eps)-1._rp+eps)
+#endif
           !
           lflux_x = 1._rp/(1._rp + exp(-2._rp*beta*(lnormx_x*xx + d_x)))
           lflux_y = 1._rp/(1._rp + exp(-2._rp*beta*(lnormy_y*yy + d_y)))

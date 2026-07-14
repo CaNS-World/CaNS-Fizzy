@@ -70,7 +70,7 @@ program cans
 #endif
 #if !defined(_INTERFACE_CAPTURING_VOF)
   use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
-#else
+#elif defined(_SDF_NORMALS)
   use mod_vof_thinc_qq   , only: vof_thinc_cmpt_phi
 #endif
   use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs
@@ -192,8 +192,11 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi,phi,kappa,normx,normy,normz,mold=pp)
+  allocate(psi,kappa,normx,normy,normz,mold=pp)
   allocate(psio,mold=pp)
+#if defined(_SDF_NORMALS)
+  allocate(phi,mold=pp)
+#endif
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
@@ -327,15 +330,20 @@ program cans
   call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
   !$acc wait
 #endif
-  !$acc enter data copyin(psi) create(phi,kappa,normx,normy,normz) async(1)
+  !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
+#if defined(_SDF_NORMALS)
+  !$acc enter data create(phi) async(1)
+#endif
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
   call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
   !$acc wait
   !
+#if defined(_SDF_NORMALS)
 #if !defined(_INTERFACE_CAPTURING_VOF)
   call acdi_cmpt_phi(n,seps,psi,phi)
 #else
   call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)
+#endif
 #endif
 #if defined(_SDF_NORMALS)
   call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
@@ -409,10 +417,12 @@ program cans
       call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
       call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+#if defined(_SDF_NORMALS)
 #if !defined(_INTERFACE_CAPTURING_VOF)
       call acdi_cmpt_phi(n,seps,psi,phi)
 #else
       call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)
+#endif
 #endif
 #if defined(_SDF_NORMALS)
       call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
