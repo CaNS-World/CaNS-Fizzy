@@ -31,16 +31,18 @@ GPU=0
 
 In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifort`), `NVIDIA` (`nvfortran`), or `CRAY` (`ftn`); the predefined profiles for compiler options can be selected by choosing one of the `FFLAGS_*` option; finer control of the compiler flags may be achieved by building with, e.g., `make FFLAGS+=[OTHER_FLAGS]`, or by tweaking the profiles directly under `configs/flags.mk`. Similarly, the library paths (e.g., for *FFTW*) may need to be adapted in the `Makefile` (`LIBS` variable) or by building with `make LIBS+='-L[PATH_TO_LIB] -l[NAME_OF_LIB]'`. Finally, the following pre-processing options are available:
 
- * `DEBUG`                    : performs some basic checks for debugging purposes
- * `TIMING`                   : wall-clock time per time step is computed
- * `PENCIL_AXIS`              : sets the default pencil direction, one of [1,2,3] for [X,Y,Z]-aligned pencils; X-aligned is the default and should be optimal for all cases except for Z implicit diffusion, where using Z-pencils is recommended
- * `SINGLE_PRECISION`         : calculation will be carried out in single precision (the default precision is double)
- * `CONSTANT_COEFFS_POISSON`  : enables the use of a direct FFT solver for the pressure Poisson equation (if set to 0, an iterative multigrid solver based on the HYPRE library will be used. This option is only available for CPU compilation)
- * `INTERFACE_CAPTURING_VOF`  : uses the THINC/QQ volume-of-fluid method instead of the ACDI diffuse-interface pathway
- * `SDF_NORMALS`              : enables approximate signed-distance fields for interface transport, normals, and curvature (default); setting it to `0` uses CDI or standard THINC directly from the phase indicator without allocating a distance field
- * `SCALAR`                   : enables the transport equation for a scalar field (e.g., temperature)
- * `BOUSSINESQ_BUOYANCY`      : enables thermal convection within each phase under the Boussinesq approximation
- * `GPU`                      : enables GPU accelerated runs (requires the `FCOMP=NVIDIA`)
+ * `DEBUG`                            : performs some basic checks for debugging purposes
+ * `TIMING`                           : wall-clock time per time step is computed
+ * `PENCIL_AXIS`                      : sets the default pencil direction, one of [1,2,3] for [X,Y,Z]-aligned pencils; X-aligned is the default and should be optimal for all cases except for Z implicit diffusion, where using Z-pencils is recommended
+ * `SINGLE_PRECISION`                 : calculation will be carried out in single precision (the default precision is double)
+ * `CONSTANT_COEFFS_POISSON`          : enables the use of a direct FFT solver for the pressure Poisson equation (if set to 0, an iterative multigrid solver based on the HYPRE library will be used. This option is only available for CPU compilation)
+ * `INTERFACE_CAPTURING_VOF`          : uses the THINC/QQ volume-of-fluid method instead of the ACDI diffuse-interface pathway
+ * `SDF_NORMALS`                      : enables approximate signed-distance fields for interface transport, normals, and curvature (default); setting it to `0` uses CDI or standard THINC directly from the phase indicator without allocating a distance field
+ * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method
+ * `CAPILLARY_BRACKBILL_NORMALIZATION`: enables density-based Brackbill scaling of the surface-tension force (default); setting it to `0` disables the scaling
+ * `SCALAR`                           : enables the transport equation for a scalar field (e.g., temperature)
+ * `BOUSSINESQ_BUOYANCY`              : enables thermal convection within each phase under the Boussinesq approximation
+ * `GPU`                              : enables GPU accelerated runs (requires the `FCOMP=NVIDIA`)
 
 Typing `make libs` will build the 2DECOMP&FFT/cuDecomp libraries; then typing `make` will compile the code and copy the executable `cans` to a `run/` folder; `make run` will also copy the default input files `*.in` under `src/` to the same `run/` folder.
 

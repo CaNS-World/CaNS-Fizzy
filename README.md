@@ -8,6 +8,7 @@ P. Costa. *A FFT-based finite-difference solver for massively-parallel direct nu
 
 G. Frantzis & D. Grigoriadis. *An efficient method for two-fluid incompressible flows appropriate for the immersed boundary method.* *Journal of Computational Physics* 376 (2019): 28-53. [doi.org/10.1016/j.jcp.2018.09.035](https://doi.org/10.1016/j.jcp.2018.09.035).
 
+P. Cifani. *Analysis of a constant-coefficient pressure equation method for fast computations of two-phase flows at high density ratios.* *Journal of Computational Physics* 398 (2019): 108904. [doi:10.1016/j.jcp.2019.108904](https://doi.org/10.1016/j.jcp.2019.108904).
 
 S. Jain. *Accurate conservative phase-field method for simulation of two-phase flows.* *Journal of Computational Physics* 469 (2022): 111529. [doi.org/10.1016/j.jcp.2022.111529](https://doi.org/10.1016/j.jcp.2022.111529)
 

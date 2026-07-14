@@ -851,7 +851,11 @@ module mod_mom
   end subroutine mom_xyz_ad
   !
   subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,psi,kappa,s,pn,po,dudt,dvdt,dwdt)
+                         p,psi,kappa,s,pn,po, &
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+                         surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
+#endif
+                         dudt,dvdt,dwdt)
     implicit none
     integer , intent(in   ), dimension(3) :: n
     real(rp), intent(in   ), dimension(3) :: dli
@@ -863,6 +867,10 @@ module mod_mom
     real(rp), intent(in   ) :: rho0,rho_av(3)
     real(rp), intent(in   ), dimension(0:,0:,0:)           :: p,psi,kappa
     real(rp), intent(in   ), dimension(0:,0:,0:), optional :: s,pn,po
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
+                                                 surfx_o,surfy_o,surfz_o
+#endif
     real(rp), intent(inout), dimension( :, :, :)           :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
@@ -881,6 +889,9 @@ module mod_mom
                 dpdx  ,dpdy  ,dpdz  , &
                 dpdx_e,dpdy_e,dpdz_e, &
                 surfx  ,surfy  ,surfz
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    real(rp) :: surfx_e,surfy_e,surfz_e
+#endif
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     real(rp) :: surf_factor
     !
@@ -888,7 +899,11 @@ module mod_mom
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)- rho12(2)*beta12(2)
     dxi = dli(1)
     dyi = dli(2)
-    surf_factor = sigma*2./(rho12(1)+rho12(2))
+#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
+    surf_factor = sigma*2._rp/(rho12(1)+rho12(2))
+#else
+    surf_factor = sigma
+#endif
     rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
     !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
@@ -956,16 +971,38 @@ module mod_mom
           skappaxp = 0.5*(k_pcc+k_ccc)*surf_factor
           skappayp = 0.5*(k_cpc+k_ccc)*surf_factor
           skappazp = 0.5*(k_ccp+k_ccc)*surf_factor
-          surfx = skappaxp*rhoxp*(c_pcc-c_ccc)*dxi
-          surfy = skappayp*rhoyp*(c_cpc-c_ccc)*dyi
-          surfz = skappazp*rhozp*(c_ccp-c_ccc)*dzci_c
+#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
+          skappaxp = skappaxp*rhoxp
+          skappayp = skappayp*rhoyp
+          skappazp = skappazp*rhozp
+#endif
+          surfx = skappaxp*(c_pcc-c_ccc)*dxi
+          surfy = skappayp*(c_cpc-c_ccc)*dyi
+          surfz = skappazp*(c_ccp-c_ccc)*dzci_c
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+          !
+          ! split and extrapolate the balanced residual grad(p)-f_sigma.
+          !
+          surfx_e = (1._rp+dt_r)*surfx_n(i,j,k)-dt_r*surfx_o(i,j,k)
+          surfy_e = (1._rp+dt_r)*surfy_n(i,j,k)-dt_r*surfy_o(i,j,k)
+          surfz_e = (1._rp+dt_r)*surfz_n(i,j,k)-dt_r*surfz_o(i,j,k)
+          dpdx = dpdx-surfx
+          dpdy = dpdy-surfy
+          dpdz = dpdz-surfz
+#else
           dudt_aux = dudt_aux + surfx
           dvdt_aux = dvdt_aux + surfy
           dwdt_aux = dwdt_aux + surfz
+#endif
 #if defined(_CONSTANT_COEFFS_POISSON)
           dpdx_e = (q_pcc-q_ccc)*dxi
           dpdy_e = (q_cpc-q_ccc)*dyi
           dpdz_e = (q_ccp-q_ccc)*dzci_c
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+          dpdx_e = dpdx_e-surfx_e
+          dpdy_e = dpdy_e-surfy_e
+          dpdz_e = dpdz_e-surfz_e
+#endif
           dudt_aux = dudt_aux - (dpdx_e + rhoxp/rho0*(dpdx-dpdx_e))
           dvdt_aux = dvdt_aux - (dpdy_e + rhoyp/rho0*(dpdy-dpdy_e))
           dwdt_aux = dwdt_aux - (dpdz_e + rhozp/rho0*(dpdz-dpdz_e))
@@ -984,6 +1021,14 @@ module mod_mom
           dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)
           dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
           dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
+#endif
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+          surfx_o(i,j,k) = surfx_n(i,j,k)
+          surfy_o(i,j,k) = surfy_n(i,j,k)
+          surfz_o(i,j,k) = surfz_n(i,j,k)
+          surfx_n(i,j,k) = surfx
+          surfy_n(i,j,k) = surfy
+          surfz_n(i,j,k) = surfz
 #endif
           dudt(i,j,k) = dudt_aux
           dvdt(i,j,k) = dvdt_aux
