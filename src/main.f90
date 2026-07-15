@@ -139,6 +139,10 @@ program cans
   !
   real(rp), allocatable, dimension(:,:,:) :: psi,psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+  real(rp), allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
+                                             surfx_o,surfy_o,surfz_o
+#endif
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -198,6 +202,16 @@ program cans
   allocate(phi,mold=pp)
 #endif
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+  allocate(surfx_n(n(1),n(2),n(3)),surfy_n(n(1),n(2),n(3)),surfz_n(n(1),n(2),n(3)), &
+           surfx_o(n(1),n(2),n(3)),surfy_o(n(1),n(2),n(3)),surfz_o(n(1),n(2),n(3)))
+  surfx_n(:,:,:) = 0._rp
+  surfy_n(:,:,:) = 0._rp
+  surfz_n(:,:,:) = 0._rp
+  surfx_o(:,:,:) = 0._rp
+  surfy_o(:,:,:) = 0._rp
+  surfz_o(:,:,:) = 0._rp
+#endif
 #if defined(_DEBUG)
   if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
   if(myid == 0) print*, 'Using the options: ', compiler_options()
@@ -316,6 +330,9 @@ program cans
     if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
   end if
   !$acc enter data copyin(u,v,w,p,pp,pn,po) async
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+  !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o) async
+#endif
   !$acc wait
   call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
@@ -460,6 +477,9 @@ program cans
         call bulk_mean_12_stag(n,3,grid_vol_ratio_f,psi,rho12,rho_av(3))
       call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
               bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+              surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
+#endif
               psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
