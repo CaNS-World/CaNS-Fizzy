@@ -383,6 +383,8 @@ These lines specify the physical and transport properties of the two-phase syste
 * `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
 * `beta12` sets the value of the thermal expansion coeffcient of each phase.
 
+By default, viscosity and thermal conductivity are interpolated arithmetically between the two phases. Setting `VISC_HARMONIC_INTERPOLATION=1` at compilation time switches both properties to harmonic phase interpolation.
+
 ---
 
 ```fortran

@@ -36,6 +36,7 @@ In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifort`), `NVID
  * `PENCIL_AXIS`                      : sets the default pencil direction, one of [1,2,3] for [X,Y,Z]-aligned pencils; X-aligned is the default and should be optimal for all cases except for Z implicit diffusion, where using Z-pencils is recommended
  * `SINGLE_PRECISION`                 : calculation will be carried out in single precision (the default precision is double)
  * `CONSTANT_COEFFS_POISSON`          : enables the use of a direct FFT solver for the pressure Poisson equation (if set to 0, an iterative multigrid solver based on the HYPRE library will be used. This option is only available for CPU compilation)
+ * `VISC_HARMONIC_INTERPOLATION`      : uses harmonic phase interpolation for viscosity and thermal conductivity instead of the default arithmetic interpolation
  * `INTERFACE_CAPTURING_VOF`          : uses the THINC/QQ volume-of-fluid method instead of the ACDI diffuse-interface pathway
  * `SDF_NORMALS`                      : enables approximate signed-distance fields for interface transport, normals, and curvature (default); setting it to `0` uses CDI or standard THINC directly from the phase indicator without allocating a distance field
  * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method

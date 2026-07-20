@@ -24,9 +24,15 @@ module mod_scal
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
     real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c
+    real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm
     real(rp) :: ka,dka,rhocp,drhocp
     !
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+    ! N.b.: care should be taken if one of the conductivities is zero.
+    ka = 1._rp/ka12(2); dka = 1._rp/ka12(1)-1._rp/ka12(2)
+#else
     ka    = ka12(2)   ; dka    = ka12(1)-ka12(2)
+#endif
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
@@ -40,12 +46,27 @@ module mod_scal
           wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
           wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
           !
-          kaxp = ka+dka*0.5*(psi(i+1,j,k)+psi(i  ,j,k))
-          kaxm = ka+dka*0.5*(psi(i  ,j,k)+psi(i-1,j,k))
-          kayp = ka+dka*0.5*(psi(i,j+1,k)+psi(i,j  ,k))
-          kaym = ka+dka*0.5*(psi(i,j  ,k)+psi(i,j-1,k))
-          kazp = ka+dka*0.5*(psi(i,j,k+1)+psi(i,j,k  ))
-          kazm = ka+dka*0.5*(psi(i,j,k  )+psi(i,j,k-1))
+          psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
+          psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
+          psiyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
+          psiym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
+          psizp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
+          psizm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          kaxp = 1._rp/(ka+dka*psixp)
+          kaxm = 1._rp/(ka+dka*psixm)
+          kayp = 1._rp/(ka+dka*psiyp)
+          kaym = 1._rp/(ka+dka*psiym)
+          kazp = 1._rp/(ka+dka*psizp)
+          kazm = 1._rp/(ka+dka*psizm)
+#else
+          kaxp = ka+dka*psixp
+          kaxm = ka+dka*psixm
+          kayp = ka+dka*psiyp
+          kaym = ka+dka*psiym
+          kazp = ka+dka*psizp
+          kazm = ka+dka*psizm
+#endif
           !
           dsdxp = (s(i+1,j,k)-s(i  ,j,k))*dxi
           dsdxm = (s(i  ,j,k)-s(i-1,j,k))*dxi
@@ -80,10 +101,15 @@ module mod_scal
     real(rp) :: flux_x,flux_y,flux_z
     integer :: i,j,k,nx,ny,nz
     real(rp) :: dxi,dyi,lx,ly,lz
-    real(rp) :: ka,dka
+    real(rp) :: ka,dka,psip
     integer :: ierr
     !
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+    ! N.b.: care should be taken if one of the conductivities is zero.
+    ka = 1._rp/ka12(2); dka = 1._rp/ka12(1)-1._rp/ka12(2)
+#else
     ka = ka12(2); dka = ka12(1)-ka12(2)
+#endif
     !
     nx = n(1); ny = n(2); nz = n(3)
     dxi = dli(1); dyi = dli(2)
@@ -92,22 +118,32 @@ module mod_scal
     !$acc data copy(flux_x) async(1)
     if(is_bound(0,1)) then
       i = 0
-      !$acc parallel loop collapse(2) default(present) private(dsdxp,kaxp) reduction(+:flux_x) async(1)
+      !$acc parallel loop collapse(2) default(present) private(dsdxp,kaxp,psip) reduction(+:flux_x) async(1)
       do k=1,nz
         do j=1,ny
           dsdxp = (s(i+1,j,k)-s(i  ,j,k))*dxi
-          kaxp = ka+dka*0.5*(psi(i+1,j,k)+psi(i,j,k))
+          psip = 0.5*(psi(i+1,j,k)+psi(i,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          kaxp = 1._rp/(ka+dka*psip)
+#else
+          kaxp = ka+dka*psip
+#endif
           flux_x = flux_x + kaxp*dsdxp/(dyi*dzfi(k)*ly*lz)
         end do
       end do
     end if
     if(is_bound(1,1)) then
       i = nx+1
-      !$acc parallel loop collapse(2) default(present) private(dsdxm,kaxm) reduction(+:flux_x) async(1)
+      !$acc parallel loop collapse(2) default(present) private(dsdxm,kaxm,psip) reduction(+:flux_x) async(1)
       do k=1,nz
         do j=1,ny
           dsdxm = (s(i  ,j,k)-s(i-1,j,k))*dxi
-          kaxm = ka+dka*0.5*(psi(i,j,k)+psi(i-1,j,k))
+          psip = 0.5*(psi(i,j,k)+psi(i-1,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          kaxm = 1._rp/(ka+dka*psip)
+#else
+          kaxm = ka+dka*psip
+#endif
           flux_x = flux_x - kaxm*dsdxm/(dyi*dzfi(k)*ly*lz)
         end do
       end do
@@ -117,22 +153,32 @@ module mod_scal
     !$acc data copy(flux_y) async(1)
     if(is_bound(0,2)) then
       j = 0
-      !$acc parallel loop collapse(2) default(present) private(dsdyp,kayp) reduction(+:flux_y) async(1)
+      !$acc parallel loop collapse(2) default(present) private(dsdyp,kayp,psip) reduction(+:flux_y) async(1)
       do k=1,nz
         do i=1,nx
           dsdyp = (s(i,j+1,k)-s(i,j  ,k))*dyi
-          kayp = ka+dka*0.5*(psi(i,j+1,k)+psi(i,j,k))
+          psip = 0.5*(psi(i,j+1,k)+psi(i,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          kayp = 1._rp/(ka+dka*psip)
+#else
+          kayp = ka+dka*psip
+#endif
           flux_y = flux_y + kayp*dsdyp/(dxi*dzfi(k)*lx*lz)
         end do
       end do
     end if
     if(is_bound(1,2)) then
       j = ny+1
-      !$acc parallel loop collapse(2) default(present) private(dsdym,kaym) reduction(+:flux_y) async(1)
+      !$acc parallel loop collapse(2) default(present) private(dsdym,kaym,psip) reduction(+:flux_y) async(1)
       do k=1,nz
         do i=1,nx
           dsdym = (s(i,j  ,k)-s(i,j-1,k))*dyi
-          kaym = ka+dka*0.5*(psi(i,j,k)+psi(i,j-1,k))
+          psip = 0.5*(psi(i,j,k)+psi(i,j-1,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          kaym = 1._rp/(ka+dka*psip)
+#else
+          kaym = ka+dka*psip
+#endif
           flux_y = flux_y - kaym*dsdym/(dxi*dzfi(k)*lx*lz)
         end do
       end do
@@ -142,22 +188,32 @@ module mod_scal
     !$acc data copy(flux_z) async(1)
     if(is_bound(0,3)) then
       k = 0
-      !$acc parallel loop collapse(2) default(present) private(dsdzp,kazp) reduction(+:flux_z) async(1)
+      !$acc parallel loop collapse(2) default(present) private(dsdzp,kazp,psip) reduction(+:flux_z) async(1)
       do j=1,ny
         do i=1,nx
           dsdzp = (s(i,j,k+1)-s(i,j,k  ))*dzci(k  )
-          kazp = ka+dka*0.5*(psi(i,j,k+1)+psi(i,j,k))
+          psip = 0.5*(psi(i,j,k+1)+psi(i,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          kazp = 1._rp/(ka+dka*psip)
+#else
+          kazp = ka+dka*psip
+#endif
           flux_z = flux_z + kazp*dsdzp/(dxi*dyi*lx*ly)
         end do
       end do
     end if
     if(is_bound(1,3)) then
       k = nz+1
-      !$acc parallel loop collapse(2) default(present) private(dsdzm,kazm) reduction(+:flux_z) async(1)
+      !$acc parallel loop collapse(2) default(present) private(dsdzm,kazm,psip) reduction(+:flux_z) async(1)
       do j=1,ny
         do i=1,nx
           dsdzm = (s(i,j,k  )-s(i,j,k-1))*dzci(k-1)
-          kazm = ka+dka*0.5*(psi(i,j,k)+psi(i,j,k-1))
+          psip = 0.5*(psi(i,j,k)+psi(i,j,k-1))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          kazm = 1._rp/(ka+dka*psip)
+#else
+          kazm = ka+dka*psip
+#endif
           flux_z = flux_z - kazm*dsdzm/(dxi*dyi*lx*ly)
         end do
       end do
