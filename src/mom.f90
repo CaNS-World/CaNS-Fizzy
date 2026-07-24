@@ -9,7 +9,7 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_ad,mom_xyz_oth
+  public mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum
   contains
   !
   subroutine momx_a(nx,ny,nz,dxi,dyi,dzfi,u,v,w,dudt)
@@ -1038,12 +1038,236 @@ module mod_mom
     end do
   end subroutine mom_xyz_oth
   !
-  subroutine cmpt_wallshear(n,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
+  subroutine cmpt_bodyforce(n,is_cmpt,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+                            rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+                            surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
+#endif
+                            fgrav,fsurf,fbuoy,momentum)
+    !
+    ! computes signed volume averages of the non-pressure body-force
+    ! densities exactly as they are applied in mom_xyz_oth.
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    logical , intent(in), dimension(3) :: is_cmpt
+    real(rp), intent(in), dimension(3) :: dli
+    real(rp), intent(in), dimension(0:) :: dzci,grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in) :: dt_r
+    real(rp), intent(in), dimension(2) :: rho12,beta12
+    real(rp), intent(in), dimension(3) :: gacc,rho_av
+    real(rp), intent(in) :: sigma,rho0
+    real(rp), intent(in), dimension(0:,0:,0:) :: psi,psio,kappa,u,v,w
+    real(rp), intent(in), dimension(0:,0:,0:), optional :: s
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    real(rp), intent(in), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
+                                              surfx_o,surfy_o,surfz_o
+#endif
+    real(rp), intent(out), dimension(3) :: fgrav,fsurf,fbuoy,momentum
+    real(rp) :: rho,drho,rhobeta,drhobeta,surf_factor
+    real(rp) :: dxi,dyi,dzci_c,weight_f,weight_c
+    real(rp) :: c_ccc,c_pcc,c_cpc,c_ccp,k_ccc,k_pcc,k_cpc,k_ccp
+    real(rp) :: co_ccc,co_pcc,co_cpc,co_ccp
+    real(rp) :: s_ccc,s_pcc,s_cpc,s_ccp
+    real(rp) :: psixp,psiyp,psizp,rhoxp,rhoyp,rhozp
+    real(rp) :: rhox_old,rhoy_old,rhoz_old
+    real(rp) :: skappaxp,skappayp,skappazp
+    real(rp) :: surfx,surfy,surfz,surfx_f,surfy_f,surfz_f
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    real(rp) :: surfx_e,surfy_e,surfz_e
+#endif
+    real(rp) :: factorxp,factoryp,factorzp
+    real(rp) :: gaccx,gaccy,gaccz,rhox_av,rhoy_av,rhoz_av
+    real(rp) :: gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz
+    real(rp) :: momx,momy,momz,force(3,4)
+    logical :: is_cmptx,is_cmpty,is_cmptz
+    integer :: i,j,k,ierr
+    !
+    rho = rho12(2); drho = rho12(1)-rho12(2)
+    rhobeta = rho12(2)*beta12(2)
+    drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
+    dxi = dli(1); dyi = dli(2)
+    gaccx = gacc(1); gaccy = gacc(2); gaccz = gacc(3)
+    rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
+    is_cmptx = is_cmpt(1); is_cmpty = is_cmpt(2); is_cmptz = is_cmpt(3)
+#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
+    surf_factor = sigma*2._rp/(rho12(1)+rho12(2))
+#else
+    surf_factor = sigma
+#endif
+    gravx = 0._rp; gravy = 0._rp; gravz = 0._rp
+    surfsumx = 0._rp; surfsumy = 0._rp; surfsumz = 0._rp
+    buoyx = 0._rp; buoyy = 0._rp; buoyz = 0._rp
+    momx = 0._rp; momy = 0._rp; momz = 0._rp
+    !$acc data copy(gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz,momx,momy,momz) async(1)
+    !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
+    !$acc reduction(+:gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz,momx,momy,momz) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          dzci_c = dzci(k)
+          weight_f = grid_vol_ratio_f(k)
+          weight_c = grid_vol_ratio_c(k)
+          !
+          c_ccc = psi(i  ,j  ,k  )
+          c_pcc = psi(i+1,j  ,k  )
+          c_cpc = psi(i  ,j+1,k  )
+          c_ccp = psi(i  ,j  ,k+1)
+          co_ccc = psio(i  ,j  ,k  )
+          co_pcc = psio(i+1,j  ,k  )
+          co_cpc = psio(i  ,j+1,k  )
+          co_ccp = psio(i  ,j  ,k+1)
+          k_ccc = kappa(i  ,j  ,k  )
+          k_pcc = kappa(i+1,j  ,k  )
+          k_cpc = kappa(i  ,j+1,k  )
+          k_ccp = kappa(i  ,j  ,k+1)
+          !
+          psixp = 0.5_rp*(c_pcc+c_ccc)
+          psiyp = 0.5_rp*(c_cpc+c_ccc)
+          psizp = 0.5_rp*(c_ccp+c_ccc)
+          rhoxp = rho+drho*psixp
+          rhoyp = rho+drho*psiyp
+          rhozp = rho+drho*psizp
+          rhox_old = rho+drho*0.5_rp*(co_pcc+co_ccc)
+          rhoy_old = rho+drho*0.5_rp*(co_cpc+co_ccc)
+          rhoz_old = rho+drho*0.5_rp*(co_ccp+co_ccc)
+          !
+          skappaxp = 0.5_rp*(k_pcc+k_ccc)*surf_factor
+          skappayp = 0.5_rp*(k_cpc+k_ccc)*surf_factor
+          skappazp = 0.5_rp*(k_ccp+k_ccc)*surf_factor
+#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
+          skappaxp = skappaxp*rhoxp
+          skappayp = skappayp*rhoyp
+          skappazp = skappazp*rhozp
+#endif
+          surfx = skappaxp*(c_pcc-c_ccc)*dxi
+          surfy = skappayp*(c_cpc-c_ccc)*dyi
+          surfz = skappazp*(c_ccp-c_ccc)*dzci_c
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+          surfx_e = (1._rp+dt_r)*surfx_n(i,j,k)-dt_r*surfx_o(i,j,k)
+          surfy_e = (1._rp+dt_r)*surfy_n(i,j,k)-dt_r*surfy_o(i,j,k)
+          surfz_e = (1._rp+dt_r)*surfz_n(i,j,k)-dt_r*surfz_o(i,j,k)
+#if defined(_CONSTANT_COEFFS_POISSON)
+          surfx_f = surfx_e+rhoxp/rho0*(surfx-surfx_e)
+          surfy_f = surfy_e+rhoyp/rho0*(surfy-surfy_e)
+          surfz_f = surfz_e+rhozp/rho0*(surfz-surfz_e)
+#else
+          surfx_f = surfx
+          surfy_f = surfy
+          surfz_f = surfz
+#endif
+#else
+          surfx_f = surfx
+          surfy_f = surfy
+          surfz_f = surfz
+#endif
+#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
+          s_ccc = s(i  ,j  ,k  )
+          s_pcc = s(i+1,j  ,k  )
+          s_cpc = s(i  ,j+1,k  )
+          s_ccp = s(i  ,j  ,k+1)
+          factorxp = rhobeta+drhobeta*psixp
+          factoryp = rhobeta+drhobeta*psiyp
+          factorzp = rhobeta+drhobeta*psizp
+#endif
+          !
+          if(is_cmptx) then
+            gravx = gravx+(rhoxp-rhox_av)*gaccx*weight_f
+            surfsumx = surfsumx+surfx_f*weight_f
+            momx = momx+rhox_old*u(i,j,k)*weight_f
+#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
+            buoyx = buoyx-gaccx*factorxp*0.5_rp*(s_pcc+s_ccc)*weight_f
+#endif
+          end if
+          if(is_cmpty) then
+            gravy = gravy+(rhoyp-rhoy_av)*gaccy*weight_f
+            surfsumy = surfsumy+surfy_f*weight_f
+            momy = momy+rhoy_old*v(i,j,k)*weight_f
+#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
+            buoyy = buoyy-gaccy*factoryp*0.5_rp*(s_cpc+s_ccc)*weight_f
+#endif
+          end if
+          if(is_cmptz) then
+            gravz = gravz+(rhozp-rhoz_av)*gaccz*weight_c
+            surfsumz = surfsumz+surfz_f*weight_c
+            momz = momz+rhoz_old*w(i,j,k)*weight_c
+#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
+            buoyz = buoyz-gaccz*factorzp*0.5_rp*(s_ccp+s_ccc)*weight_c
+#endif
+          end if
+        end do
+      end do
+    end do
+    !$acc end data
+    !$acc wait(1)
+    force(:,1) = [gravx,gravy,gravz]
+    force(:,2) = [surfsumx,surfsumy,surfsumz]
+    force(:,3) = [buoyx,buoyy,buoyz]
+    force(:,4) = [momx,momy,momz]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,force(1,1),12,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    fgrav(:) = force(:,1)
+    fsurf(:) = force(:,2)
+    fbuoy(:) = force(:,3)
+    momentum(:) = force(:,4)
+    where(.not.is_cmpt(:))
+      fgrav(:) = 0._rp
+      fsurf(:) = 0._rp
+      fbuoy(:) = 0._rp
+      momentum(:) = 0._rp
+    end where
+  end subroutine cmpt_bodyforce
+  !
+  subroutine cmpt_momentum(n,is_cmpt,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+    !
+    ! computes the volume-averaged mixture momentum on the staggered grid
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    logical , intent(in), dimension(3) :: is_cmpt
+    real(rp), intent(in), dimension(0:) :: grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in), dimension(2) :: rho12
+    real(rp), intent(in), dimension(0:,0:,0:) :: psi,u,v,w
+    real(rp), intent(out), dimension(3) :: momentum
+    real(rp) :: rho,drho,rhoxp,rhoyp,rhozp,weight_f,weight_c
+    real(rp) :: momx,momy,momz
+    logical :: is_cmptx,is_cmpty,is_cmptz
+    integer :: i,j,k,ierr
+    !
+    rho = rho12(2)
+    drho = rho12(1)-rho12(2)
+    is_cmptx = is_cmpt(1); is_cmpty = is_cmpt(2); is_cmptz = is_cmpt(3)
+    momx = 0._rp; momy = 0._rp; momz = 0._rp
+    !$acc data copy(momx,momy,momz) async(1)
+    !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
+    !$acc reduction(+:momx,momy,momz) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          weight_f = grid_vol_ratio_f(k)
+          weight_c = grid_vol_ratio_c(k)
+          rhoxp = rho+drho*0.5_rp*(psi(i+1,j,k)+psi(i,j,k))
+          rhoyp = rho+drho*0.5_rp*(psi(i,j+1,k)+psi(i,j,k))
+          rhozp = rho+drho*0.5_rp*(psi(i,j,k+1)+psi(i,j,k))
+          if(is_cmptx) momx = momx+rhoxp*u(i,j,k)*weight_f
+          if(is_cmpty) momy = momy+rhoyp*v(i,j,k)*weight_f
+          if(is_cmptz) momz = momz+rhozp*w(i,j,k)*weight_c
+        end do
+      end do
+    end do
+    !$acc end data
+    !$acc wait(1)
+    momentum(:) = [momx,momy,momz]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,momentum,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    where(.not.is_cmpt(:)) momentum(:) = 0._rp
+  end subroutine cmpt_momentum
+  !
+  subroutine cmpt_wallshear(n,is_cmpt,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
     !
     ! n.b.: `is_bound` should exclude periodic BCs
     !
     implicit none
     integer , intent(in ), dimension(3) :: n
+    logical , intent(in ), dimension(3) :: is_cmpt
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
     real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
@@ -1067,7 +1291,7 @@ module mod_mom
     lx = l(1); ly = l(2); lz = l(3)
     tau21 = 0._rp
     !$acc data copy(tau21) async(1)
-    if(is_bound(0,2)) then
+    if(is_cmpt(1).and.is_bound(0,2)) then
       j = 0
       !$acc parallel loop collapse(2) default(present) private(dvdxp,dudyp,muyp) &
       !$acc reduction(+:tau21) async(1)
@@ -1081,7 +1305,7 @@ module mod_mom
         end do
       end do
     end if
-    if(is_bound(1,2)) then
+    if(is_cmpt(1).and.is_bound(1,2)) then
       j = ny+1
       !$acc parallel loop collapse(2) default(present) private(dvdxm,dudym,muym) &
       !$acc reduction(+:tau21) async(1)
@@ -1098,7 +1322,7 @@ module mod_mom
     !$acc end data
     tau31 = 0._rp
     !$acc data copy(tau31) async(1)
-    if(is_bound(0,3)) then
+    if(is_cmpt(1).and.is_bound(0,3)) then
       k = 0
       !$acc parallel loop collapse(2) default(present) private(dudzp,dwdxp,muzp) &
       !$acc reduction(+:tau31) async(1)
@@ -1112,7 +1336,7 @@ module mod_mom
         end do
       end do
     end if
-    if(is_bound(1,3)) then
+    if(is_cmpt(1).and.is_bound(1,3)) then
       k = nz+1
       !$acc parallel loop collapse(2) default(present) private(dudzm,dwdxm,muzm) &
       !$acc reduction(+:tau31) async(1)
@@ -1130,7 +1354,7 @@ module mod_mom
     !
     tau12 = 0._rp
     !$acc data copy(tau12) async(1)
-    if(is_bound(0,1)) then
+    if(is_cmpt(2).and.is_bound(0,1)) then
       i = 0
       !$acc parallel loop collapse(2) default(present) private(dvdxp,dudyp,muxp) &
       !$acc reduction(+:tau12) async(1)
@@ -1144,7 +1368,7 @@ module mod_mom
         end do
       end do
     end if
-    if(is_bound(1,1)) then
+    if(is_cmpt(2).and.is_bound(1,1)) then
       i = nx+1
       !$acc parallel loop collapse(2) default(present) private(dvdxm,dudym,muxm) &
       !$acc reduction(+:tau12) async(1)
@@ -1161,7 +1385,7 @@ module mod_mom
     !$acc end data
     tau32 = 0._rp
     !$acc data copy(tau32) async(1)
-    if(is_bound(0,3)) then
+    if(is_cmpt(2).and.is_bound(0,3)) then
       k = 0
       !$acc parallel loop collapse(2) default(present) private(dvdzp,dwdyp,muzp) &
       !$acc reduction(+:tau32) async(1)
@@ -1175,7 +1399,7 @@ module mod_mom
         end do
       end do
     end if
-    if(is_bound(1,3)) then
+    if(is_cmpt(2).and.is_bound(1,3)) then
       k = nz+1
       !$acc parallel loop collapse(2) default(present) private(dvdzm,dwdym,muzm) &
       !$acc reduction(+:tau32) async(1)
@@ -1193,7 +1417,7 @@ module mod_mom
     !
     tau13 = 0._rp
     !$acc data copy(tau13) async(1)
-    if(is_bound(0,1)) then
+    if(is_cmpt(3).and.is_bound(0,1)) then
       i = 0
       !$acc parallel loop collapse(2) default(present) private(dwdxp,dudzp,muxp) &
       !$acc reduction(+:tau13) async(1)
@@ -1207,7 +1431,7 @@ module mod_mom
         end do
       end do
     end if
-    if(is_bound(1,1)) then
+    if(is_cmpt(3).and.is_bound(1,1)) then
       i = nx+1
       !$acc parallel loop collapse(2) default(present) private(dwdxm,dudzm,muxm) &
       !$acc reduction(+:tau13) async(1)
@@ -1224,7 +1448,7 @@ module mod_mom
     !$acc end data
     tau23 = 0._rp
     !$acc data copy(tau23) async(1)
-    if(is_bound(0,2)) then
+    if(is_cmpt(3).and.is_bound(0,2)) then
       j = 0
       !$acc parallel loop collapse(2) default(present) private(dwdyp,dvdzp,muyp) &
       !$acc reduction(+:tau23) async(1)
@@ -1238,7 +1462,7 @@ module mod_mom
         end do
       end do
     end if
-    if(is_bound(1,2)) then
+    if(is_cmpt(3).and.is_bound(1,2)) then
       j = ny+1
       !$acc parallel loop collapse(2) default(present) private(dwdym,dvdzm,muym) &
       !$acc reduction(+:tau23) async(1)

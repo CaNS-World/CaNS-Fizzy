@@ -6,28 +6,30 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_mom  , only: mom_xyz_ad,mom_xyz_oth
+  use mod_mom  , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
   use mod_utils, only: swap
   use mod_types
   implicit none
   private
   public rk,rk_scal,rk_2fl
   contains
-  subroutine rk(rkpar,n,dli,dzci,dzfi,dt,dt_r, &
+  subroutine rk(rkpar,n,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
+                psio,psiflx_x,psiflx_y,psiflx_z,u,v,w,force_balance)
     !
     ! AB2 scheme for time integration of the momentum equations
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
     integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(3) :: dli
+    logical , intent(in), dimension(0:1,3) :: is_bound
+    logical , intent(in), dimension(3) :: is_forced
+    real(rp), intent(in), dimension(3) :: l,dli
     real(rp), intent(in) :: dt,dt_r
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f
     real(rp), intent(in   ), dimension(3)  :: bforce,gacc
     real(rp), intent(in   )                :: sigma,rho_av(3)
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
@@ -41,13 +43,17 @@ module mod_rk
 #endif
     real(rp), intent(in   ), dimension(0:,0:,0:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(0:,0:,0:)           :: u,v,w
+    real(rp), intent(out  ), dimension(3,6)                 :: force_balance
     real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
                                                                     dudtrko_t,dvdtrko_t,dwdtrko_t
     real(rp), pointer      , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
                                                                     dudtrko  ,dvdtrko  ,dwdtrko
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     logical, save :: is_first = .true.
+    logical, save :: is_first_forcing = .true.
+    real(rp), save, dimension(3) :: wall_force_old,bforce_eff
     real(rp) :: factor1,factor2,factor12
+    real(rp), dimension(3) :: taux,tauy,tauz,wall_force
     integer :: i,j,k
     !
     factor1  = rkpar(1)*dt
@@ -67,7 +73,34 @@ module mod_rk
       dudtrko => dudtrko_t
       dvdtrko => dvdtrko_t
       dwdtrko => dwdtrko_t
+      !$acc enter data create(bforce_eff) async(1)
     end if
+    !
+    ! zero-net-acceleration forcing
+    !
+    force_balance(:,:) = 0._rp
+    bforce_eff(:) = bforce(:)
+    if(any(is_forced(:))) then
+      call cmpt_wallshear(n,is_forced,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
+      wall_force(1) = sum(taux(:)/l(:))
+      wall_force(2) = sum(tauy(:)/l(:))
+      wall_force(3) = sum(tauz(:)/l(:))
+      if(is_first_forcing) wall_force_old(:) = wall_force(:)
+      force_balance(:,1) = rkpar(1)*wall_force(:)+rkpar(2)*wall_force_old(:)
+      call cmpt_bodyforce(n,is_forced,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+                          rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
+#endif
+                          force_balance(:,2),force_balance(:,3),force_balance(:,4),force_balance(:,6))
+      where(is_forced(:))
+        bforce_eff(:) = force_balance(:,1)-force_balance(:,2)-force_balance(:,3)-force_balance(:,4)
+      end where
+      wall_force_old(:) = wall_force(:)
+      is_first_forcing = .false.
+    end if
+    force_balance(:,5) = bforce_eff(:)
+    !$acc update device(bforce_eff) async(1)
     !
     ! advection, diffusion and regularization terms
     !
@@ -108,7 +141,7 @@ module mod_rk
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+    call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
                      p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
