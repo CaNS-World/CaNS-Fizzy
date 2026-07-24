@@ -29,7 +29,7 @@ module mod_sanity
   private
   public test_sanity_input
   contains
-  subroutine test_sanity_input(ng,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre)
+  subroutine test_sanity_input(ng,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre,is_forced,bforce)
     !
     ! performs some a priori checks of the input files before the calculation starts
     !
@@ -41,11 +41,14 @@ module mod_sanity
     character(len=1), intent(in), dimension(0:1,3)   :: cbcpre
     real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
     real(rp)        , intent(in), dimension(0:1,3)   :: bcpre
+    logical         , intent(in), dimension(3)       :: is_forced
+    real(rp)        , intent(in), dimension(3)       :: bforce
     logical :: passed
     !
     call chk_dims(ng,dims,passed);                 if(.not.passed) call abortit
     call chk_stop_type(stop_type,passed);          if(.not.passed) call abortit
     call chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed); if(.not.passed) call abortit
+    call chk_forcing(cbcvel,cbcpre,bcvel,is_forced,bforce,passed); if(.not.passed) call abortit
   end subroutine test_sanity_input
   !
   subroutine chk_stop_type(stop_type,passed)
@@ -146,23 +149,48 @@ module mod_sanity
 #endif
   end subroutine chk_bc
   !
-  subroutine chk_forcing(cbcpre,is_forced,passed)
+  subroutine chk_forcing(cbcvel,cbcpre,bcvel,is_forced,bforce,passed)
   implicit none
+  character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
   character(len=1), intent(in), dimension(0:1,3) :: cbcpre
+  real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
   logical         , intent(in), dimension(3) :: is_forced
+  real(rp)        , intent(in), dimension(3) :: bforce
   logical         , intent(out) :: passed
-  integer :: idir
+  integer :: idir,jdir
+  logical :: passed_periodic,passed_bforce,passed_closed,is_closed
   passed = .true.
   !
-  ! 1) check for compatibility between pressure BCs and flow forcing
+  ! zero-net-acceleration forcing assumes periodicity along the forced
+  ! direction and no advective momentum flux through transverse boundaries
   !
+  passed_periodic = .true.
+  passed_bforce = .true.
+  passed_closed = .true.
   do idir=1,3
     if(is_forced(idir)) then
-      passed = passed.and.(cbcpre(0,idir)//cbcpre(1,idir) == 'PP')
+      passed_periodic = passed_periodic.and. &
+                        (cbcpre(0,idir)//cbcpre(1,idir) == 'PP').and. &
+                        all(cbcvel(:,idir,:) == 'P')
+      passed_bforce = passed_bforce.and.(bforce(idir) == 0._rp)
+      do jdir=1,3
+        if(jdir /= idir) then
+          is_closed = (cbcpre(0,jdir)//cbcpre(1,jdir) == 'PP' .and. &
+                       all(cbcvel(:,jdir,:) == 'P')).or. &
+                      (cbcvel(0,jdir,jdir)//cbcvel(1,jdir,jdir) == 'DD' .and. &
+                       all(bcvel(:,jdir,jdir) == 0._rp))
+          passed_closed = passed_closed.and.is_closed
+        end if
+      end do
     end if
   end do
-  if(myid == 0.and.(.not.passed)) &
-  print*, 'ERROR: Flow cannot be forced in a non-periodic direction; check the BCs and is_forced in dns.in.'
+  if(myid == 0.and.(.not.passed_periodic)) &
+    print*, 'ERROR: zero-net-acceleration forcing requires periodic pressure BCs in each forced direction.'
+  if(myid == 0.and.(.not.passed_bforce)) &
+    print*, 'ERROR: bforce must be zero in directions using zero-net-acceleration forcing.'
+  if(myid == 0.and.(.not.passed_closed)) &
+    print*, 'ERROR: zero-net-acceleration forcing requires periodic or impermeable transverse boundaries.'
+  passed = passed_periodic.and.passed_bforce.and.passed_closed
   end subroutine chk_forcing
   !
 #if 0

@@ -32,6 +32,7 @@ logical , protected :: is_solve_ns,is_track_interface
 !
 character(len=100), protected :: inivel,inisca
 logical, protected :: is_wallturb,is_forced_hit
+logical, protected, dimension(3) :: is_forced
 !
 integer , protected :: nstep
 real(rp), protected :: time_max,tw_max
@@ -101,7 +102,7 @@ contains
                   restart,is_overwrite_save,nsaves_max, &
                   icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                   cbcvel,cbcpre,bcvel,bcpre, &
-                  bforce,gacc, &
+                  bforce,is_forced,gacc, &
                   dims
     namelist /scalar/ &
                   inisca, &
@@ -133,7 +134,7 @@ contains
     restart = .false.; is_overwrite_save = .true.; nsaves_max = 0
     icheck = 10; iout0d = 10; iout1d = 100; iout2d = 1000; iout3d = 500; isave = 1000
     cbcvel(:,:,:) = 'P'; cbcpre(:,:) = 'P'; bcvel(:,:,:) = 0.; bcpre(:,:) = 0.
-    bforce(:) = 0.; gacc(:) = 0
+    bforce(:) = 0.; is_forced(:) = .false.; gacc(:) = 0
     dims(:) = 0
     !
     inisca = 'zer'

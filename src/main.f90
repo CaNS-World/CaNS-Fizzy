@@ -45,6 +45,7 @@ program cans
   use mod_initmpi        , only: initmpi
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
+  use mod_mom            , only: cmpt_momentum
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
   use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
   use mod_param          , only: small, &
@@ -52,7 +53,7 @@ program cans
                                  icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                  nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
                                  datadir,   &
-                                 is_solve_ns,is_track_interface, &
+                                 is_solve_ns,is_track_interface,is_forced, &
                                  cfl,dtmax,dt_f, &
                                  inivel,inisca,inipsi, &
                                  is_wallturb,is_forced_hit, &
@@ -86,7 +87,7 @@ program cans
 #endif
   use mod_timer          , only: timer_tic,timer_toc,timer_print
   use mod_updatep        , only: updatep
-  use mod_utils          , only: bulk_mean_12_stag
+  use mod_utils          , only: bulk_mean,bulk_mean_12_stag
   !@acc use mod_utils    , only: device_memory_footprint
   use mod_types
   implicit none
@@ -115,7 +116,8 @@ program cans
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f
-  real(rp), dimension(3) :: dpdl
+  real(rp), dimension(3) :: dpdl,meanvel,momentum
+  real(rp), dimension(3,6) :: force_balance
   !real(rp), allocatable, dimension(:) :: var
   real(rp), dimension(42) :: var
 #if defined(_TIMING)
@@ -274,7 +276,7 @@ program cans
   !
   ! test input files before proceeding with the calculation
   !
-  call test_sanity_input(ng,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre)
+  call test_sanity_input(ng,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre,is_forced,bforce)
   !
   ! initialize Poisson solver
   !
@@ -406,6 +408,8 @@ program cans
   dto = dt
   dti = 1./dt
   kill = .false.
+  force_balance(:,:) = 0._rp
+  force_balance(:,5) = bforce(:)
   !
   ! main loop
   !
@@ -470,17 +474,17 @@ program cans
       rho_av(:) = 0.
       is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
       if(is_cmpt_rho_av(1)) &
-        call bulk_mean_12_stag(n,1,grid_vol_ratio_c,psi,rho12,rho_av(1))
+        call bulk_mean_12_stag(n,1,grid_vol_ratio_f,psi,rho12,rho_av(1))
       if(is_cmpt_rho_av(2)) &
-        call bulk_mean_12_stag(n,2,grid_vol_ratio_c,psi,rho12,rho_av(2))
+        call bulk_mean_12_stag(n,2,grid_vol_ratio_f,psi,rho12,rho_av(2))
       if(is_cmpt_rho_av(3)) &
-        call bulk_mean_12_stag(n,3,grid_vol_ratio_f,psi,rho12,rho_av(3))
-      call tm(tm_coeff,n,dli,dzci,dzfi,dt,dt_r, &
+        call bulk_mean_12_stag(n,3,grid_vol_ratio_c,psi,rho12,rho_av(3))
+      call tm(tm_coeff,n,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
               bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-              psio,psiflx_x,psiflx_y,psiflx_z,u,v,w)
+              psio,psiflx_x,psiflx_y,psiflx_z,u,v,w,force_balance)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
       end if
@@ -498,6 +502,10 @@ program cans
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
       call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
       call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
+      if(any(is_forced(:))) then
+        call cmpt_momentum(n,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+        where(is_forced(:)) force_balance(:,6) = (momentum(:)-force_balance(:,6))/dt
+      end if
       call updatep(pp,p)
       call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
     end if
@@ -569,6 +577,28 @@ program cans
       var(2) = dt
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
+      !
+      if(any(is_forced(:)).or.any(bforce(:) /= 0._rp)) then
+        meanvel(:) = 0._rp
+        if(is_forced(1).or.bforce(1) /= 0._rp) call bulk_mean(n,grid_vol_ratio_f,u,meanvel(1))
+        if(is_forced(2).or.bforce(2) /= 0._rp) call bulk_mean(n,grid_vol_ratio_f,v,meanvel(2))
+        if(is_forced(3).or.bforce(3) /= 0._rp) call bulk_mean(n,grid_vol_ratio_c,w,meanvel(3))
+        dpdl(:) = -force_balance(:,5)
+        var(1) = time
+        var(2:4) = dpdl(:)
+        var(5:7) = meanvel(:)
+        call out0d(trim(datadir)//'forcing.out',7,var)
+      end if
+      if(any(is_forced(:))) then
+        var(1) = time
+        var(2:4) = force_balance(:,1)
+        var(5:7) = force_balance(:,2)
+        var(8:10) = force_balance(:,3)
+        var(11:13) = force_balance(:,4)
+        var(14:16) = force_balance(:,5)
+        var(17:19) = force_balance(:,6)
+        call out0d(trim(datadir)//'forcing_balance.out',19,var)
+      end if
       !
 #if !defined(_INTERFACE_CAPTURING_VOF)
       var(1) = 1.*istep

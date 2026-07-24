@@ -25,6 +25,7 @@ bcvel(0:1,1:3,2) =  0.,0.,   0.,0.,   0.,0.
 bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
 bcpre(0:1,1:3  ) =  0.,0.,   0.,0.,   0.,0.
 bforce(1:3) = 0., 0., 0.
+is_forced(1:3) = T, F, F
 gacc(1:3) = 0., 0., 0.
 dims(1:2) = 2, 2
 /
@@ -233,13 +234,23 @@ The **last four rows** follow the same logic, but now for the BC **values** (dum
 
 ```fortran
 bforce(1:3) = 0., 0., 0.
+is_forced(1:3) = T, F, F
 gacc(1:3) = 0., 0., 0.
 ```
 
 These lines set the flow forcing.
 
 `bforce`, is a constant **body force density term** in the direction in question (e.g., the negative of a constant pressure gradient) that can be added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
+
+`is_forced`, when true in a direction, replaces `bforce` in that direction with a dynamically computed uniform force density. The controller balances the AB2-extrapolated viscous wall traction and the discrete integrals of gravity, surface tension, and Boussinesq buoyancy. It preserves the initial domain-averaged mixture momentum, equivalently the streamwise-averaged mass-flux density, when the remaining pressure and conservative terms have zero global integral. It does not prescribe a target velocity or necessarily preserve volume flux or the instantaneous mass flux through every cross-section.
+
+A dynamically forced direction must be periodic. Its transverse boundaries must be periodic or impermeable, since momentum flux through an open boundary is not included in the balance. `bforce(i)` must be zero whenever `is_forced(i)` is true.
+
 `gacc`, is a constant **acceleration** in the direction in question (e.g., gravity) added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
+
+When fixed or dynamic forcing is active, `forcing.out` contains time, the three equivalent pressure gradients (the negatives of the applied force densities), and the three volume-averaged velocities. With dynamic forcing, `forcing_balance.out` additionally contains time followed by six three-component vectors: wall compensation, gravity, surface tension, Boussinesq buoyancy, applied force density, and the measured change in total mixture momentum per unit time. The last vector is therefore a final residual that also exposes contributions from terms assumed to have zero global integral, such as pressure and conservative advection.
+
+At unequal density, the constant-coefficient pressure split does not in general have a zero global mixture-momentum contribution. In that configuration the controller still closes the listed source-force balance, while the last vector in `forcing_balance.out` reports the remaining pressure contribution. The variable-coefficient pressure solve does not have this limitation.
 
 ---
 
