@@ -116,7 +116,11 @@ module mod_mom
     integer :: i,j,k
     real(rp) :: mu,dmu
     !
-    mu  = mu12(2) ; dmu  = mu12(1)-mu12(2)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+    mu  = 1._rp/mu12(2); dmu = 1._rp/mu12(1)-1._rp/mu12(2)
+#else
+    mu  = mu12(2)      ; dmu = mu12(1)-mu12(2)
+#endif
     !
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dwdxp,dwdxm) &
@@ -135,12 +139,21 @@ module mod_mom
           dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k  ))*dxi
           dwdxm = (w(i+1,j  ,k-1)-w(i  ,j  ,k-1))*dxi
           !
-          muxp = mu + dmu*psi(i+1,j,k)
-          muxm = mu + dmu*psi(i  ,j,k)
-          muyp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k))
-          muym = mu + dmu*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k))
-          muzp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
-          muzm = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*psi(i+1,j,k))
+          muxm = 1._rp/(mu+dmu*psi(i  ,j,k))
+          muyp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k)))
+          muym = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k)))
+          muzp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k)))
+          muzm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k)))
+#else
+          muxp = mu+dmu*psi(i+1,j,k)
+          muxm = mu+dmu*psi(i  ,j,k)
+          muyp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k))
+          muym = mu+dmu*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k))
+          muzp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
+          muzm = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k))
+#endif
           !
           dudt(i,j,k) = dudt(i,j,k) + &
                         dxi*(    (dudxp+dudxp)*muxp-(dudxm+dudxm)*muxm) + &
@@ -165,7 +178,11 @@ module mod_mom
     integer :: i,j,k
     real(rp) :: mu,dmu
     !
-    mu  = mu12(2) ; dmu  = mu12(1)-mu12(2)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+    mu  = 1._rp/mu12(2); dmu = 1._rp/mu12(1)-1._rp/mu12(2)
+#else
+    mu  = mu12(2)      ; dmu = mu12(1)-mu12(2)
+#endif
     !
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dudyp,dudym,dwdyp,dwdym) &
@@ -184,12 +201,21 @@ module mod_mom
           dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k  ))*dyi
           dwdym = (w(i  ,j+1,k-1)-w(i  ,j  ,k-1))*dyi
           !
-          muxp = mu + dmu*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))
-          muxm = mu + dmu*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k))
-          muyp = mu + dmu*psi(i,j+1,k)
-          muym = mu + dmu*psi(i,j  ,k)
-          muzp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))
-          muzm = mu + dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k)))
+          muxm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k)))
+          muyp = 1._rp/(mu+dmu*psi(i,j+1,k))
+          muym = 1._rp/(mu+dmu*psi(i,j  ,k))
+          muzp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1)))
+          muzm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1)))
+#else
+          muxp = mu+dmu*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))
+          muxm = mu+dmu*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k))
+          muyp = mu+dmu*psi(i,j+1,k)
+          muym = mu+dmu*psi(i,j  ,k)
+          muzp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))
+          muzm = mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1))
+#endif
           !
           dvdt(i,j,k) = dvdt(i,j,k) + &
                         dxi*(    (dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm) + &
@@ -214,7 +240,11 @@ module mod_mom
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: mu,dmu
     !
-    mu  = mu12(2) ; dmu  = mu12(1)-mu12(2)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+    mu  = 1._rp/mu12(2); dmu = 1._rp/mu12(1)-1._rp/mu12(2)
+#else
+    mu  = mu12(2)      ; dmu = mu12(1)-mu12(2)
+#endif
     !
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm,dudzp,dudzm,dvdzp,dvdzm) &
@@ -233,12 +263,21 @@ module mod_mom
           dwdzp = (w(i  ,j  ,k+1)-w(i  ,j,k  ))*dzfi(k+1)
           dwdzm = (w(i  ,j  ,k  )-w(i  ,j,k-1))*dzfi(k  )
           !
-          muxp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k) )
-          muxm = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j,k+1)+psi(i-1,j,k) )
-          muyp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j+1,k+1)+psi(i,j+1,k) )
-          muym = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j-1,k+1)+psi(i,j-1,k) )
-          muzp = mu + dmu*psi(i,j,k+1)
-          muzm = mu + dmu*psi(i,j,k  )
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k) ))
+          muxm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j,k+1)+psi(i-1,j,k) ))
+          muyp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j+1,k+1)+psi(i,j+1,k) ))
+          muym = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j-1,k+1)+psi(i,j-1,k) ))
+          muzp = 1._rp/(mu+dmu*psi(i,j,k+1))
+          muzm = 1._rp/(mu+dmu*psi(i,j,k  ))
+#else
+          muxp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k) )
+          muxm = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j,k+1)+psi(i-1,j,k) )
+          muyp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j+1,k+1)+psi(i,j+1,k) )
+          muym = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j-1,k+1)+psi(i,j-1,k) )
+          muzp = mu+dmu*psi(i,j,k+1)
+          muzm = mu+dmu*psi(i,j,k  )
+#endif
           !
           dwdt(i,j,k) = dwdt(i,j,k) + &
                         dxi*(    (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm) + &
@@ -534,7 +573,11 @@ module mod_mom
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
-    mu  = mu12(2);  dmu  = mu12(1)-mu12(2)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+    mu  = 1._rp/mu12(2); dmu = 1._rp/mu12(1)-1._rp/mu12(2)
+#else
+    mu  = mu12(2)      ; dmu = mu12(1)-mu12(2)
+#endif
     dxi = dli(1)
     dyi = dli(2)
     !
@@ -677,10 +720,17 @@ module mod_mom
           dpsidx  = (c_pcc-c_ccc)*dxi
           dpsidy  = 0.5*(dpsidyp+dpsidym)
           dpsidz  = 0.5*(dpsidzp+dpsidzm)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          mux   = 1._rp/(mu+dmu*psixp)
+          dmudx = -dmu*mux**2*dpsidx
+          dmudy = -dmu*mux**2*dpsidy
+          dmudz = -dmu*mux**2*dpsidz
+#else
+          mux   = mu+dmu*psixp
           dmudx = dmu*dpsidx
           dmudy = dmu*dpsidy
           dmudz = dmu*dpsidz
-          mux  = mu + dmu*psixp
+#endif
           dudxp = (u_pcc-u_ccc)*dxi
           dudxm = (u_ccc-u_mcc)*dxi
           dudyp = (u_cpc-u_ccc)*dyi
@@ -714,10 +764,17 @@ module mod_mom
           dpsidx  = 0.5*(dpsidxp+dpsidxm)
           dpsidy  = (c_cpc-c_ccc)*dyi
           dpsidz  = 0.5*(dpsidzp+dpsidzm)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muy   = 1._rp/(mu+dmu*psiyp)
+          dmudx = -dmu*muy**2*dpsidx
+          dmudy = -dmu*muy**2*dpsidy
+          dmudz = -dmu*muy**2*dpsidz
+#else
+          muy   = mu+dmu*psiyp
           dmudx = dmu*dpsidx
           dmudy = dmu*dpsidy
           dmudz = dmu*dpsidz
-          muy  = mu + dmu*psiyp
+#endif
           dvdxp = (v_pcc-v_ccc)*dxi
           dvdxm = (v_ccc-v_mcc)*dxi
           dvdyp = (v_cpc-v_ccc)*dyi
@@ -751,10 +808,17 @@ module mod_mom
           dpsidx  = 0.5*(dpsidxp+dpsidxm)
           dpsidy  = 0.5*(dpsidyp+dpsidym)
           dpsidz  = (c_ccp-c_ccc)*dzci_c
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muz   = 1._rp/(mu+dmu*psizp)
+          dmudx = -dmu*muz**2*dpsidx
+          dmudy = -dmu*muz**2*dpsidy
+          dmudz = -dmu*muz**2*dpsidz
+#else
+          muz   = mu+dmu*psizp
           dmudx = dmu*dpsidx
           dmudy = dmu*dpsidy
           dmudz = dmu*dpsidz
-          muz  = mu + dmu*psizp
+#endif
           dwdxp = (w_pcc-w_ccc)*dxi
           dwdxm = (w_ccc-w_mcc)*dxi
           dwdyp = (w_cpc-w_ccc)*dyi
@@ -791,12 +855,21 @@ module mod_mom
           dudzm = (u_ccc-u_ccm)*dzci_m
           dwdxp = (w_pcc-w_ccc)*dxi
           dwdxm = (w_pcm-w_ccm)*dxi
-          muxp = mu + dmu*c_pcc
-          muxm = mu + dmu*c_ccc
-          muyp = mu + dmu*0.25*(c_ccc+c_cpc+c_ppc+c_pcc)
-          muym = mu + dmu*0.25*(c_ccc+c_cmc+c_pmc+c_pcc)
-          muzp = mu + dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
-          muzm = mu + dmu*0.25*(c_ccc+c_pcc+c_ccm+c_pcm)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*c_pcc)
+          muxm = 1._rp/(mu+dmu*c_ccc)
+          muyp = 1._rp/(mu+dmu*0.25*(c_ccc+c_cpc+c_ppc+c_pcc))
+          muym = 1._rp/(mu+dmu*0.25*(c_ccc+c_cmc+c_pmc+c_pcc))
+          muzp = 1._rp/(mu+dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp))
+          muzm = 1._rp/(mu+dmu*0.25*(c_ccc+c_pcc+c_ccm+c_pcm))
+#else
+          muxp = mu+dmu*c_pcc
+          muxm = mu+dmu*c_ccc
+          muyp = mu+dmu*0.25*(c_ccc+c_cpc+c_ppc+c_pcc)
+          muym = mu+dmu*0.25*(c_ccc+c_cmc+c_pmc+c_pcc)
+          muzp = mu+dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
+          muzm = mu+dmu*0.25*(c_ccc+c_pcc+c_ccm+c_pcm)
+#endif
           dudt_aux = dudt_aux + dxi*(   (dudxp+dudxp)*muxp-(dudxm+dudxm)*muxm) + &
                                 dyi*(   (dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym) + &
                                 dzfi_c*((dudzp+dwdxp)*muzp-(dudzm+dwdxm)*muzm)
@@ -811,12 +884,21 @@ module mod_mom
           dvdzm = (v_ccc-v_ccm)*dzci_m
           dwdyp = (w_cpc-w_ccc)*dyi
           dwdym = (w_cpm-w_ccm)*dyi
-          muxp = mu + dmu*0.25*(c_ccc+c_pcc+c_ppc+c_cpc)
-          muxm = mu + dmu*0.25*(c_ccc+c_mcc+c_mpc+c_cpc)
-          muyp = mu + dmu*c_cpc
-          muym = mu + dmu*c_ccc
-          muzp = mu + dmu*0.25*(c_ccc+c_cpc+c_cpp+c_ccp)
-          muzm = mu + dmu*0.25*(c_ccc+c_cpc+c_cpm+c_ccm)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*0.25*(c_ccc+c_pcc+c_ppc+c_cpc))
+          muxm = 1._rp/(mu+dmu*0.25*(c_ccc+c_mcc+c_mpc+c_cpc))
+          muyp = 1._rp/(mu+dmu*c_cpc)
+          muym = 1._rp/(mu+dmu*c_ccc)
+          muzp = 1._rp/(mu+dmu*0.25*(c_ccc+c_cpc+c_cpp+c_ccp))
+          muzm = 1._rp/(mu+dmu*0.25*(c_ccc+c_cpc+c_cpm+c_ccm))
+#else
+          muxp = mu+dmu*0.25*(c_ccc+c_pcc+c_ppc+c_cpc)
+          muxm = mu+dmu*0.25*(c_ccc+c_mcc+c_mpc+c_cpc)
+          muyp = mu+dmu*c_cpc
+          muym = mu+dmu*c_ccc
+          muzp = mu+dmu*0.25*(c_ccc+c_cpc+c_cpp+c_ccp)
+          muzm = mu+dmu*0.25*(c_ccc+c_cpc+c_cpm+c_ccm)
+#endif
           dvdt_aux = dvdt_aux + dxi*(   (dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm) + &
                                 dyi*(   (dvdyp+dvdyp)*muyp-(dvdym+dvdym)*muym) + &
                                 dzfi_c*((dvdzp+dwdyp)*muzp-(dvdzm+dwdym)*muzm)
@@ -831,12 +913,21 @@ module mod_mom
           dvdzm = (v_cmp-v_cmc)*dzci_c
           dwdzp = (w_ccp-w_ccc)*dzfi_p
           dwdzm = (w_ccc-w_ccm)*dzfi_c
-          muxp = mu + dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
-          muxm = mu + dmu*0.25*(c_ccc+c_mcc+c_ccp+c_mcp)
-          muyp = mu + dmu*0.25*(c_ccc+c_cpc+c_ccp+c_cpp)
-          muym = mu + dmu*0.25*(c_ccc+c_cmc+c_ccp+c_cmp)
-          muzp = mu + dmu*c_ccp
-          muzm = mu + dmu*c_ccc
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp))
+          muxm = 1._rp/(mu+dmu*0.25*(c_ccc+c_mcc+c_ccp+c_mcp))
+          muyp = 1._rp/(mu+dmu*0.25*(c_ccc+c_cpc+c_ccp+c_cpp))
+          muym = 1._rp/(mu+dmu*0.25*(c_ccc+c_cmc+c_ccp+c_cmp))
+          muzp = 1._rp/(mu+dmu*c_ccp)
+          muzm = 1._rp/(mu+dmu*c_ccc)
+#else
+          muxp = mu+dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
+          muxm = mu+dmu*0.25*(c_ccc+c_mcc+c_ccp+c_mcp)
+          muyp = mu+dmu*0.25*(c_ccc+c_cpc+c_ccp+c_cpp)
+          muym = mu+dmu*0.25*(c_ccc+c_cmc+c_ccp+c_cmp)
+          muzp = mu+dmu*c_ccp
+          muzm = mu+dmu*c_ccc
+#endif
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm) + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym) + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)
@@ -1061,7 +1152,11 @@ module mod_mom
     real(rp) :: tau(3,3)
     integer :: ierr
     !
-    mu  = mu12(2); dmu  = mu12(1)-mu12(2)
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+    mu  = 1._rp/mu12(2); dmu = 1._rp/mu12(1)-1._rp/mu12(2)
+#else
+    mu  = mu12(2)      ; dmu = mu12(1)-mu12(2)
+#endif
     nx = n(1); ny = n(2); nz = n(3)
     dxi = dli(1); dyi = dli(2)
     lx = l(1); ly = l(2); lz = l(3)
@@ -1075,7 +1170,11 @@ module mod_mom
         do i=1,nx
           dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
           dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
-          muyp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muyp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k)))
+#else
+          muyp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i+1,j+1,k)+psi(i+1,j,k))
+#endif
           !
           tau21 = tau21 + (dudyp+dvdxp)*muyp/(dxi*dzfi(k)*lx*lz)
         end do
@@ -1089,7 +1188,11 @@ module mod_mom
         do i=1,nx
           dvdxm = (v(i+1,j-1,k  )-v(i  ,j-1,k  ))*dxi
           dudym = (u(i  ,j  ,k  )-u(i  ,j-1,k  ))*dyi
-          muym = mu + dmu*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muym = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k)))
+#else
+          muym = mu+dmu*0.25*(psi(i,j,k)+psi(i,j-1,k)+psi(i+1,j-1,k)+psi(i+1,j,k))
+#endif
           !
           tau21 = tau21 - (dudym+dvdxm)*muym/(dxi*dzfi(k)*lx*lz)
         end do
@@ -1106,7 +1209,11 @@ module mod_mom
         do i=1,nx
           dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k  ))*dzci(k  )
           dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k  ))*dxi
-          muzp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muzp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k)))
+#else
+          muzp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
+#endif
           !
           tau31 = tau31 + (dudzp+dwdxp)*muzp/(dxi*dyi*lx*ly)
         end do
@@ -1120,7 +1227,11 @@ module mod_mom
         do i=1,nx
           dudzm = (u(i  ,j  ,k  )-u(i  ,j  ,k-1))*dzci(k-1)
           dwdxm = (w(i+1,j  ,k-1)-w(i  ,j  ,k-1))*dxi
-          muzm = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muzm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k)))
+#else
+          muzm = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)+psi(i+1,j,k))
+#endif
           !
           tau31 = tau31 - (dudzm+dwdxm)*muzm/(dxi*dyi*lx*ly)
         end do
@@ -1138,7 +1249,11 @@ module mod_mom
         do j=1,ny
           dvdxp = (v(i+1,j  ,k  )-v(i  ,j  ,k  ))*dxi
           dudyp = (u(i  ,j+1,k  )-u(i  ,j  ,k  ))*dyi
-          muxp = mu + dmu*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k)))
+#else
+          muxp = mu+dmu*0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i+1,j+1,k)+psi(i,j+1,k))
+#endif
           !
           tau12 = tau12 + (dvdxp+dudyp)*muxp/(dyi*dzfi(k)*ly*lz)
         end do
@@ -1152,7 +1267,11 @@ module mod_mom
         do j=1,ny
           dvdxm = (v(i  ,j  ,k  )-v(i-1,j  ,k  ))*dxi
           dudym = (u(i-1,j+1,k  )-u(i-1,j  ,k  ))*dyi
-          muxm = mu + dmu*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k)))
+#else
+          muxm = mu+dmu*0.25*(psi(i,j,k)+psi(i-1,j,k)+psi(i-1,j+1,k)+psi(i,j+1,k))
+#endif
           !
           tau12 = tau12 - (dvdxm+dudym)*muxm/(dyi*dzfi(k)*ly*lz)
         end do
@@ -1169,7 +1288,11 @@ module mod_mom
         do i=1,nx
           dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k  ))*dzci(k  )
           dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k  ))*dyi
-          muzp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muzp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1)))
+#else
+          muzp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1))
+#endif
           !
           tau32 = tau32 + (dvdzp+dwdyp)*muzp/(dxi*dyi*lx*ly)
         end do
@@ -1183,7 +1306,11 @@ module mod_mom
         do i=1,nx
           dvdzm = (v(i  ,j  ,k  )-v(i  ,j  ,k-1))*dzci(k-1)
           dwdym = (w(i  ,j+1,k-1)-w(i  ,j  ,k-1))*dyi
-          muzm = mu + dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1))
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muzm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1)))
+#else
+          muzm = mu+dmu*0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1))
+#endif
           !
           tau32 = tau32 - (dvdzm+dwdym)*muzm/(dxi*dyi*lx*ly)
         end do
@@ -1201,7 +1328,11 @@ module mod_mom
         do j=1,ny
           dwdxp = (w(i+1,j  ,k  )-w(i  ,j  ,k))*dxi
           dudzp = (u(i  ,j  ,k+1)-u(i  ,j  ,k))*dzci(k  )
-          muxp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j ,k+1)+psi(i+1,j ,k) )
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k)))
+#else
+          muxp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)+psi(i+1,j,k))
+#endif
           !
           tau13 = tau13 + (dwdxp+dudzp)*muxp/(dyi*dzfi(k)*ly*lz)
         end do
@@ -1215,7 +1346,11 @@ module mod_mom
         do j=1,ny
           dwdxm = (w(i  ,j  ,k  )-w(i-1,j  ,k))*dxi
           dudzm = (u(i-1,j  ,k+1)-u(i-1,j  ,k))*dzci(k  )
-          muxm = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j ,k+1)+psi(i-1,j ,k) )
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muxm = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j,k+1)+psi(i-1,j,k)))
+#else
+          muxm = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i-1,j,k+1)+psi(i-1,j,k))
+#endif
           !
           tau13 = tau13 - (dwdxm+dudzm)*muxm/(dyi*dzfi(k)*ly*lz)
         end do
@@ -1232,7 +1367,11 @@ module mod_mom
         do i=1,nx
           dwdyp = (w(i  ,j+1,k  )-w(i  ,j  ,k))*dyi
           dvdzp = (v(i  ,j  ,k+1)-v(i  ,j  ,k))*dzci(k  )
-          muyp = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j+1,k+1)+psi(i ,j+1,k) )
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muyp = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j+1,k+1)+psi(i,j+1,k)))
+#else
+          muyp = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j+1,k+1)+psi(i,j+1,k))
+#endif
           !
           tau23 = tau23 + (dwdyp+dvdzp)*muyp/(dxi*dzfi(k)*lx*lz)
         end do
@@ -1246,7 +1385,11 @@ module mod_mom
         do i=1,nx
           dwdym = (w(i  ,j  ,k  )-w(i  ,j-1,k))*dyi
           dvdzm = (v(i  ,j-1,k+1)-v(i  ,j-1,k))*dzci(k  )
-          muym = mu + dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i ,j-1,k+1)+psi(i ,j-1,k) )
+#if defined(_VISC_HARMONIC_INTERPOLATION)
+          muym = 1._rp/(mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j-1,k+1)+psi(i,j-1,k)))
+#else
+          muym = mu+dmu*0.25*(psi(i,j,k)+psi(i,j,k+1)+psi(i,j-1,k+1)+psi(i,j-1,k))
+#endif
           !
           tau23 = tau23 - (dwdym+dvdzm)*muym/(dxi*dzfi(k)*lx*lz)
         end do
