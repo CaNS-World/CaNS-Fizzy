@@ -7,7 +7,7 @@
 module mod_chkdt
   use mpi
   use mod_common_mpi, only:ierr
-  use mod_param     , only:nscal
+  use mod_param     , only:nscal,is_impdiff_1d
   use mod_types
   implicit none
   private
@@ -81,6 +81,7 @@ module mod_chkdt
       dtmax = min(dti**(-1),dtipsi**(-1))
     else
       dtiv = maxval(mu12(:)/rho12(:))*2.*(3./dlmin**2)
+      if(is_impdiff_1d) dtiv = maxval(mu12(:)/rho12(:))*2.*(2./minval(dl(1:2))**2) ! diffusion along z is implicit
       dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
       dtig = maxval(abs(gacc))/dlmin
       dti = 0.5*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))
@@ -90,7 +91,7 @@ module mod_chkdt
     end if
     if(nscal > 0) then
       if(present(ka12) .and. present(cp12)) &
-        dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/dlmin**2
+        dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/merge(minval(dl(1:2)),dlmin,is_impdiff_1d)**2
       if(dti == 0.) dti = 1.
       dtmax = min(dtmax,dti**(-1))
     end if

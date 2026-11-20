@@ -6,7 +6,9 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_mom  , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
+  use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs
+  use mod_mom    , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
+  use mod_param  , only: is_impdiff
   use mod_types
   implicit none
   private
@@ -52,6 +54,7 @@ module mod_rk
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)           :: u,v,w
     real(rp), intent(out  ), dimension(3,6)                 :: force_balance
     real(rp), allocatable, dimension(:,:,:), save :: dudtrk,dvdtrk,dwdtrk
+    real(rp), allocatable, dimension(:,:,:), save :: dudtrkd,dvdtrkd,dwdtrkd
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
     real(rp) :: factor1,factor2,factor12
@@ -68,6 +71,10 @@ module mod_rk
       allocate(dudtrk(n(1),n(2),n(3)),dvdtrk(n(1),n(2),n(3)),dwdtrk(n(1),n(2),n(3)))
       !$acc enter data create(dudtrk,dvdtrk,dwdtrk) async(1)
       !$acc enter data create(bforce_eff) async(1)
+      if(is_impdiff) then
+        allocate(dudtrkd(n(1),n(2),n(3)),dvdtrkd(n(1),n(2),n(3)),dwdtrkd(n(1),n(2),n(3)))
+        !$acc enter data create(dudtrkd,dvdtrkd,dwdtrkd) async(1)
+      end if
     end if
     !
     ! zero-net-acceleration forcing
@@ -98,6 +105,23 @@ module mod_rk
     ! advection, diffusion and regularization terms
     !
     call mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    if(is_impdiff) then
+      !
+      ! the diffusion along z that is integrated implicitly leaves the explicit terms
+      !
+      call impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudtrkd,dvdtrkd,dwdtrkd)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            dudtrk(i,j,k) = dudtrk(i,j,k) - dudtrkd(i,j,k)
+            dvdtrk(i,j,k) = dvdtrk(i,j,k) - dvdtrkd(i,j,k)
+            dwdtrk(i,j,k) = dwdtrk(i,j,k) - dwdtrkd(i,j,k)
+          end do
+        end do
+      end do
+    end if
     !
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)
@@ -133,6 +157,23 @@ module mod_rk
         end do
       end do
     end do
+    if(is_impdiff) then
+      !
+      ! explicit half of the Crank-Nicolson integration of the implicit terms; the implicit half is
+      ! solved for after this prediction (see `mod_impdiff`)
+      !
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            u(i,j,k) = u(i,j,k) + 0.5*factor12*dudtrkd(i,j,k)/(rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k)))
+            v(i,j,k) = v(i,j,k) + 0.5*factor12*dvdtrkd(i,j,k)/(rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k)))
+            w(i,j,k) = w(i,j,k) + 0.5*factor12*dwdtrkd(i,j,k)/(rho + drho*0.5*(psi(i,j,k)+psi(i,j,k+1)))
+          end do
+        end do
+      end do
+    end if
     !
     ! pressure, surface tension, and buoyancy terms
     !
@@ -179,7 +220,7 @@ module mod_rk
     logical , intent(in   )                   :: is_first
     real(rp), intent(inout), dimension(:,:,:) :: dsdtrko
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
-    real(rp), allocatable, dimension(:,:,:), save :: dsdtrk
+    real(rp), allocatable, dimension(:,:,:), save :: dsdtrk,dsdtrkd
     real(rp), dimension(2), save :: rhocp12
     real(rp) :: rhocp,drhocp,rhocp_n,rhocp_p
     real(rp) :: factor1,factor2,factor12
@@ -191,11 +232,30 @@ module mod_rk
     if(.not.allocated(dsdtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dsdtrk(n(1),n(2),n(3)))
       !$acc enter data create(dsdtrk) async(1)
+      if(is_impdiff) then
+        allocate(dsdtrkd(n(1),n(2),n(3)))
+        !$acc enter data create(dsdtrkd) async(1)
+      end if
       rhocp12(:) = rho12(:)*cp12(:)
       !$acc wait(1)
     end if
     call scal_ad(n(1),n(2),n(3),nh_v,nh_s,nh_psi,nh_g,dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z, &
                  psi,u,v,w,s,dsdtrk)
+    if(is_impdiff) then
+      !
+      ! the diffusion along z that is integrated implicitly leaves the explicit terms
+      !
+      call impdiff_z_scal_rhs(n,nh_s,nh_psi,nh_g,dzci,dzfi,ka12,psi,s,dsdtrkd)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            dsdtrk(i,j,k) = dsdtrk(i,j,k) - dsdtrkd(i,j,k)
+          end do
+        end do
+      end do
+    end if
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)
@@ -219,6 +279,20 @@ module mod_rk
         end do
       end do
     end do
+    if(is_impdiff) then
+      !
+      ! explicit half of the Crank-Nicolson integration of the implicit term (see `mod_impdiff`)
+      !
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            s(i,j,k) = s(i,j,k) + 0.5*factor12*dsdtrkd(i,j,k)/(rhocp + drhocp*psi(i,j,k))
+          end do
+        end do
+      end do
+    end if
   end subroutine rk_scal
   !
   subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &

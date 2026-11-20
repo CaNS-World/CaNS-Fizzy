@@ -41,6 +41,7 @@ program cans
   use mod_initflow       , only: initflow,initscal
   use mod_initgrid       , only: initgrid,save_grid
   use mod_initmpi        , only: initmpi
+  use mod_impdiff        , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_updt_forcing
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
   use mod_mom            , only: cmpt_momentum
@@ -591,6 +592,7 @@ program cans
     tm_coeff(1) = 1. + 0.5*dt_r
     tm_coeff(2) =    - 0.5*dt_r
     dtrk = dt
+    alpha = 0. ! no correction of the pressure update for the implicit diffusion, whose coefficients vary (see `updatep`)
     dtrki = dtrk**(-1)
     !
     ! phase field update
@@ -639,6 +641,9 @@ program cans
     if(nscal > 0) then
       call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
                    psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
+      if(is_impdiff) then
+        call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
+      end if
       call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
     end if
     if(.not.is_solve_ns) then
@@ -664,6 +669,22 @@ program cans
               psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
+      end if
+      if(is_impdiff) then
+        !
+        ! implicit half of the diffusion along z (Crank-Nicolson)
+        !
+        call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
+        if(any(is_forced(:))) then
+          !
+          ! the wall shear of the implicit half is only known now: the forcing is corrected so as to
+          ! keep the momentum of the forced directions (`force_balance(:,6)` holds its value before the step)
+          !
+          call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+          momentum(:) = force_balance(:,6)-momentum(:)
+          force_balance(:,5) = force_balance(:,5) + momentum(:)*dtrki
+          call impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,momentum,u,v,w)
+        end if
       end if
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
       !$acc parallel loop collapse(3) default(present) async(1)
