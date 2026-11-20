@@ -43,6 +43,9 @@ program cans
   use mod_initmpi        , only: initmpi
   use mod_impdiff        , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing, &
                                  impdiff_cc_mom_updt,impdiff_cc_scal_updt
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  use mod_impdiff        , only: impdiff_vc_mom_updt,impdiff_vc_mom_solve,impdiff_vc_scal_updt,impdiff_vc_scal_solve
+#endif
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
   use mod_mom            , only: cmpt_momentum
@@ -137,6 +140,7 @@ program cans
   real(rp), allocatable, dimension(:) :: au,av,aw,bu,bv,bw,cu,cv,cw,as,bs,cs
   real(rp) :: normfftu,normfftv,normfftw,normffts
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw,rhsbs
+  logical :: is_impdiff_cc
   !
   real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
   real(rp), dimension(2) :: dt_restart
@@ -248,7 +252,16 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  if(is_impdiff .and. .not.is_impdiff_1d) then
+  !
+  ! implicit diffusion in all directions: with constant coefficients and the FFT-based solver, as the
+  ! pressure, or with variable coefficients and HYPRE, as the pressure
+  !
+#if defined(_CONSTANT_COEFFS_POISSON)
+  is_impdiff_cc = is_impdiff .and. .not.is_impdiff_1d
+#else
+  is_impdiff_cc = .false.
+#endif
+  if(is_impdiff_cc) then
     allocate(lambdaxyu(n_z(1),n_z(2)), &
              lambdaxyv(n_z(1),n_z(2)), &
              lambdaxyw(n_z(1),n_z(2)))
@@ -366,7 +379,7 @@ program cans
                   lambdaxyp,['c','c','c'],ap,bp,cp,arrplanp,normfftp,rhsbp%x,rhsbp%y,rhsbp%z)
   !$acc enter data copyin(lambdaxyp,ap,bp,cp) async
   !$acc enter data copyin(rhsbp,rhsbp%x,rhsbp%y,rhsbp%z) async
-  if(is_impdiff .and. .not.is_impdiff_1d) then
+  if(is_impdiff_cc) then
     call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,1),bcvel(:,:,1), &
                     lambdaxyu,['f','c','c'],au,bu,cu,arrplanu,normfftu,rhsbu%x,rhsbu%y,rhsbu%z)
     call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,2),bcvel(:,:,2), &
@@ -394,7 +407,7 @@ program cans
   !
   call init_wspace_arrays()
   call set_cufft_wspace(pack(arrplanp,.true.),istream_acc_queue_1)
-  if(is_impdiff .and. .not.is_impdiff_1d) then
+  if(is_impdiff_cc) then
     call set_cufft_wspace(pack(arrplanu,.true.),istream_acc_queue_1)
     call set_cufft_wspace(pack(arrplanv,.true.),istream_acc_queue_1)
     call set_cufft_wspace(pack(arrplanw,.true.),istream_acc_queue_1)
@@ -651,7 +664,7 @@ program cans
     tm_coeff(2) =    - 0.5*dt_r
     dtrk = dt
     alpha = 0. ! no correction of the pressure update for the implicit Z diffusion, whose coefficients vary (see `updatep`)
-    if(is_impdiff .and. .not.is_impdiff_1d) alpha = -.5*visc0*dtrk
+    if(is_impdiff_cc) alpha = -.5*visc0*dtrk
     dtrki = dtrk**(-1)
     !
     ! phase field update
@@ -703,10 +716,17 @@ program cans
       if(is_impdiff) then
         if(is_impdiff_1d) then
           call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
-        else
+        else if(is_impdiff_cc) then
           call impdiff_cc_scal_updt(n,nh_s,0.5_rp*dt,s)
           call solve_helmholtz(n,nh_s,ng,hi,arrplans,normffts,-0.5*alpha0*dt, &
                                lambdaxys,as,bs,cs,rhsbs%x,rhsbs%y,rhsbs%z,is_bound,cbcsca,['c','c','c'],s)
+#if !defined(_CONSTANT_COEFFS_POISSON)
+        else
+          call impdiff_vc_scal_updt(n,nh_s,nh_psi,0.5_rp*dt,rho12*cp12,psi,s)
+          call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+          call impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbcsca,cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dt, &
+                                     rho12*cp12,ka12,psi,s)
+#endif
         end if
       end if
       call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
@@ -745,14 +765,14 @@ program cans
           ! here, first with its value at the old time level, before the solve
           !
           call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum_o)
-          call impdiff_wall_force(n,nh_psi,nh_g,is_forced,.not.is_impdiff_1d,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+          call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
                                   wall_force_imp,momentum)
           wall_force_imp(:) = wall_force_imp(:)*dtrk
           call impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,wall_force_imp,u,v,w)
         end if
         if(is_impdiff_1d) then
           call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
-        else
+        else if(is_impdiff_cc) then
           call impdiff_cc_mom_updt(n,nh_v,0.5_rp*dtrk,u,v,w)
           call solve_helmholtz(n,nh_v,ng,hi,arrplanu,normfftu,alpha, &
                                lambdaxyu,au,bu,cu,rhsbu%x,rhsbu%y,rhsbu%z,is_bound,cbcvel(:,:,1),['f','c','c'],u)
@@ -760,6 +780,13 @@ program cans
                                lambdaxyv,av,bv,cv,rhsbv%x,rhsbv%y,rhsbv%z,is_bound,cbcvel(:,:,2),['c','f','c'],v)
           call solve_helmholtz(n,nh_v,ng,hi,arrplanw,normfftw,alpha, &
                                lambdaxyw,aw,bw,cw,rhsbw%x,rhsbw%y,rhsbw%z,is_bound,cbcvel(:,:,3),['c','c','f'],w)
+#if !defined(_CONSTANT_COEFFS_POISSON)
+        else
+          call impdiff_vc_mom_updt(n,nh_v,nh_psi,0.5_rp*dtrk,rho12,psi,u,v,w)
+          call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+          call impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbcvel,cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dtrk, &
+                                    rho12,mu12,psi,u,v,w)
+#endif
         end if
         if(any(is_forced(:))) then
           !
@@ -1029,7 +1056,7 @@ program cans
   ! clear ffts
   !
   call fftend(arrplanp)
-  if(is_impdiff .and. .not.is_impdiff_1d) then
+  if(is_impdiff_cc) then
     call fftend(arrplanu)
     call fftend(arrplanv)
     call fftend(arrplanw)

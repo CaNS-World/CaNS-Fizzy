@@ -7,6 +7,9 @@
 #define _FAST_MOM_KERNELS
 module mod_rk
   use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_cc_mom_rhs,impdiff_cc_scal_rhs,impdiff_wall_force
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
+#endif
   use mod_mom    , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
   use mod_param  , only: is_impdiff,is_impdiff_1d,visc0,alpha0
   use mod_types
@@ -107,15 +110,19 @@ module mod_rk
       if(is_impdiff_1d) then
         call impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudtrk,dvdtrk,dwdtrk)
       else
+#if defined(_CONSTANT_COEFFS_POISSON)
         call impdiff_cc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,visc0,rho12,psi,psio,u,v,w,dudtrk,dvdtrk,dwdtrk, &
                                 dudtrko,dvdtrko,dwdtrko)
+#else
+        call impdiff_vc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,mu12,psi,u,v,w,dudtrk,dvdtrk,dwdtrk)
+#endif
       end if
       if(any(is_forced(:))) then
         !
         ! the forcing leaves out the wall shear of the terms integrated implicitly, which is balanced
         ! together with the implicit solve (see the main program)
         !
-        call impdiff_wall_force(n,nh_psi,nh_g,is_forced,.not.is_impdiff_1d,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+        call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
                                 wall_force_imp,dwall_force_old)
         wall_force_old(:)  = wall_force_old(:) - wall_force_imp(:)
         wall_force_imp(:)  = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force_imp(:)
@@ -231,7 +238,11 @@ module mod_rk
       if(is_impdiff_1d) then
         call impdiff_z_scal_rhs(n,nh_s,nh_psi,nh_g,dzci,dzfi,ka12,psi,s,dsdtrk)
       else
+#if defined(_CONSTANT_COEFFS_POISSON)
         call impdiff_cc_scal_rhs(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,alpha0,rhocp12,psi,psio,s,dsdtrk,dsdtrko)
+#else
+        call impdiff_vc_scal_rhs(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,ka12,psi,s,dsdtrk)
+#endif
       end if
     end if
     if(is_first) then

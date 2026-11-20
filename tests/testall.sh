@@ -31,7 +31,7 @@ TESTS_OF[acdi]="lid_driven_cavity differentially_heated_cavity deforming_circle 
                 start_stop restart_two_fluid implicit_diffusion poisson taylor_green_vortex_2d"
 TESTS_OF[thinc]="deforming_circle rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[balanced]="zero_net_acceleration rising_bubble restart_two_fluid"
-TESTS_OF[hypre]="rising_bubble restart_two_fluid"
+TESTS_OF[hypre]="rising_bubble restart_two_fluid implicit_diffusion"
 #
 if [ $# -gt 0 ]; then VARIANTS="$*"; fi
 for variant in $VARIANTS; do
