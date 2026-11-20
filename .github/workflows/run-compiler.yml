@@ -68,4 +68,4 @@ jobs:
       build_modes: '["opt", "dbg"]'
       variant: "hypre"
       variant_flags: "CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=/usr"
-      tests: '["rising_bubble", "restart_two_fluid"]'
+      tests: '["rising_bubble", "restart_two_fluid", "implicit_diffusion"]'

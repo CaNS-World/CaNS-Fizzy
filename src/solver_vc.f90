@@ -17,7 +17,7 @@ module mod_solver_vc
   implicit none
   integer :: ierr
   private
-  public solver_vc,solver_vc_end
+  public solver_vc,solver_vc_helmholtz,solver_vc_end
   integer, parameter :: HYPRESolverSMG       = 1, &
                         HYPRESolverPFMG      = 2, &
                         HYPRESolverGMRES     = 3, &
@@ -26,7 +26,8 @@ module mod_solver_vc
   integer, parameter :: HYPREPrecondSMG  = 0, &
                         HYPREPrecondPFMG = 1, &
                         HYPREPrecondNone = 9
-  integer, parameter :: HYPREProblemPressure = 1 ! entry of the `hypre_*` inputs (2: diffusion)
+  integer, parameter :: HYPREProblemPressure  = 1, & ! entries of the `hypre_*` inputs
+                        HYPREProblemDiffusion = 2
   type hypre_solver
     type(C_PTR) :: grid,stencil,precond,solver,mat,rhs,sol
     integer     :: stype,ptype,comm_hypre
@@ -36,8 +37,8 @@ module mod_solver_vc
     integer     :: nlevels    ! number of multigrid levels down to a single grid cell
     logical     :: is_singular
   end type hypre_solver
-  type(hypre_solver), save :: asolver_p
-  logical           , save :: is_init_p = .false.
+  type(hypre_solver), save :: asolver_p,asolver_d
+  logical           , save :: is_init_p = .false.,is_init_d = .false.
   contains
   subroutine solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,po)
     !
@@ -73,11 +74,77 @@ module mod_solver_vc
     call finalize_solver(asolver_p)
   end subroutine solver_vc
   !
+  subroutine solver_vc_helmholtz(ng,lo,hi,cbc,coeffs,p)
+    !
+    ! solves a system whose matrix is given, e.g., that of the implicit diffusion (see `mod_impdiff`),
+    ! with the solver of the second entry of the `hypre_*` inputs, and a zero initial guess;
+    ! `coeffs(0,:,:,:)` is the diagonal, and `coeffs(2*idir-1,:,:,:)` and `coeffs(2*idir,:,:,:)` are the
+    ! coefficients of the lower and upper neighbours along direction `idir`, with the boundary conditions
+    ! included; `p` holds the right-hand side on input and the solution on output
+    !
+    implicit none
+    integer         , intent(in   ), dimension(3)     :: ng,lo,hi
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbc
+    real(rp)        , intent(in   ), dimension(0:,lo(1):,lo(2):,lo(3):) :: coeffs
+    real(rp)        , intent(inout), dimension(lo(1):,lo(2):,lo(3):)    :: p
+    real(rp), allocatable, dimension(:) :: matvalues
+    real(rp), allocatable, dimension(:,:,:) :: po
+    real(rp), dimension(lo(3):hi(3)) :: dzfi
+    integer, parameter :: iq = HYPREProblemDiffusion
+    logical, dimension(3) :: is_dir
+    integer :: i,j,k,q,qq,idir,ndim,nstencil
+    !
+    if(.not.is_init_d) then
+      call init_matrix(ng,lo,hi,cbc,asolver_d)
+      asolver_d%is_singular = .false.
+      is_init_d = .true.
+    end if
+    ndim = asolver_d%ndim; nstencil = asolver_d%nstencil
+    is_dir(:) = .false.
+    is_dir(asolver_d%idirs(1:ndim)) = .true.
+    allocate(matvalues(product(hi(:)-lo(:)+1)*nstencil))
+    q = 0
+    do k=lo(3),hi(3)
+      do j=lo(2),hi(2)
+        do i=lo(1),hi(1)
+          q = q + 1
+          qq = (q-1)*nstencil
+          matvalues(qq+1) = coeffs(0,i,j,k)
+          do idir=1,3
+            !
+            ! single periodic cell: its neighbours are the cell itself
+            !
+            if(.not.is_dir(idir)) matvalues(qq+1) = matvalues(qq+1) + coeffs(2*idir-1,i,j,k) + coeffs(2*idir,i,j,k)
+          end do
+          do idir=1,ndim
+            matvalues(qq+2*idir  ) = coeffs(2*asolver_d%idirs(idir)-1,i,j,k)
+            matvalues(qq+2*idir+1) = coeffs(2*asolver_d%idirs(idir)  ,i,j,k)
+          end do
+        end do
+      end do
+    end do
+    call HYPRE_StructMatrixSetBoxValues(asolver_d%mat,lo(asolver_d%idirs(1:ndim)),hi(asolver_d%idirs(1:ndim)),nstencil, &
+                                        [(q,q=0,nstencil-1)],matvalues,ierr)
+    call HYPRE_StructMatrixAssemble(asolver_d%mat,ierr)
+    deallocate(matvalues)
+    allocate(po(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)))
+    po(:,:,:) = 0._rp
+    dzfi(:)   = 1._rp
+    call create_solver(iq,asolver_d)
+    call setup_solver(asolver_d)
+    call solve_helmholtz(iq,asolver_d,ng,lo,hi,0,0,dzfi,p,po)
+    call finalize_solver(asolver_d)
+  end subroutine solver_vc_helmholtz
+  !
   subroutine solver_vc_end
     implicit none
     if(is_init_p) then
       call finalize_matrix(asolver_p)
       is_init_p = .false.
+    end if
+    if(is_init_d) then
+      call finalize_matrix(asolver_d)
+      is_init_d = .false.
     end if
   end subroutine solver_vc_end
   !
@@ -191,7 +258,7 @@ module mod_solver_vc
     real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
     real(rp)            , intent(inout), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p
     type(hypre_solver)  , intent(in   )                                        :: asolver
-    real(rp), dimension(product(hi(:)-lo(:)+1)*asolver%nstencil) :: matvalues
+    real(rp), allocatable, dimension(:) :: matvalues
     real(rp), dimension(0:1,3) :: sgn,factor
     real(rp), dimension(0:1,3) :: cs ! coefficients of the lower and upper neighbours along each direction
     logical , dimension(3) :: is_dir,is_per
@@ -227,6 +294,7 @@ module mod_solver_vc
     end do
     !
     alpha = alpha12(2); dalpha = alpha12(1)-alpha12(2)
+    allocate(matvalues(product(hi(:)-lo(:)+1)*nstencil))
     q = 0
     do k=lo(3),hi(3)
       vol = dzfi(k)**(-1)
@@ -282,6 +350,7 @@ module mod_solver_vc
     call HYPRE_StructMatrixSetBoxValues(asolver%mat,lo(asolver%idirs(1:ndim)),hi(asolver%idirs(1:ndim)),nstencil, &
                                         [(q,q=0,nstencil-1)],matvalues,ierr)
     call HYPRE_StructMatrixAssemble(asolver%mat,ierr)
+    deallocate(matvalues)
   end subroutine fill_matrix
   !
   subroutine configure_pfmg(iq,asolver,solver,maxiter,maxerror)
