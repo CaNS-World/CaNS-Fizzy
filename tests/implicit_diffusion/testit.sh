@@ -18,9 +18,10 @@ mkdir -p data
 cp $TESTDIR/input-*.nml $TESTDIR/spheres.in $RUNDIR
 
 NAME_EXP="explicit"
-NAME_IMP="implicit"
+NAME_IMP_Z="implicit-z"
+NAME_IMP_3D="implicit-3d"
 
-for name in $NAME_EXP $NAME_IMP; do
+for name in $NAME_EXP $NAME_IMP_Z $NAME_IMP_3D; do
   echo "INFO: Running CaNS, case $name"
   mv input-${name}.nml input.nml
   set +e

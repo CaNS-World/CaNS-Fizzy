@@ -60,9 +60,6 @@ module mod_sanity
       if(.not.passed) call abortit
     end if
     !
-    if(is_impdiff.and..not.is_impdiff_1d) then
-      if(myid == 0)  print*, 'ERROR: implicit diffusion is only available along Z for now (`is_impdiff_1d = T`).'; call abortit
-    end if
     if(is_impdiff_1d) then
       if(dims(2) > 1.and.ipencil_axis /= 3) then
         if(myid == 0)  print*, 'ERROR: implicit Z diffusion requires a domain that is not decomposed along Z &
