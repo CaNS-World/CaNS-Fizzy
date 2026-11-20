@@ -672,7 +672,7 @@ program cans
       end if
       if(is_impdiff) then
         !
-        ! implicit half of the diffusion along z (Crank-Nicolson)
+        ! diffusion along z (Crank-Nicolson): adds the explicit half and solves for the implicit one
         !
         call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
         if(any(is_forced(:))) then
