@@ -14,10 +14,12 @@ module mod_impdiff
   ! with the local viscosity and density, i.e., one tridiagonal system with variable coefficients per line
   ! along z; the remaining viscous terms are integrated explicitly; likewise for the scalar, d/dz(ka ds/dz)
   !
+  use mpi
   use mod_types
   implicit none
   private
-  public impdiff_z_mom_rhs,impdiff_z_mom_solve,impdiff_z_scal_rhs,impdiff_z_scal_solve,impdiff_updt_forcing
+  public impdiff_z_mom_rhs,impdiff_z_mom_solve,impdiff_z_scal_rhs,impdiff_z_scal_solve
+  public impdiff_wall_force,impdiff_updt_forcing
   real(rp), allocatable, dimension(:,:,:), save :: cw            ! work array of the line solver
   real(rp), allocatable, dimension(:,:,:), save :: dud,dvd,dwd,dsd ! implicit terms at the old time level
   contains
@@ -96,11 +98,46 @@ module mod_impdiff
     call solve_lines_f(n,nh_v,nh_psi,nh_g    ,cbc(:,3,3),bc(:,3,3),dzf,dzci,dzfi,theta,rho12,mu12,psi,dwd,cw,w)
   end subroutine impdiff_z_mom_solve
   !
+  subroutine impdiff_wall_force(n,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wall_force)
+    !
+    ! computes the wall shear force per unit volume carried by the terms that are integrated implicitly,
+    ! i.e., minus their volume average, at the old time level (see `impdiff_z_mom_rhs`);
+    ! the zero-net-acceleration forcing leaves it out of the wall shear that it balances explicitly,
+    ! and balances what the implicit integration applies together with the solve (see the main program)
+    !
+    implicit none
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_g
+    logical , intent(in ), dimension(3) :: is_forced
+    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(out), dimension(3) :: wall_force
+    real(rp) :: fx,fy,fz
+    integer  :: i,j,k,ierr
+    !
+    fx = 0._rp; fy = 0._rp; fz = 0._rp
+    !$acc data copy(fx,fy,fz) async(1)
+    !$acc parallel loop collapse(3) default(present) reduction(+:fx,fy,fz) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)  reduction(+:fx,fy,fz)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          fx = fx - dud(i,j,k)*grid_vol_ratio_f(k)
+          fy = fy - dvd(i,j,k)*grid_vol_ratio_f(k)
+          fz = fz - dwd(i,j,k)*grid_vol_ratio_c(k)
+        end do
+      end do
+    end do
+    !$acc end data
+    !$acc wait(1)
+    wall_force(:) = [fx,fy,fz]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,wall_force,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    where(.not.is_forced(:)) wall_force(:) = 0._rp
+  end subroutine impdiff_wall_force
+  !
   subroutine impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,dtf,u,v,w)
     !
-    ! adds a uniform force per unit volume, times the time step (`dtf`), to the velocity;
-    ! it corrects the zero-net-acceleration forcing, since the wall shear of the implicit half of the
-    ! diffusion is only known after the implicit solve
+    ! adds a uniform force per unit volume, times the time step (`dtf`), to the velocity; it is used by
+    ! the zero-net-acceleration forcing to balance the wall shear of the terms integrated implicitly
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
