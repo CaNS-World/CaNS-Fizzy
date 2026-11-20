@@ -396,7 +396,8 @@ contains
       rho0 = minval(rho12(:))
 #endif
       visc0  = maxval(mu12(:)/rho12(:))
-      alpha0 = maxval(ka12(:)/(rho12(:)*cp12(:)))
+      alpha0 = 0.
+      if(nscal > 0) alpha0 = maxval(ka12(:)/(rho12(:)*cp12(:)))
       vof_thinc_beta = 1._rp/(2._rp*psi_thickness_factor)
       !
       ! read `numerics` namelist
