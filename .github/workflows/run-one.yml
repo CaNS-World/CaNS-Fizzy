@@ -1,0 +1,87 @@
+name: run-one
+
+on:
+  workflow_call:
+    inputs:
+      compiler:
+        required: true
+        type: string
+      cpu_target:
+        description: "Portable CPU target requested by CI, if any"
+        type: string
+        default: ""
+      test_modes:
+        description: "JSON array of build modes to test"
+        type: string
+        default: '["opt", "dbg"]'
+      build_modes:
+        description: "JSON array of build modes to compile"
+        type: string
+        default: '["opt", "dbg", "opt-omp"]'
+      variant:
+        description: "Name of the build variant"
+        type: string
+        default: "acdi"
+      variant_flags:
+        description: "Build flags of the variant"
+        type: string
+        default: ""
+      tests:
+        description: "JSON array of the tests to run"
+        required: true
+        type: string
+
+env:
+  MODE_FLAGS: '{"opt": "FFLAGS_OPT=1", "dbg": "FFLAGS_DEBUG_MAX=1 FFLAGS_OPT=0", "opt-omp": "FFLAGS_OPT=1 OPENMP=1 LIBS+=-lfftw3_threads"}'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        mode: ${{ fromJSON(inputs.build_modes) }}
+      fail-fast: false # ensures that jobs run in parallel
+    env:
+      NVHPC_CPU_TARGET: ${{ inputs.cpu_target }}
+      GNU_CPU_TARGET: ${{ inputs.cpu_target }}
+    name: build-${{ matrix.mode }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        submodules: true
+    - name: Set up the environment and get packages
+      uses: ./.github/actions/build
+      with:
+        name: ${{ inputs.compiler }}-${{ inputs.variant }}-${{ matrix.mode }}
+        compiler: ${{ inputs.compiler }}
+        compiler_flags: ${{ fromJSON(env.MODE_FLAGS)[matrix.mode] }} ${{ inputs.variant_flags }}
+        no-rebuild: false
+  test:
+    timeout-minutes: 60 # 30 in CaNS; the debug builds of the long two-fluid tests need more
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      matrix:
+        mode: ${{ fromJSON(inputs.test_modes) }}
+        test-name: ${{ fromJSON(inputs.tests) }}
+      fail-fast: false # ensures that jobs run in parallel
+    name: test-${{ matrix.mode }}-${{ matrix.test-name }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        submodules: false
+    - name: Set up the environment and get packages
+      uses: ./.github/actions/build
+      with:
+        name: ${{ inputs.compiler }}-${{ inputs.variant }}-${{ matrix.mode }}
+        compiler: ${{ inputs.compiler }}
+        no-rebuild: true
+    - name: Run the test
+      uses: ./.github/actions/test
+      with:
+        name: ${{ inputs.compiler }}-${{ inputs.variant }}-${{ matrix.mode }}-${{ matrix.test-name }}
+        compiler: ${{ inputs.compiler }}
+        test_name: ${{ matrix.test-name }}

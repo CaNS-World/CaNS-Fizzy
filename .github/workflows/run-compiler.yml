@@ -1,0 +1,71 @@
+name: run-compiler
+#
+# builds and tests the variants of CaNS-Fizzy with one compiler;
+# the variants and their tests are the same as in the local harness (tests/testall.sh)
+#
+
+on:
+  workflow_call:
+    inputs:
+      compiler:
+        required: true
+        type: string
+      cpu_target:
+        description: "Portable CPU target requested by CI, if any"
+        type: string
+        default: ""
+      test_modes:
+        description: "JSON array of build modes to test"
+        type: string
+        default: '["opt", "dbg"]'
+      variants:
+        description: "JSON array of the variants to build and test"
+        type: string
+        default: '["acdi", "thinc", "balanced"]'
+
+jobs:
+  acdi:
+    if: ${{ contains(fromJSON(inputs.variants), 'acdi') }}
+    uses: ./.github/workflows/run-one.yml
+    with:
+      compiler: ${{ inputs.compiler }}
+      cpu_target: ${{ inputs.cpu_target }}
+      test_modes: ${{ inputs.test_modes }}
+      variant: "acdi"
+      tests: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "poisson", "taylor_green_vortex_2d"]'
+
+  thinc:
+    if: ${{ contains(fromJSON(inputs.variants), 'thinc') }}
+    uses: ./.github/workflows/run-one.yml
+    with:
+      compiler: ${{ inputs.compiler }}
+      cpu_target: ${{ inputs.cpu_target }}
+      test_modes: ${{ inputs.test_modes }}
+      build_modes: '["opt", "dbg"]'
+      variant: "thinc"
+      variant_flags: "INTERFACE_CAPTURING_VOF=1"
+      tests: '["deforming_circle", "rising_bubble", "restart_two_fluid"]'
+
+  balanced:
+    if: ${{ contains(fromJSON(inputs.variants), 'balanced') }}
+    uses: ./.github/workflows/run-one.yml
+    with:
+      compiler: ${{ inputs.compiler }}
+      cpu_target: ${{ inputs.cpu_target }}
+      test_modes: ${{ inputs.test_modes }}
+      build_modes: '["opt", "dbg"]'
+      variant: "balanced"
+      variant_flags: "BALANCED_CAPILLARY_PRESSURE_SPLIT=1"
+      tests: '["zero_net_acceleration", "rising_bubble", "restart_two_fluid"]'
+
+  hypre:
+    if: ${{ contains(fromJSON(inputs.variants), 'hypre') }}
+    uses: ./.github/workflows/run-one.yml
+    with:
+      compiler: ${{ inputs.compiler }}
+      cpu_target: ${{ inputs.cpu_target }}
+      test_modes: ${{ inputs.test_modes }}
+      build_modes: '["opt", "dbg"]'
+      variant: "hypre"
+      variant_flags: "CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=/usr"
+      tests: '["restart_two_fluid"]'

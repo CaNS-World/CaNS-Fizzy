@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/build"
+    schedule:
+      interval: weekly
+    groups:
+      actions-all:
+        patterns:
+          - "*"

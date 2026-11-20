@@ -6,7 +6,7 @@ def test_rising_bubble():
     # comparing rising bubble interface location at t=3 against
     # reference data from Hysing et al. IJNMF 60.11 (2009): 1259-1288
     #
-    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("./","psi_fld_0006000.bin",np.array([1,1,1]))
+    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("data/","psi_fld_0006000.bin",np.array([1,1,1]))
     import matplotlib
     import matplotlib.pyplot as plt
     from scipy.spatial.distance import directed_hausdorff
