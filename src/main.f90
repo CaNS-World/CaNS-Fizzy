@@ -697,28 +697,19 @@ program cans
         end if
       end if
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
-      do k=1-nh_p,n(3)+nh_p
-        do j=1-nh_p,n(2)+nh_p
-          do i=1-nh_p,n(1)+nh_p
-            pp(i,j,k) = p(i,j,k)
-          end do
-        end do
-      end do
-      call fillps(n,nh_v,nh_p,nh_g,dli,dzfi,dtrki*rho0,u,v,w,p)
+      call fillps(n,nh_v,nh_p,nh_g,dli,dzfi,dtrki*rho0,u,v,w,pp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-      call updt_rhs_b(['c','c','c'],cbcpre,n,nh_p,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
-      call solver(n,nh_p,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p,is_dtdma_update_p,ap_d,cp_d, &
+      call updt_rhs_b(['c','c','c'],cbcpre,n,nh_p,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,pp)
+      call solver(n,nh_p,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp,is_dtdma_update_p,ap_d,cp_d, &
                   .not.is_impdiff)
 #else
-      call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
+      call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,po)
 #endif
-      call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
+      call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,pp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk/rho0,p,psi,u,v,w)
+      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk/rho0,pp,psi,u,v,w)
 #else
-      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk,p,psi,u,v,w)
+      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk,pp,psi,u,v,w)
 #endif
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
       if(any(is_forced(:))) then
