@@ -375,11 +375,11 @@ module mod_sanity
     dt  = acos(-1.) ! value is irrelevant
     dti = dt**(-1)
     call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
-    call fillps(n,nh_v,nh_p,nh_g,dli,dzfi,dti,1._rp,u,v,w,p)
+    call fillps(n,nh_v,nh_p,nh_g,dli,dzfi,dti,u,v,w,p)
     call updt_rhs_b(['c','c','c'],cbcpre,n,nh_p,is_bound,rhsbx,rhsby,rhsbz,p)
     call solver(n,nh_p,ng,arrplan,normfft,lambdaxy,a,b,c,cbcpre,['c','c','c'],p)
     call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
-    call correc(n,nh_v,nh_p,nh_p,nh_g,dli,dzci,1._rp,[1._rp,1._rp],dt,p,p,u,v,w) ! unit density
+    call correc(n,nh_v,nh_p,nh_p,nh_g,dli,dzci,[1._rp,1._rp],dt,p,p,u,v,w) ! unit density: `p` stands for `psi`
     call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
     call chkdiv(lo,hi,nh_v,nh_g,l,dli,dzfi,u,v,w,divtot,divmax)
     passed_loc = divmax < small
