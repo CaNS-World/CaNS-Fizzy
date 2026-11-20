@@ -103,7 +103,7 @@ The admissible MPI process grids depend on the homogeneous direction:
 
 With `ng(3)=1`, use `is_poisson_dtdma = F`, and use a uniform Z grid.
 
-Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `inisca` and `inipsi` below). Builds with the HYPRE pressure solver are an exception, see [`INFO_COMPILING.md`](INFO_COMPILING.md).
+Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `inisca` and `inipsi` below).
 
 `gtype` and `gr` are the **grid stretching type** and **grid stretching parameter** that tweak the non-uniform grid in the third direction; zero `gr` implies no stretching. See `initgrid.f90` for more details. The following options are available for `gtype`:
 
@@ -529,6 +529,41 @@ is_poisson_dtdma = F
 `is_impdiff` and `is_impdiff_1d` enable the (semi-) **implicit temporal integration of diffusion terms** in *CaNS*. It is not available yet in *CaNS-Fizzy*, and both must be false.
 
 Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
+
+# About the `&hypre` namelist under `input.nml`
+
+This namelist is **optional**, and tunes the iterative solver of the [HYPRE](https://github.com/hypre-space/hypre) library that is used for the variable-coefficient pressure Poisson equation, in builds with `CONSTANT_COEFFS_POISSON=0` (see [`INFO_COMPILING.md`](INFO_COMPILING.md)). Each input has two entries: the first for the pressure, and the second reserved for the implicit diffusion. The values below are the default ones.
+
+```fortran
+&hypre
+hypre_solver_i(1:2)  = 5, 5
+hypre_tol(1:2)       = 1.e-6, 1.e-6
+hypre_maxiter(1:2)   = 50, 50
+hypre_precond_i(1:2) = -1, -1
+hypre_precond_maxiter(1:2) = 1, 1
+/
+```
+
+`hypre_solver_i` selects the **solver**:
+
+* `1`: SMG, a geometric multigrid solver
+* `2`: PFMG, a geometric multigrid solver with semicoarsening
+* `3`: GMRES
+* `4`: BiCGSTAB
+* `5`: Flexible GMRES (default)
+
+`hypre_tol` is the **relative tolerance** on the residual, and `hypre_maxiter` the **maximum number of iterations**; a warning is printed whenever the solver does not converge within it.
+
+`hypre_precond_i` selects the **preconditioner** of the Krylov solvers (`3`, `4` and `5`), which is applied `hypre_precond_maxiter` times per iteration:
+
+* `0`: SMG
+* `1`: PFMG
+* `9`: none
+* a negative value (default): PFMG, or SMG for a two-dimensional problem, where PFMG proved unreliable
+
+The defaults were chosen from tests with three- and two-dimensional rising bubbles at density ratios up to 1000: Flexible GMRES with these preconditioners was the only combination that converged in all of them, at a cost per time step similar to the fastest ones. For a problem without a Dirichlet pressure boundary, the pressure is defined up to a constant, and the mean of the solution is set to zero.
+
+Note: other parameters (`hypre_gmres_k_dim`, `hypre_pfmg_relax_type`, `hypre_pfmg_num_pre_relax`, `hypre_pfmg_num_post_relax`) are meant for advanced use, and can be found in `param.f90`.
 
 # About the `&other_options` namelist under `input.nml`
 

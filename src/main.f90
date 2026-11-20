@@ -86,7 +86,7 @@ program cans
 #endif
   use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs,bulk_mean_12_stag
 #if !defined(_CONSTANT_COEFFS_POISSON)
-  use mod_solver_vc      , only: solver_vc
+  use mod_solver_vc      , only: solver_vc,solver_vc_end
 #endif
 #if !defined(_OPENACC)
   use mod_solver         , only: solver
@@ -931,6 +931,9 @@ program cans
   ! clear ffts
   !
   call fftend(arrplanp)
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  call solver_vc_end
+#endif
   if(myid == 0.and.(.not.kill)) print*, '*** Fim ***'
   call decomp_2d_finalize
 #if defined(_OPENACC)

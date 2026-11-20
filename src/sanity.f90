@@ -63,6 +63,9 @@ module mod_sanity
     if(is_impdiff) then
       if(myid == 0)  print*, 'ERROR: implicit diffusion (`is_impdiff = T`) is not available yet.'; call abortit
     end if
+#if !defined(_CONSTANT_COEFFS_POISSON)
+    call chk_hypre(passed); if(.not.passed) call abortit
+#endif
     if(is_impdiff_1d.and.(.not.is_impdiff)) then
       if(myid == 0)  print*, 'ERROR: `is_impdiff_1d = T` requires `is_impdiff = T` (forced in `param.f90`).'; call abortit
     end if
@@ -77,6 +80,35 @@ module mod_sanity
     end if
   end subroutine test_sanity_input
   !
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  subroutine chk_hypre(passed)
+    !
+    ! checks the inputs of the HYPRE solver of the variable-coefficient Poisson equation
+    !
+    use mod_param, only: hypre_solver_i,hypre_tol,hypre_maxiter,hypre_precond_i,hypre_precond_maxiter
+    implicit none
+    logical, intent(out) :: passed
+    integer, parameter :: iq = 1 ! pressure
+    passed = .true.
+#if defined(_SINGLE_PRECISION)
+    if(myid == 0) print*, 'ERROR: the HYPRE solver (`CONSTANT_COEFFS_POISSON=0`) is not available in single precision.'
+    passed = .false.
+#endif
+    if(hypre_solver_i(iq) < 1.or.hypre_solver_i(iq) > 5) then
+      if(myid == 0) print*, 'ERROR: invalid `hypre_solver_i` (1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES).'
+      passed = .false.
+    end if
+    if(.not.(hypre_precond_i(iq) < 0.or.any(hypre_precond_i(iq) == [0,1,9]))) then
+      if(myid == 0) print*, 'ERROR: invalid `hypre_precond_i` (0: SMG, 1: PFMG, 9: none, negative: automatic).'
+      passed = .false.
+    end if
+    if(hypre_tol(iq) <= 0._rp.or.hypre_maxiter(iq) < 1.or.hypre_precond_maxiter(iq) < 1) then
+      if(myid == 0) print*, 'ERROR: `hypre_tol`, `hypre_maxiter` and `hypre_precond_maxiter` must be positive.'
+      passed = .false.
+    end if
+  end subroutine chk_hypre
+  !
+#endif
   subroutine chk_stop_type(stop_type,passed)
     implicit none
     logical, intent(in), dimension(3) :: stop_type

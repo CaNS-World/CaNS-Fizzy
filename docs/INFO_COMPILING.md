@@ -47,7 +47,7 @@ and the following ones select the two-fluid method:
 
 The transport of a scalar and the Boussinesq buoyancy term are selected in the input file (`nscal` and `is_boussinesq_buoyancy`; see [`INFO_INPUT.md`](INFO_INPUT.md)), and so are the pencil orientation, the debugging checks and the timing of each step.
 
-A build with `CONSTANT_COEFFS_POISSON=0` links to HYPRE, whose location is set with `HYPRE_HOME` (default: `${HOME}/software/hypre`), e.g., `make CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=[PATH_TO_HYPRE]`. With this solver, set up two-dimensional cases in the X-Z plane with two grid cells along Y: the solver stalls with a single cell, and stalls or fails with a thin periodic direction along X.
+A build with `CONSTANT_COEFFS_POISSON=0` links to HYPRE, whose location is set with `HYPRE_HOME` (default: `${HOME}/software/hypre`), e.g., `make CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=[PATH_TO_HYPRE]`. The solver is chosen and tuned at run time, with the `&hypre` namelist (see [`INFO_INPUT.md`](INFO_INPUT.md)). Two-dimensional cases should use a single grid cell along the homogeneous direction, which is then left out of the linear system; a periodic direction with only a few cells is best avoided.
 
 The GPU-enabled path corresponds to the OpenACC implementation.
 
