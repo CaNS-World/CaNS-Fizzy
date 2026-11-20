@@ -485,7 +485,7 @@ program cans
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
-  call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+  call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
   call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
   !$acc parallel loop collapse(3) default(present) async(1)

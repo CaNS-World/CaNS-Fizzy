@@ -20,7 +20,7 @@ bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
 bcpre(0:1,1:3)   =  0.,0.,   0.,0.,   0.,0.
 bforce(1:3) = 0., 0., 0.
 gacc(1:3) = 0., 0., 0.
-dims(1:2) = 1, 4 ! one cell along x: 1 x (number of MPI tasks)
+dims(1:2) = 0, 0
 /
 
 &scalar
