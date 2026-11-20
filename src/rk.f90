@@ -6,7 +6,9 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_mom  , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
+  use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_wall_force
+  use mod_mom    , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
+  use mod_param  , only: is_impdiff
   use mod_types
   implicit none
   private
@@ -98,6 +100,25 @@ module mod_rk
     ! advection, diffusion and regularization terms
     !
     call mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    if(is_impdiff) then
+      !
+      ! the diffusion along z that is integrated implicitly leaves the explicit terms (see `mod_impdiff`)
+      !
+      call impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudtrk,dvdtrk,dwdtrk)
+      if(any(is_forced(:))) then
+        !
+        ! the forcing leaves out the wall shear of the terms integrated implicitly, which is balanced
+        ! together with the implicit solve (see the main program)
+        !
+        call impdiff_wall_force(n,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wall_force)
+        wall_force_old(:)  = wall_force_old(:) - wall_force(:)
+        wall_force(:)      = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force(:)
+        force_balance(:,1) = force_balance(:,1) - wall_force(:)
+        bforce_eff(:)      = bforce_eff(:)      - wall_force(:)
+        force_balance(:,5) = bforce_eff(:)
+        !$acc update device(bforce_eff) async(1)
+      end if
+    end if
     !
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)
@@ -196,6 +217,12 @@ module mod_rk
     end if
     call scal_ad(n(1),n(2),n(3),nh_v,nh_s,nh_psi,nh_g,dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z, &
                  psi,u,v,w,s,dsdtrk)
+    if(is_impdiff) then
+      !
+      ! the diffusion along z that is integrated implicitly leaves the explicit terms (see `mod_impdiff`)
+      !
+      call impdiff_z_scal_rhs(n,nh_s,nh_psi,nh_g,dzci,dzfi,ka12,psi,s,dsdtrk)
+    end if
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)

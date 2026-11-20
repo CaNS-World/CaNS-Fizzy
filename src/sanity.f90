@@ -60,8 +60,17 @@ module mod_sanity
       if(.not.passed) call abortit
     end if
     !
-    if(is_impdiff) then
-      if(myid == 0)  print*, 'ERROR: implicit diffusion (`is_impdiff = T`) is not available yet.'; call abortit
+    if(is_impdiff.and..not.is_impdiff_1d) then
+      if(myid == 0)  print*, 'ERROR: implicit diffusion is only available along Z for now (`is_impdiff_1d = T`).'; call abortit
+    end if
+    if(is_impdiff_1d) then
+      if(dims(2) > 1.and.ipencil_axis /= 3) then
+        if(myid == 0)  print*, 'ERROR: implicit Z diffusion requires a domain that is not decomposed along Z &
+                                       &(`dims(2) = 1`, or `ipencil_axis = 3`).'; call abortit
+      end if
+      if(cbcpre(0,3)//cbcpre(1,3) == 'PP') then
+        if(myid == 0)  print*, 'ERROR: implicit Z diffusion is not available with periodic Z boundaries.'; call abortit
+      end if
     end if
 #if !defined(_CONSTANT_COEFFS_POISSON)
     call chk_hypre(ng,cbcpre,passed); if(.not.passed) call abortit

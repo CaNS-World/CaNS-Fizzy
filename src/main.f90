@@ -41,6 +41,7 @@ program cans
   use mod_initflow       , only: initflow,initscal
   use mod_initgrid       , only: initgrid,save_grid
   use mod_initmpi        , only: initmpi
+  use mod_impdiff        , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
   use mod_mom            , only: cmpt_momentum
@@ -135,7 +136,7 @@ program cans
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
                                          xc_g,xf_g,yc_g,yf_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f
-  real(rp), dimension(3) :: dpdl,meanvel,momentum
+  real(rp), dimension(3) :: dpdl,meanvel,momentum,momentum_o,wall_force_imp
   real(rp), dimension(3,6) :: force_balance
   real(rp), dimension(2) :: tm_coeff
   !
@@ -591,6 +592,7 @@ program cans
     tm_coeff(1) = 1. + 0.5*dt_r
     tm_coeff(2) =    - 0.5*dt_r
     dtrk = dt
+    alpha = 0. ! no correction of the pressure update for the implicit diffusion, whose coefficients vary (see `updatep`)
     dtrki = dtrk**(-1)
     !
     ! phase field update
@@ -639,6 +641,9 @@ program cans
     if(nscal > 0) then
       call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
                    psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
+      if(is_impdiff) then
+        call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
+      end if
       call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
     end if
     if(.not.is_solve_ns) then
@@ -664,6 +669,32 @@ program cans
               psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
+      end if
+      if(is_impdiff) then
+        !
+        ! diffusion along z (Crank-Nicolson): adds the explicit half and solves for the implicit one
+        !
+        if(any(is_forced(:))) then
+          !
+          ! zero-net-acceleration forcing: the wall shear of the terms integrated implicitly is balanced
+          ! here, first with its value at the old time level, before the solve
+          !
+          call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum_o)
+          call impdiff_wall_force(n,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wall_force_imp)
+          wall_force_imp(:) = wall_force_imp(:)*dtrk
+          call impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,wall_force_imp,u,v,w)
+        end if
+        call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
+        if(any(is_forced(:))) then
+          !
+          ! and then with the small remainder that keeps the momentum unchanged by the implicit integration
+          !
+          call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+          momentum(:) = momentum_o(:)-momentum(:)
+          call impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,momentum,u,v,w)
+          force_balance(:,1) = force_balance(:,1) + (wall_force_imp(:)+momentum(:))*dtrki
+          force_balance(:,5) = force_balance(:,5) + (wall_force_imp(:)+momentum(:))*dtrki
+        end if
       end if
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
       !$acc parallel loop collapse(3) default(present) async(1)

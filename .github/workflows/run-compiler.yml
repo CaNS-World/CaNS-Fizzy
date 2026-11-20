@@ -32,7 +32,7 @@ jobs:
       cpu_target: ${{ inputs.cpu_target }}
       test_modes: ${{ inputs.test_modes }}
       variant: "acdi"
-      tests: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "poisson", "taylor_green_vortex_2d"]'
+      tests: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d"]'
 
   thinc:
     if: ${{ contains(fromJSON(inputs.variants), 'thinc') }}
@@ -44,7 +44,7 @@ jobs:
       build_modes: '["opt", "dbg"]'
       variant: "thinc"
       variant_flags: "INTERFACE_CAPTURING_VOF=1"
-      tests: '["deforming_circle", "rising_bubble", "restart_two_fluid"]'
+      tests: '["deforming_circle", "rising_bubble", "restart_two_fluid", "implicit_diffusion"]'
 
   balanced:
     if: ${{ contains(fromJSON(inputs.variants), 'balanced') }}

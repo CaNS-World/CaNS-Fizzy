@@ -526,7 +526,9 @@ is_poisson_dtdma = F
 /
 ```
 
-`is_impdiff` and `is_impdiff_1d` enable the (semi-) **implicit temporal integration of diffusion terms** in *CaNS*. It is not available yet in *CaNS-Fizzy*, and both must be false.
+`is_impdiff_1d`, if true, enables the **implicit temporal integration of the diffusion along Z**, with the Crank-Nicolson scheme: the time step is then no longer restricted by the grid spacing along Z in the viscous (and scalar diffusion) terms, which pays off in wall-bounded flows with a fine grid near the walls at low Reynolds number or high viscosity. The terms integrated implicitly are the diffusion of each velocity component along Z due to its own gradient, with the local viscosity and density of the two-fluid mixture, and that of the scalar; the other viscous terms and the regularization of the interface remain explicit. Each line along Z is solved with a tridiagonal algorithm, which requires that **the domain is not decomposed along Z**: use `ipencil_axis = 3`, or `dims(2) = 1`; periodic boundaries along Z are not supported yet. The pressure field is then the one of the projection, and differs from the physical pressure by a small term proportional to the time step and the viscosity.
+
+`is_impdiff` selects the implicit integration of the diffusion in all directions, which is not available yet in *CaNS-Fizzy*; it is set to true automatically with `is_impdiff_1d = T`.
 
 Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
 
