@@ -86,7 +86,7 @@ module mod_chkdt
       dti = 0.5*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))
       if(dti    == 0.) dti    = 1.
       dtmax = dti**(-1)
-      if(is_track_interface) dtmax = min(dtmax,dtipsi**(-1))
+      if(is_track_interface.and.dtipsi > 0.) dtmax = min(dtmax,dtipsi**(-1))
     end if
     if(nscal > 0) then
       if(present(ka12) .and. present(cp12)) &
