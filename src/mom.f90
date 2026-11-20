@@ -826,15 +826,19 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_oth(n,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                         dudt,dvdt,dwdt)
+                         factor,u,v,w)
+    !
+    ! pressure, surface tension and body forces: integrated over the time `factor` and added to the velocity,
+    ! divided by the face density
+    !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_p,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   ) :: dt_r
@@ -850,7 +854,8 @@ module mod_mom
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
 #endif
-    real(rp), intent(inout), dimension( :, :, :)           :: dudt,dvdt,dwdt
+    real(rp), intent(in   ) :: factor
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta
     real(rp) :: dxi,dyi
@@ -1011,9 +1016,9 @@ module mod_mom
           surfy_n(i,j,k) = surfy
           surfz_n(i,j,k) = surfz
 #endif
-          dudt(i,j,k) = dudt_aux
-          dvdt(i,j,k) = dvdt_aux
-          dwdt(i,j,k) = dwdt_aux
+          u(i,j,k) = u(i,j,k) + factor*dudt_aux/rhoxp
+          v(i,j,k) = v(i,j,k) + factor*dvdt_aux/rhoyp
+          w(i,j,k) = w(i,j,k) + factor*dwdt_aux/rhozp
         end do
       end do
     end do
