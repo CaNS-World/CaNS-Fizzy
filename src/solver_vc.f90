@@ -191,7 +191,7 @@ module mod_solver_vc
     real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
     real(rp)            , intent(inout), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p
     type(hypre_solver)  , intent(in   )                                        :: asolver
-    real(rp), dimension(product(hi(:)-lo(:)+1)*asolver%nstencil) :: matvalues
+    real(rp), allocatable, dimension(:) :: matvalues
     real(rp), dimension(0:1,3) :: sgn,factor
     real(rp), dimension(0:1,3) :: cs ! coefficients of the lower and upper neighbours along each direction
     logical , dimension(3) :: is_dir,is_per
@@ -227,6 +227,7 @@ module mod_solver_vc
     end do
     !
     alpha = alpha12(2); dalpha = alpha12(1)-alpha12(2)
+    allocate(matvalues(product(hi(:)-lo(:)+1)*nstencil))
     q = 0
     do k=lo(3),hi(3)
       vol = dzfi(k)**(-1)
@@ -282,6 +283,7 @@ module mod_solver_vc
     call HYPRE_StructMatrixSetBoxValues(asolver%mat,lo(asolver%idirs(1:ndim)),hi(asolver%idirs(1:ndim)),nstencil, &
                                         [(q,q=0,nstencil-1)],matvalues,ierr)
     call HYPRE_StructMatrixAssemble(asolver%mat,ierr)
+    deallocate(matvalues)
   end subroutine fill_matrix
   !
   subroutine configure_pfmg(iq,asolver,solver,maxiter,maxerror)
