@@ -50,7 +50,7 @@ module mod_initflow
     idir_s = 1
     if(isuffix == 5) then
       if((ini(isuffix-1:isuffix-1) == '-').and. &
-         (.not.any(ini(1:3) == ['tgv','ant','rox','roy','roz','vox','voy','voz']))) then
+         (.not.any(ini(1:3) == ['tgv','ant','rot','vor']))) then
         select case(ini(isuffix:isuffix))
         case('x','y','z')
           idir_s = index('xyz',ini(isuffix:isuffix))
@@ -201,7 +201,7 @@ module mod_initflow
       end if
       call poiseuille(n(idir_n),rn/lprof,ubulk,u1d_n)
       is_mean = .true.
-    case('roz') ! solid body rotation around z
+    case('rot-z') ! solid body rotation around z
       do k=1,n(3)
         zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
@@ -217,7 +217,7 @@ module mod_initflow
           end do
         end do
       end do
-    case('rox') ! solid body rotation around x
+    case('rot-x') ! solid body rotation around x
       do k=1,n(3)
         zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
@@ -233,7 +233,7 @@ module mod_initflow
           end do
         end do
       end do
-    case('roy') ! solid body rotation around y
+    case('rot-y') ! solid body rotation around y
       do k=1,n(3)
         zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
@@ -249,7 +249,7 @@ module mod_initflow
           end do
         end do
       end do
-    case('voz') ! 2D serpentine vortex around z
+    case('vor-z') ! 2D serpentine vortex around z
       do k=1,n(3)
         zcc = zc(k)/l(3)
         do j=1,n(2)
@@ -265,7 +265,7 @@ module mod_initflow
           end do
         end do
       end do
-    case('voy') ! 2D serpentine vortex around y
+    case('vor-y') ! 2D serpentine vortex around y
       do k=1,n(3)
         zcc = zc(k)/l(3)
         zff = zf(k)/l(3)
@@ -282,7 +282,7 @@ module mod_initflow
           end do
         end do
       end do
-    case('vox') ! 2D serpentine vortex around x
+    case('vor-x') ! 2D serpentine vortex around x
       do k=1,n(3)
         zcc = zc(k)/l(3)
         zff = zf(k)/l(3)
@@ -307,7 +307,7 @@ module mod_initflow
       call MPI_FINALIZE(ierr)
       error stop
     end select
-    if(.not.any(trim(ini(1:3)) == ['tgv','ant','rox','roy','roz','vox','voy','voz'])) then
+    if(.not.any(trim(ini(1:3)) == ['tgv','ant','rot','vor'])) then
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -430,6 +430,8 @@ module mod_initflow
     integer, dimension(3) :: n
     integer  :: ii
     real(rp) :: xx
+    character(len=len(inisca)) :: ini
+    integer :: isuffix,ia
     !
     n(:) = shape(s) - 2*nh
     allocate(s1d(n(3)))
@@ -437,7 +439,20 @@ module mod_initflow
     is_mean  = .false.
     sref = 1.
     sref = 0.5*(bcsca(0,3)+bcsca(1,3))
-    select case(trim(inisca))
+    !
+    ! two-dimensional initial conditions lie in the x-z plane, or in the y-z plane with the suffix `-x`
+    ! (direction normal to the plane; `-y` is the default)
+    !
+    ini = inisca
+    ia = 1
+    isuffix = len_trim(ini)
+    if(isuffix > 2) then
+      if(ini(isuffix-1:isuffix) == '-x'.or.ini(isuffix-1:isuffix) == '-y') then
+        if(ini(isuffix:isuffix) == 'x') ia = 2
+        ini = ini(:isuffix-2)
+      end if
+    end if
+    select case(trim(ini))
     case('cou','dhc')
       call couette(   n(3),zc(0:n(3)+1)/l(3),1._rp,s1d)
       s1d(:) = s1d(:) + 0.5 ! from 0 to 1
@@ -461,13 +476,13 @@ module mod_initflow
         end do
       end do
     end do
-    if(trim(inisca) == 'dhc') then
+    if(trim(ini) == 'dhc') then
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
-            ii = i+lo(1)-1
-            xx = (ii-0.5)*dl(1)/l(1)
-            s(i,j,k) = ((1.-xx)*bcsca(0,1) + xx*bcsca(1,1))
+            ii = merge(i,j,ia == 1)+lo(ia)-1
+            xx = (ii-0.5)*dl(ia)/l(ia)
+            s(i,j,k) = ((1.-xx)*bcsca(0,ia) + xx*bcsca(1,ia))
           end do
         end do
       end do

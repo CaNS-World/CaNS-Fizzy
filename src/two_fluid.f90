@@ -343,11 +343,29 @@ module mod_two_fluid
     type(sphere), allocatable, dimension(:) :: spheres
     integer :: nspheres
     integer :: ierr
+    character(len=len(inipsi)) :: ini
+    integer :: isuffix,ih,ia,ib
+    real(rp), dimension(3) :: xyz
+    !
+    ! two-dimensional initial conditions take a suffix `-x`, `-y` or `-z` with the direction
+    ! normal to their plane; without a suffix, they lie in the x-z plane (`-y`)
+    !
+    ini = inipsi
+    ih = 2
+    isuffix = len_trim(ini)
+    if(isuffix > 2) then
+      if(ini(isuffix-1:isuffix-1) == '-'.and.index('xyz',ini(isuffix:isuffix)) > 0) then
+        ih = index('xyz',ini(isuffix:isuffix))
+        ini = ini(:isuffix-2)
+      end if
+    end if
+    ia = minval(pack([1,2,3],[1,2,3] /= ih)) ! in-plane directions
+    ib = maxval(pack([1,2,3],[1,2,3] /= ih))
     !
     is_sphere  = .false.
     is_swap_pf = .false.
     psi(:,:,:) = 1._rp
-    select case(trim(inipsi))
+    select case(trim(ini))
     case('uni')
     case('zer')
       psi(:,:,:) = 0._rp
@@ -357,10 +375,8 @@ module mod_two_fluid
       is_sphere = .true.
     case('bub2')
       call read_sphere_file('spheres.in',spheres,nspheres)
-      is_dim(:) = [.true. ,.false.,.true. ] ! cylinder in xz plane
+      is_dim(:) = .true.; is_dim(ih) = .false. ! cylinder along the direction normal to the plane
       is_sphere = .true.
-      !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder in xy plane
-      !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder in yz plane
     case('bub1')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
@@ -372,9 +388,7 @@ module mod_two_fluid
       is_swap_pf = .true.
     case('drp2','dis2')
       call read_sphere_file('spheres.in',spheres,nspheres)
-      is_dim(:) = [.true. ,.false.,.true. ] ! cylinder in xz plane
-      !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder in xy plane
-      !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder in yz plane
+      is_dim(:) = .true.; is_dim(ih) = .false. ! cylinder along the direction normal to the plane
       is_sphere = .true.
       is_swap_pf = .true.
     case('drp1','dis1')
@@ -397,15 +411,18 @@ module mod_two_fluid
       ! initial condition for the capillary wave benchmark
       ! (Prosperetti, Phys. Fluids 24 (1981) 1217)
       !
-      ! interface at z = l(3)/2, with a sinusoidal bump
-      ! with amplitude zfilm_max and wavelength = lx
+      ! interface at the mid height of the plane, with a sinusoidal bump
+      ! with amplitude zfilm_max and wavelength equal to the width of the plane
       !
-      zfilm_max = 0.01*l(1)
+      zfilm_max = 0.01*l(ia)
       do k=lo(3),hi(3)
-        z = zc_g(k) - l(3)/2
+        xyz(3) = zc_g(k)
         do j=lo(2),hi(2)
+          xyz(2) = (j-0.5)*dl(2)
           do i=lo(1),hi(1)
-            x = (i-0.5)*dl(1)/l(1)
+            xyz(1) = (i-0.5)*dl(1)
+            z = xyz(ib) - l(ib)/2
+            x = xyz(ia)/l(ia)
             sdist = z - zfilm_max*cos(2*pi*x)
             psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
@@ -428,10 +445,13 @@ module mod_two_fluid
         sl = sl + shift
         !
         do k=lo(3),hi(3)
-          z = zc_g(k)/l(3)
+          xyz(3) = zc_g(k)
           do j=lo(2),hi(2)
+            xyz(2) = (j-0.5)*dl(2)
             do i=lo(1),hi(1)
-              x = (i-0.5)*dl(1)/l(1)
+              xyz(1) = (i-0.5)*dl(1)
+              z = xyz(ib)/l(ib)
+              x = xyz(ia)/l(ia)
               !
               ! sdf of the disk
               !

@@ -10,8 +10,8 @@ def test_rising_bubble():
     import matplotlib
     import matplotlib.pyplot as plt
     from scipy.spatial.distance import directed_hausdorff
-    cs=plt.contour(xp,zp,np.transpose(data[:,0,:]),levels=[0.5])
-    p = cs.collections[0].get_paths()[0]
+    cs=plt.contour(yp,zp,np.transpose(data[0,:,:]),levels=[0.5])
+    p = cs.get_paths()[0] if hasattr(cs,'get_paths') else cs.collections[0].get_paths()[0]
     v = p.vertices
     plt.clf()
     v_ref=np.loadtxt("c1g2l3s.txt")
