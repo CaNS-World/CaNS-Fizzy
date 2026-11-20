@@ -1,0 +1,63 @@
+&dns
+ng(1:3) = 1, 64, 64
+l(1:3) = 0.015625, 1., 1.
+gtype = 1, gr = 0.
+cfl = 0.95, dtmax = 1.e5, dt_f = -1.
+is_solve_ns = T, is_track_interface = T
+inivel = 'zer'
+is_wallturb = F, is_forced_hit = F
+nstep = 1500, time_max = 100., tw_max = 0.1
+stop_type(1:3) = T, F, F
+restart = F, is_overwrite_save = T, nsaves_max = 0
+icheck = 10, iout0d = 10, iout1d = 20, iout2d = 500, iout3d = 500, isave = 2000
+cbcvel(0:1,1:3,1) = 'P','P',  'D','D',  'D','D'
+cbcvel(0:1,1:3,2) = 'P','P',  'D','D',  'D','D'
+cbcvel(0:1,1:3,3) = 'P','P',  'D','D',  'D','D'
+cbcpre(0:1,1:3)   = 'P','P',  'N','N',  'N','N'
+bcvel(0:1,1:3,1) =  0.,0.,   0.,0.,   0.,0.
+bcvel(0:1,1:3,2) =  0.,0.,   0.,0.,   0.,1.
+bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
+bcpre(0:1,1:3)   =  0.,0.,   0.,0.,   0.,0.
+bforce(1:3) = 0., 0., 0.
+is_forced(1:3) = F, F, F
+gacc(1:3) = 0., 0., 0.
+dims(1:2) = 1, 4, ipencil_axis = 1
+/
+
+&two_fluid
+inipsi            = 'uni'
+cbcpsi(0:1,1:3)   = 'P','P',  'N','N',  'N','N'
+cbcnor(0:1,1:3,1) = 'P','P',  'N','N',  'N','N'
+cbcnor(0:1,1:3,2) = 'P','P',  'D','D',  'N','N'
+cbcnor(0:1,1:3,3) = 'P','P',  'N','N',  'D','D'
+bcpsi(0:1,1:3)    =  0.,0.,   0.,0.,   0.,0.
+bcnor(0:1,1:3,1)  =  0.,0.,   0.,0.,   0.,0.
+bcnor(0:1,1:3,2)  =  0.,0.,   0.,0.,   0.,0.
+bcnor(0:1,1:3,3)  =  0.,0.,   0.,0.,   0.,0.
+rho12(1:2)        =  1., 1.
+mu12(1:2)         =  0.001, 0.001
+sigma             =  0.
+ka12(1:2)         =  0., 0.
+cp12(1:2)         =  1., 1.
+beta12(1:2)       =  0., 0.
+psi_thickness_factor = 0.51
+/
+
+&cudecomp
+cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
+cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
+/
+
+&numerics
+is_impdiff = F, is_impdiff_1d = F
+is_poisson_dtdma = F
+/
+
+&other_options
+is_debug = T, is_timing = T
+/
+
+&io
+io_backend = 'mpiio'
+is_full_restart = T
+/

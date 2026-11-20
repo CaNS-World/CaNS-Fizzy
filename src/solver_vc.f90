@@ -22,7 +22,7 @@ module mod_solver_vc
     integer     :: stype,comm_hypre
   end type hypre_solver_t
   contains
-  subroutine solver_vc(ng,lo,hi,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,po)
+  subroutine solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,po)
     !
     ! hypre solver parameter hard-coded for now
     !
@@ -32,38 +32,40 @@ module mod_solver_vc
     type(hypre_solver_t) :: asolver
     !
     integer             , intent(in   ), dimension(3)                          :: ng,lo,hi
+    integer             , intent(in   )                                        :: nh_p,nh_psi,nh_g
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-1:)                   :: dzci,dzfi
+    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
-    real(rp)            , intent(in   ), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: psi
-    real(rp)            , intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p,po ! updt_rhs_b done here!
+    real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
+    real(rp)            , intent(inout), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p,po ! updt_rhs_b done here!
     !
     ! iterative solver created and destroyed every time step for now
     !
-    call init_matrix_3d(ng,lo,hi,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
+    call init_matrix_3d(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
     call create_solver(maxiter,maxerror,stype,asolver)
     call setup_solver(asolver)
-    call solve_helmholtz(asolver,lo,hi,p,po)
+    call solve_helmholtz(asolver,lo,hi,nh_p,p,po)
     call finalize_matrix(asolver)
     call finalize_solver(asolver)
   end subroutine solver_vc
   !
-  subroutine init_matrix_3d(ng,lo,hi,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
+  subroutine init_matrix_3d(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
     !
     implicit none
     integer, parameter :: nstencil = 7
     integer             , intent(in   ), dimension(3)                          :: ng,lo,hi
+    integer             , intent(in   )                                        :: nh_p,nh_psi,nh_g
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-1:)                   :: dzci,dzfi
+    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
-    real(rp)            , intent(in   ), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: psi
-    real(rp)            , intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p ! updt_rhs_b done here!
+    real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
+    real(rp)            , intent(inout), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p ! updt_rhs_b done here!
     type(hypre_solver_t), intent(out  )                                        :: asolver
     integer, dimension(3,nstencil) :: offsets
     real(rp), dimension(product(hi(:)-lo(:)+1)*nstencil) :: matvalues
@@ -317,11 +319,12 @@ module mod_solver_vc
     end if
   end subroutine setup_solver
   !
-  subroutine solve_helmholtz(asolver,lo,hi,p,po)
+  subroutine solve_helmholtz(asolver,lo,hi,nh_p,p,po)
     implicit none
     type(hypre_solver_t), target, intent(in   )               :: asolver
     integer           ,         intent(in   ), dimension(3) :: lo,hi
-    real(rp)          ,         intent(inout), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: p,po
+    integer           ,         intent(in   )               :: nh_p
+    real(rp)          ,         intent(inout), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p,po
     type(C_PTR), pointer :: solver,mat,rhs,sol
     integer    , pointer :: stype
     solver  => asolver%solver

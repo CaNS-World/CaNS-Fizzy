@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# sets environment
+#
+NVHPC_INSTALL_DIR=/opt/nvidia/hpc_sdk
+NVARCH=`uname -s`_`uname -m`; export NVARCH
+NVCOMPILERS=$NVHPC_INSTALL_DIR; export NVCOMPILERS
+MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/$NVHPC_VERSION_A/compilers/man; export MANPATH
+PATH=$NVCOMPILERS/$NVARCH/$NVHPC_VERSION_A/compilers/bin:$PATH; export PATH
+#
+export PATH=$NVCOMPILERS/$NVARCH/$NVHPC_VERSION_A/comm_libs/mpi/bin:$PATH
+export MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/$NVHPC_VERSION_A/mpi:$MANPATH
+export PATH=$NVCOMPILERS/$NVARCH/$NVHPC_VERSION_A/profilers/Nsight_Systems/bin:$PATH
+#
+# communication libraries
+#
+export LD_LIBRARY_PATH=$NVHPC_INSTALL_DIR/$NVARCH/$NVHPC_VERSION_A/compilers/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$NVHPC_INSTALL_DIR/$NVARCH/$NVHPC_VERSION_A/comm_libs/mpi/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$NVHPC_INSTALL_DIR/$NVARCH/$NVHPC_VERSION_A/math_libs/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$NVHPC_INSTALL_DIR/$NVARCH/$NVHPC_VERSION_A/comm_libs/nccl/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$NVHPC_INSTALL_DIR/$NVARCH/$NVHPC_VERSION_A/comm_libs/nvshmem/lib:$LD_LIBRARY_PATH
+#
+# GitHub-hosted runners expose RDMA devices that HPC-X's UCX transport may detect but cannot use.
+# The CI tests are CPU-only and run on one node.
+#
+export OMPI_MCA_pml=ob1
+export OMPI_MCA_btl=self,sm,tcp
+export OMPI_MCA_coll=^hcoll,ucc

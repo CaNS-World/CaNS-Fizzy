@@ -8,17 +8,28 @@ module mod_scal
   use mod_types
   implicit none
   private
-  public scal_ad,cmpt_scalflux
+  public scal_ad,cmpt_scalflux,scalar
+  !
+  ! scalar derived type, as in CaNS (not used yet: there is a single scalar field;
+  ! declared for the checkpoint routines of `load.f90`, which are those of CaNS)
+  !
+  type scalar
+    real(rp), allocatable, dimension(:,:,:) :: val
+  end type scalar
+  !
   contains
-  subroutine scal_ad(nx,ny,nz,dxi,dyi,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
+  subroutine scal_ad(nx,ny,nz,nh_v,nh_s,nh_psi,nh_g,dxi,dyi,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
-    real(rp), intent(in), dimension(0:,0:,0:), optional :: psiflx_x,psiflx_y,psiflx_z
-    real(rp), intent(in), dimension(0:,0:,0:) :: psi,u,v,w,s
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     real(rp), dimension(:,:,:), intent(out) :: dsdt
     integer :: i,j,k
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
@@ -86,15 +97,17 @@ module mod_scal
     end do
   end subroutine scal_ad
   !
-  subroutine cmpt_scalflux(n,is_bound,l,dli,dzci,dzfi,ka12,psi,s,flux)
+  subroutine cmpt_scalflux(n,nh_s,nh_psi,nh_g,is_bound,l,dli,dzci,dzfi,ka12,psi,s,flux)
     use mpi
     implicit none
     integer , intent(in ), dimension(3) :: n
+    integer , intent(in) :: nh_s,nh_psi,nh_g
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
-    real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh_g:)    :: dzci,dzfi
     real(rp), intent(in ), dimension(2) :: ka12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,s
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     real(rp), intent(out), dimension(3) :: flux
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
     real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm

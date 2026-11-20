@@ -10,7 +10,7 @@ module mod_two_fluid
   use mod_types
   implicit none
   private
-  public init2fl,clip_field,cmpt_norm_curv_youngs
+  public init2fl,clip_field,cmpt_norm_curv_youngs,bulk_mean_12_stag
   type sphere
     real(rp) :: xyz(3),r
   end type sphere
@@ -57,7 +57,78 @@ module mod_two_fluid
     end do
   end subroutine clip_field
   !
-  subroutine cmpt_norm_curv_youngs(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio,psi,p12,mean)
+    !
+    ! compute the mean value of an observable over the entire domain
+    !
+    use mpi
+    use mod_types
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in)               :: idir
+    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in), dimension(2)        :: p12
+    real(rp), intent(out) :: mean
+    real(rp) :: psi_loc
+    integer  :: i,j,k
+    integer  :: ierr
+    mean = 0.
+    select case(idir)
+    case(1)
+      !$acc data copy(mean) async(1)
+      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            psi_loc = 0.5*(psi(i+1,j,k)+psi(i,j,k))
+            mean = mean + (psi_loc*p12(1)+(1.-psi_loc)*p12(2))*grid_vol_ratio(k)
+          end do
+        end do
+      end do
+      !$acc end data
+    case(2)
+      !$acc data copy(mean) async(1)
+      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            psi_loc = 0.5*(psi(i,j+1,k)+psi(i,j,k))
+            mean = mean + (psi_loc*p12(1)+(1.-psi_loc)*p12(2))*grid_vol_ratio(k)
+          end do
+        end do
+      end do
+      !$acc end data
+    case(3)
+      !$acc data copy(mean) async(1)
+      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            psi_loc = 0.5*(psi(i,j,k+1)+psi(i,j,k))
+            mean = mean + (psi_loc*p12(1)+(1.-psi_loc)*p12(2))*grid_vol_ratio(k)
+          end do
+        end do
+      end do
+      !$acc end data
+    case default 
+      !$acc data copy(mean) async(1)
+      !$acc parallel loop collapse(3) default(present) reduction(+:mean) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            mean = mean + (psi(i,j,k)*p12(1)+(1.-psi(i,j,k))*p12(2))*grid_vol_ratio(k)
+          end do
+        end do
+      end do
+      !$acc end data
+    end select
+    !$acc wait(1)
+    call MPI_ALLREDUCE(MPI_IN_PLACE,mean,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+  end subroutine bulk_mean_12_stag
+  !
+  subroutine cmpt_norm_curv_youngs(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the normals and curvature based on a volume-of-fluid
     ! or level-set field using finite-differences based on Youngs method
@@ -65,17 +136,18 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
+    integer , intent(in) :: nh_psi,nh_g
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
+    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz,kappa
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
     real(rp) :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
                 my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
                 mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8
-    real(rp) :: norm,norm_x,norm_y,norm_z
+    real(rp) :: normi,norm_x,norm_y,norm_z
     integer  :: i,j,k
     !
     !$acc parallel loop collapse(3) default(present) async(1)
@@ -137,32 +209,35 @@ module mod_two_fluid
           mz_7 = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
           mz_8 = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
           !
-          norm = sqrt(mx_1**2+my_1**2+mz_1**2)+eps
-          mx_1 = mx_1/norm; my_1 = my_1/norm; mz_1 = mz_1/norm
-          norm = sqrt(mx_2**2+my_2**2+mz_2**2)+eps
-          mx_2 = mx_2/norm; my_2 = my_2/norm; mz_2 = mz_2/norm
-          norm = sqrt(mx_3**2+my_3**2+mz_3**2)+eps
-          mx_3 = mx_3/norm; my_3 = my_3/norm; mz_3 = mz_3/norm
-          norm = sqrt(mx_4**2+my_4**2+mz_4**2)+eps
-          mx_4 = mx_4/norm; my_4 = my_4/norm; mz_4 = mz_4/norm
-          norm = sqrt(mx_5**2+my_5**2+mz_5**2)+eps
-          mx_5 = mx_5/norm; my_5 = my_5/norm; mz_5 = mz_5/norm
-          norm = sqrt(mx_6**2+my_6**2+mz_6**2)+eps
-          mx_6 = mx_6/norm; my_6 = my_6/norm; mz_6 = mz_6/norm
-          norm = sqrt(mx_7**2+my_7**2+mz_7**2)+eps
-          mx_7 = mx_7/norm; my_7 = my_7/norm; mz_7 = mz_7/norm
-          norm = sqrt(mx_8**2+my_8**2+mz_8**2)+eps
-          mx_8 = mx_8/norm; my_8 = my_8/norm; mz_8 = mz_8/norm
+          ! the vectors are normalized with the reciprocal of their magnitude: away from the interface they vanish,
+          ! and a division with a zero numerator is slow on GPUs
+          !
+          normi = 1._rp/(sqrt(mx_1**2+my_1**2+mz_1**2)+eps)
+          mx_1 = mx_1*normi; my_1 = my_1*normi; mz_1 = mz_1*normi
+          normi = 1._rp/(sqrt(mx_2**2+my_2**2+mz_2**2)+eps)
+          mx_2 = mx_2*normi; my_2 = my_2*normi; mz_2 = mz_2*normi
+          normi = 1._rp/(sqrt(mx_3**2+my_3**2+mz_3**2)+eps)
+          mx_3 = mx_3*normi; my_3 = my_3*normi; mz_3 = mz_3*normi
+          normi = 1._rp/(sqrt(mx_4**2+my_4**2+mz_4**2)+eps)
+          mx_4 = mx_4*normi; my_4 = my_4*normi; mz_4 = mz_4*normi
+          normi = 1._rp/(sqrt(mx_5**2+my_5**2+mz_5**2)+eps)
+          mx_5 = mx_5*normi; my_5 = my_5*normi; mz_5 = mz_5*normi
+          normi = 1._rp/(sqrt(mx_6**2+my_6**2+mz_6**2)+eps)
+          mx_6 = mx_6*normi; my_6 = my_6*normi; mz_6 = mz_6*normi
+          normi = 1._rp/(sqrt(mx_7**2+my_7**2+mz_7**2)+eps)
+          mx_7 = mx_7*normi; my_7 = my_7*normi; mz_7 = mz_7*normi
+          normi = 1._rp/(sqrt(mx_8**2+my_8**2+mz_8**2)+eps)
+          mx_8 = mx_8*normi; my_8 = my_8*normi; mz_8 = mz_8*normi
           !
           ! compute the normal vector
           !
           norm_x = .125*(mx_1+mx_2+mx_3+mx_4+mx_5+mx_6+mx_7+mx_8)
           norm_y = .125*(my_1+my_2+my_3+my_4+my_5+my_6+my_7+my_8)
           norm_z = .125*(mz_1+mz_2+mz_3+mz_4+mz_5+mz_6+mz_7+mz_8)
-          norm = sqrt(norm_x**2+norm_y**2+norm_z**2)+eps
-          normx(i,j,k) = norm_x/norm
-          normy(i,j,k) = norm_y/norm
-          normz(i,j,k) = norm_z/norm
+          normi = 1._rp/(sqrt(norm_x**2+norm_y**2+norm_z**2)+eps)
+          normx(i,j,k) = norm_x*normi
+          normy(i,j,k) = norm_y*normi
+          normz(i,j,k) = norm_z*normi
           !
           ! compute the curvature
           !
@@ -174,7 +249,7 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv_youngs
   !
-  subroutine cmpt_norm_fd2(n,dli,dzfi,psi,normx,normy,normz)
+  subroutine cmpt_norm_fd2(n,nh_psi,nh_g,dli,dzfi,psi,normx,normy,normz)
     !
     ! computes the normals based on a volume-of-fluid or level-set field
     ! using second-order finite-differences
@@ -182,10 +257,11 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
+    integer , intent(in) :: nh_psi,nh_g
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz
+    real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
+    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm,dpsidx,dpsidy,dpsidz,norm
     integer  :: i,j,k
     !
@@ -211,18 +287,19 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_fd2
   !
-  subroutine cmpt_curv_fd2(n,dli,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_curv_fd2(n,nh_psi,nh_g,dli,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the curvature using second-order finite-differences
     !
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
+    integer , intent(in) :: nh_psi,nh_g
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: normx,normy,normz
-    real(rp), intent(out), dimension(0:,0:,0:)    :: kappa
+    real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz
+    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: kappa
     real(rp) :: normxp,normxm,normyp,normym,normzp,normzm
     integer  :: i,j,k
     !
@@ -244,7 +321,7 @@ module mod_two_fluid
     end do
   end subroutine cmpt_curv_fd2
   !
-  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,zc_g,psi)
+  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
     use mod_common_mpi, only: myid
     !
     ! computes initial conditions for the volume fraction field psi
@@ -254,9 +331,10 @@ module mod_two_fluid
     character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
     real(rp), intent(in)                :: seps
     integer , intent(in), dimension(3)  :: lo,hi
+    integer , intent(in) :: nh_psi,nh_g
     real(rp), intent(in), dimension(3)  :: l,dl
-    real(rp), intent(in), dimension(0:) :: zc_g
-    real(rp), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:), intent(out) :: psi
+    real(rp), intent(in), dimension(1-nh_g:) :: zc_g
+    real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
@@ -268,11 +346,29 @@ module mod_two_fluid
     type(sphere), allocatable, dimension(:) :: spheres
     integer :: nspheres
     integer :: ierr
+    character(len=len(inipsi)) :: ini
+    integer :: isuffix,ih,ia,ib
+    real(rp), dimension(3) :: xyz
+    !
+    ! two-dimensional initial conditions take a suffix `-x`, `-y` or `-z` with the direction
+    ! normal to their plane; without a suffix, they lie in the x-z plane (`-y`)
+    !
+    ini = inipsi
+    ih = 2
+    isuffix = len_trim(ini)
+    if(isuffix > 2) then
+      if(ini(isuffix-1:isuffix-1) == '-'.and.index('xyz',ini(isuffix:isuffix)) > 0) then
+        ih = index('xyz',ini(isuffix:isuffix))
+        ini = ini(:isuffix-2)
+      end if
+    end if
+    ia = minval(pack([1,2,3],[1,2,3] /= ih)) ! in-plane directions
+    ib = maxval(pack([1,2,3],[1,2,3] /= ih))
     !
     is_sphere  = .false.
     is_swap_pf = .false.
     psi(:,:,:) = 1._rp
-    select case(trim(inipsi))
+    select case(trim(ini))
     case('uni')
     case('zer')
       psi(:,:,:) = 0._rp
@@ -282,10 +378,8 @@ module mod_two_fluid
       is_sphere = .true.
     case('bub2')
       call read_sphere_file('spheres.in',spheres,nspheres)
-      is_dim(:) = [.true. ,.false.,.true. ] ! cylinder in xz plane
+      is_dim(:) = .true.; is_dim(ih) = .false. ! cylinder along the direction normal to the plane
       is_sphere = .true.
-      !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder in xy plane
-      !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder in yz plane
     case('bub1')
       call read_sphere_file('spheres.in',spheres,nspheres)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
@@ -297,9 +391,7 @@ module mod_two_fluid
       is_swap_pf = .true.
     case('drp2','dis2')
       call read_sphere_file('spheres.in',spheres,nspheres)
-      is_dim(:) = [.true. ,.false.,.true. ] ! cylinder in xz plane
-      !is_dim(:) = [.true. ,.true. ,.false.] ! cylinder in xy plane
-      !is_dim(:) = [.false.,.true. ,.true. ] ! cylinder in yz plane
+      is_dim(:) = .true.; is_dim(ih) = .false. ! cylinder along the direction normal to the plane
       is_sphere = .true.
       is_swap_pf = .true.
     case('drp1','dis1')
@@ -322,15 +414,18 @@ module mod_two_fluid
       ! initial condition for the capillary wave benchmark
       ! (Prosperetti, Phys. Fluids 24 (1981) 1217)
       !
-      ! interface at z = l(3)/2, with a sinusoidal bump
-      ! with amplitude zfilm_max and wavelength = lx
+      ! interface at the mid height of the plane, with a sinusoidal bump
+      ! with amplitude zfilm_max and wavelength equal to the width of the plane
       !
-      zfilm_max = 0.01*l(1)
+      zfilm_max = 0.01*l(ia)
       do k=lo(3),hi(3)
-        z = zc_g(k) - l(3)/2
+        xyz(3) = zc_g(k)
         do j=lo(2),hi(2)
+          xyz(2) = (j-0.5)*dl(2)
           do i=lo(1),hi(1)
-            x = (i-0.5)*dl(1)/l(1)
+            xyz(1) = (i-0.5)*dl(1)
+            z = xyz(ib) - l(ib)/2
+            x = xyz(ia)/l(ia)
             sdist = z - zfilm_max*cos(2*pi*x)
             psi(i,j,k) = smooth_step_tanh(sdist,seps)
           end do
@@ -353,10 +448,13 @@ module mod_two_fluid
         sl = sl + shift
         !
         do k=lo(3),hi(3)
-          z = zc_g(k)/l(3)
+          xyz(3) = zc_g(k)
           do j=lo(2),hi(2)
+            xyz(2) = (j-0.5)*dl(2)
             do i=lo(1),hi(1)
-              x = (i-0.5)*dl(1)/l(1)
+              xyz(1) = (i-0.5)*dl(1)
+              z = xyz(ib)/l(ib)
+              x = xyz(ia)/l(ia)
               !
               ! sdf of the disk
               !
@@ -542,7 +640,7 @@ module mod_two_fluid
     end if
   end function smooth_impulse
 #if 0
-  subroutine cmpt_norm_curv_old(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_norm_curv_old(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the normals and curvature based on a VoF field
     ! using finite-differences based on Youngs method
@@ -551,10 +649,11 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3)           :: n
+    integer , intent(in) :: nh_psi,nh_g
     real(rp), intent(in ), dimension(3)           :: dli
-    real(rp), intent(in ), dimension(0:)          :: dzci,dzfi
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: normx,normy,normz,kappa
+    real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
+    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz,kappa
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp

@@ -7,51 +7,53 @@
 #define _FAST_MOM_KERNELS
 module mod_rk
   use mod_mom  , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
-  use mod_utils, only: swap
   use mod_types
   implicit none
   private
   public rk,rk_scal,rk_2fl
   contains
-  subroutine rk(rkpar,n,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
+  subroutine rk(rkpar,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                psio,psiflx_x,psiflx_y,psiflx_z,u,v,w,force_balance)
+                psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance)
     !
     ! AB2 scheme for time integration of the momentum equations
+    !
+    ! `is_first` is true in the first time step of a run without the terms of the previous step
+    ! (`d?dtrko` and `wall_force_old`), which are then set to those of the present one
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
     integer , intent(in), dimension(3) :: n
+    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
     logical , intent(in), dimension(0:1,3) :: is_bound
     logical , intent(in), dimension(3) :: is_forced
     real(rp), intent(in), dimension(3) :: l,dli
     real(rp), intent(in) :: dt,dt_r
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f
     real(rp), intent(in   ), dimension(3)  :: bforce,gacc
     real(rp), intent(in   )                :: sigma,rho_av(3)
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: psi,kappa
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: p
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: pn,po,s
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi,kappa
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:)           :: p
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
 #endif
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
-    real(rp), intent(inout), dimension(0:,0:,0:)           :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
+    logical , intent(in   )                                 :: is_first
+    real(rp), intent(inout), dimension(3)                   :: wall_force_old
+    real(rp), intent(inout), dimension(:,:,:)               :: dudtrko,dvdtrko,dwdtrko
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)           :: u,v,w
     real(rp), intent(out  ), dimension(3,6)                 :: force_balance
-    real(rp), target       , allocatable, dimension(:,:,:), save :: dudtrk_t ,dvdtrk_t ,dwdtrk_t , &
-                                                                    dudtrko_t,dvdtrko_t,dwdtrko_t
-    real(rp), pointer      , contiguous , dimension(:,:,:), save :: dudtrk   ,dvdtrk   ,dwdtrk   , &
-                                                                    dudtrko  ,dvdtrko  ,dwdtrko
+    real(rp), allocatable, dimension(:,:,:), save :: dudtrk,dvdtrk,dwdtrk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
-    logical, save :: is_first = .true.
-    logical, save :: is_first_forcing = .true.
-    real(rp), save, dimension(3) :: wall_force_old,bforce_eff
+    real(rp), save, dimension(3) :: bforce_eff
     real(rp) :: factor1,factor2,factor12
     real(rp), dimension(3) :: taux,tauy,tauz,wall_force
     integer :: i,j,k
@@ -62,17 +64,9 @@ module mod_rk
     !
     ! initialization
     !
-    if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
-      allocate(dudtrk_t( n(1),n(2),n(3)),dvdtrk_t( n(1),n(2),n(3)),dwdtrk_t( n(1),n(2),n(3)))
-      allocate(dudtrko_t(n(1),n(2),n(3)),dvdtrko_t(n(1),n(2),n(3)),dwdtrko_t(n(1),n(2),n(3)))
-      !$acc enter data create(dudtrk_t ,dvdtrk_t ,dwdtrk_t ) async(1)
-      !$acc enter data create(dudtrko_t,dvdtrko_t,dwdtrko_t) async(1)
-      dudtrk  => dudtrk_t
-      dvdtrk  => dvdtrk_t
-      dwdtrk  => dwdtrk_t
-      dudtrko => dudtrko_t
-      dvdtrko => dvdtrko_t
-      dwdtrko => dwdtrko_t
+    if(.not.allocated(dudtrk)) then ! leverage save attribute to allocate these arrays on the device only once
+      allocate(dudtrk(n(1),n(2),n(3)),dvdtrk(n(1),n(2),n(3)),dwdtrk(n(1),n(2),n(3)))
+      !$acc enter data create(dudtrk,dvdtrk,dwdtrk) async(1)
       !$acc enter data create(bforce_eff) async(1)
     end if
     !
@@ -81,13 +75,13 @@ module mod_rk
     force_balance(:,:) = 0._rp
     bforce_eff(:) = bforce(:)
     if(any(is_forced(:))) then
-      call cmpt_wallshear(n,is_forced,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
+      call cmpt_wallshear(n,nh_v,nh_psi,nh_g,is_forced,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
       wall_force(1) = sum(taux(:)/l(:))
       wall_force(2) = sum(tauy(:)/l(:))
       wall_force(3) = sum(tauz(:)/l(:))
-      if(is_first_forcing) wall_force_old(:) = wall_force(:)
+      if(is_first) wall_force_old(:) = wall_force(:)
       force_balance(:,1) = rkpar(1)*wall_force(:)+rkpar(2)*wall_force_old(:)
-      call cmpt_bodyforce(n,is_forced,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+      call cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_forced,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                           rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                           surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -97,22 +91,26 @@ module mod_rk
         bforce_eff(:) = force_balance(:,1)-force_balance(:,2)-force_balance(:,3)-force_balance(:,4)
       end where
       wall_force_old(:) = wall_force(:)
-      is_first_forcing = .false.
     end if
     force_balance(:,5) = bforce_eff(:)
     !$acc update device(bforce_eff) async(1)
     !
     ! advection, diffusion and regularization terms
     !
-    call mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
     !
     if(is_first) then
-      !$acc kernels default(present) async(1)
-      dudtrko(:,:,:) = dudtrk(:,:,:)
-      dvdtrko(:,:,:) = dvdtrk(:,:,:)
-      dwdtrko(:,:,:) = dwdtrk(:,:,:)
-      !$acc end kernels
-      is_first = .false.
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            dudtrko(i,j,k) = dudtrk(i,j,k)
+            dvdtrko(i,j,k) = dvdtrk(i,j,k)
+            dwdtrko(i,j,k) = dwdtrk(i,j,k)
+          end do
+        end do
+      end do
     end if
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
@@ -129,19 +127,16 @@ module mod_rk
           u(i,j,k) = u(i,j,k)*rhox_n/rhox_p + (factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
           v(i,j,k) = v(i,j,k)*rhoy_n/rhoy_p + (factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
           w(i,j,k) = w(i,j,k)*rhoz_n/rhoz_p + (factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
+          dudtrko(i,j,k) = dudtrk(i,j,k)
+          dvdtrko(i,j,k) = dvdtrk(i,j,k)
+          dwdtrko(i,j,k) = dwdtrk(i,j,k)
         end do
       end do
     end do
     !
-    ! swap d?dtrk <-> d?dtrko
-    !
-    call swap(dudtrk,dudtrko)
-    call swap(dvdtrk,dvdtrko)
-    call swap(dwdtrk,dwdtrko)
-    !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
+    call mom_xyz_oth(n,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
                      p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -163,7 +158,8 @@ module mod_rk
     end do
   end subroutine rk
   !
-  subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
+  subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
+                     psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
     use mod_scal, only: scal_ad
     !
     ! AB2 scheme for time integration of the scalar field
@@ -171,40 +167,45 @@ module mod_rk
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
+    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   )                :: dt
     real(rp), intent(in   )                :: ssource
     real(rp), intent(in   ), dimension(2)  :: rho12,ka12,cp12
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: psi
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: psio,psiflx_x,psiflx_y,psiflx_z
-    real(rp), intent(inout), dimension(0:,0:,0:) :: s
-    real(rp), target     , allocatable, dimension(:,:,:), save :: dsdtrk_t,dsdtrko_t
-    real(rp), pointer    , contiguous , dimension(:,:,:), save :: dsdtrk  ,dsdtrko
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psio,psiflx_x,psiflx_y,psiflx_z
+    logical , intent(in   )                   :: is_first
+    real(rp), intent(inout), dimension(:,:,:) :: dsdtrko
+    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp), allocatable, dimension(:,:,:), save :: dsdtrk
     real(rp), dimension(2), save :: rhocp12
     real(rp) :: rhocp,drhocp,rhocp_n,rhocp_p
-    logical, save :: is_first = .true.
     real(rp) :: factor1,factor2,factor12
     integer :: i,j,k
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
-    if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
-      allocate(dsdtrk_t(n(1),n(2),n(3)),dsdtrko_t(n(1),n(2),n(3)))
-      !$acc enter data create(dsdtrk_t,dsdtrko_t) async(1)
-      dsdtrk  => dsdtrk_t
-      dsdtrko => dsdtrko_t
+    if(.not.allocated(dsdtrk)) then ! leverage save attribute to allocate these arrays on the device only once
+      allocate(dsdtrk(n(1),n(2),n(3)))
+      !$acc enter data create(dsdtrk) async(1)
       rhocp12(:) = rho12(:)*cp12(:)
       !$acc wait(1)
     end if
-    call scal_ad(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdtrk)
+    call scal_ad(n(1),n(2),n(3),nh_v,nh_s,nh_psi,nh_g,dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z, &
+                 psi,u,v,w,s,dsdtrk)
     if(is_first) then
-      !$acc kernels default(present) async(1)
-      dsdtrko(:,:,:) = dsdtrk(:,:,:)
-      !$acc end kernels
-      is_first = .false.
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            dsdtrko(i,j,k) = dsdtrk(i,j,k)
+          end do
+        end do
+      end do
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     !$acc parallel loop collapse(3) default(present) async(1)
@@ -214,16 +215,14 @@ module mod_rk
           rhocp_p = rhocp + drhocp*psi( i,j,k)
           rhocp_n = rhocp + drhocp*psio(i,j,k)
           s(i,j,k) = s(i,j,k)*rhocp_n/rhocp_p + (factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
+          dsdtrko(i,j,k) = dsdtrk(i,j,k)
         end do
       end do
     end do
-    !
-    ! swap d?dtrk <-> d?dtrko
-    !
-    call swap(dsdtrk,dsdtrko)
   end subroutine rk_scal
   !
-  subroutine rk_2fl(rkpar,n,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
+  subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &
+                    psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
 #if !defined(_INTERFACE_CAPTURING_VOF)
     use mod_acdi        , only: acdi_transport_pf
 #else
@@ -236,53 +235,55 @@ module mod_rk
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   ) :: gam,seps,beta,dt
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: phi
-    real(rp), intent(inout), dimension(0:,0:,0:) :: psi
-    real(rp), intent(out  ), dimension(0:,0:,0:) :: psiflx_x,psiflx_y,psiflx_z
-    real(rp), target     , allocatable, dimension(:,:,:), save :: dpsidtrk_t,dpsidtrko_t
-    real(rp), pointer    , contiguous , dimension(:,:,:), save :: dpsidtrk  ,dpsidtrko
-    logical, save :: is_first = .true.
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: phi
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(out  ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx_x,psiflx_y,psiflx_z
+    logical , intent(in   )                   :: is_first
+    real(rp), intent(inout), dimension(:,:,:) :: dpsidtrko
+    real(rp), allocatable, dimension(:,:,:), save :: dpsidtrk
     real(rp) :: factor1,factor2,factor12
     integer :: i,j,k
     !
     factor1  = rkpar(1)*dt
     factor2  = rkpar(2)*dt
     factor12 = factor1 + factor2 ! unused but left here in case a source term is needed in the future
-    if(is_first) then ! leverage save attribute to allocate these arrays on the device only once
-      allocate(dpsidtrk_t(n(1),n(2),n(3)),dpsidtrko_t(n(1),n(2),n(3)))
-      !$acc enter data create(dpsidtrk_t,dpsidtrko_t) async(1)
-      dpsidtrk  => dpsidtrk_t
-      dpsidtrko => dpsidtrko_t
+    if(.not.allocated(dpsidtrk)) then ! leverage save attribute to allocate these arrays on the device only once
+      allocate(dpsidtrk(n(1),n(2),n(3)))
+      !$acc enter data create(dpsidtrk) async(1)
     end if
 #if !defined(_INTERFACE_CAPTURING_VOF)
-    call acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
+    call acdi_transport_pf(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
+                           psiflx_x,psiflx_y,psiflx_z)
 #else
-    call vof_thinc_transport_psi(n,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk,psiflx_x,psiflx_y,psiflx_z)
+    call vof_thinc_transport_psi(n,nh_v,nh_psi,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
+                                 psiflx_x,psiflx_y,psiflx_z)
 #endif
     if(is_first) then
-      !$acc kernels default(present) async(1)
-      dpsidtrko(:,:,:) = dpsidtrk(:,:,:)
-      !$acc end kernels
-      is_first = .false.
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            dpsidtrko(i,j,k) = dpsidtrk(i,j,k)
+          end do
+        end do
+      end do
     end if
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
           psi(i,j,k) = psi(i,j,k) + factor1*dpsidtrk(i,j,k) + factor2*dpsidtrko(i,j,k)
+          dpsidtrko(i,j,k) = dpsidtrk(i,j,k)
         end do
       end do
     end do
-    call clip_field([1,1,1],[0._rp,1._rp],psi)
-    !
-    ! swap d?dtrk <-> d?dtrko
-    !
-    call swap(dpsidtrk,dpsidtrko)
-    !
+    call clip_field([nh_psi,nh_psi,nh_psi],[0._rp,1._rp],psi)
   end subroutine rk_2fl
 end module mod_rk

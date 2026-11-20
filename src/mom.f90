@@ -6,18 +6,20 @@
 ! -
 module mod_mom
   use mpi
+  use mod_param, only: is_boussinesq_buoyancy
   use mod_types
   implicit none
   private
   public mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum
   contains
   !
-  subroutine momx_a(nx,ny,nz,dxi,dyi,dzfi,u,v,w,dudt)
+  subroutine momx_a(nx,ny,nz,nh_v,nh_g,dxi,dyi,dzfi,u,v,w,dudt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_v,nh_g
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh_g:) :: dzfi
+    real(rp), dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     integer :: i,j,k
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm
@@ -42,12 +44,13 @@ module mod_mom
     end do
   end subroutine momx_a
   !
-  subroutine momy_a(nx,ny,nz,dxi,dyi,dzfi,u,v,w,dvdt)
+  subroutine momy_a(nx,ny,nz,nh_v,nh_g,dxi,dyi,dzfi,u,v,w,dvdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_v,nh_g
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzfi
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh_g:) :: dzfi
+    real(rp), dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
     real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
@@ -72,12 +75,13 @@ module mod_mom
     end do
   end subroutine momy_a
   !
-  subroutine momz_a(nx,ny,nz,dxi,dyi,dzci,u,v,w,dwdt)
+  subroutine momz_a(nx,ny,nz,nh_v,nh_g,dxi,dyi,dzci,u,v,w,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_v,nh_g
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: u,v,w
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci
+    real(rp), dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     integer :: i,j,k
     real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
@@ -102,13 +106,15 @@ module mod_mom
     end do
   end subroutine momz_a
   !
-  subroutine momx_d(nx,ny,nz,dxi,dyi,dzci,dzfi,mu12,psi,u,v,w,dudt)
+  subroutine momx_d(nx,ny,nz,nh_v,nh_psi,nh_g,dxi,dyi,dzci,dzfi,mu12,psi,u,v,w,dudt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm, &
                 dvdxp,dvdxm,dwdxp,dwdxm
@@ -164,13 +170,15 @@ module mod_mom
     end do
   end subroutine momx_d
   !
-  subroutine momy_d(nx,ny,nz,dxi,dyi,dzci,dzfi,mu12,psi,u,v,w,dvdt)
+  subroutine momy_d(nx,ny,nz,nh_v,nh_psi,nh_g,dxi,dyi,dzci,dzfi,mu12,psi,u,v,w,dvdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm, &
                 dudyp,dudym,dwdyp,dwdym
@@ -226,13 +234,15 @@ module mod_mom
     end do
   end subroutine momy_d
   !
-  subroutine momz_d(nx,ny,nz,dxi,dyi,dzci,dzfi,mu12,psi,u,v,w,dwdt)
+  subroutine momz_d(nx,ny,nz,nh_v,nh_psi,nh_g,dxi,dyi,dzci,dzfi,mu12,psi,u,v,w,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: mu12
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,u,v,w
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(in   ) :: u,v,w
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     integer :: i,j,k
     real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm, &
@@ -288,12 +298,14 @@ module mod_mom
     end do
   end subroutine momz_d
   !
-  subroutine momx_p(nx,ny,nz,dxi,dt_r,bforce,gacc,rho0,rhox_av,rho12,psi,p,pp,dudt)
+  subroutine momx_p(nx,ny,nz,nh_p,nh_psi,dxi,dt_r,bforce,gacc,rho0,rhox_av,rho12,psi,p,pp,dudt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_p,nh_psi
     real(rp), intent(in) :: dxi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rhox_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_p:,1-nh_p:,1-nh_p:), intent(in   ) :: p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: rhop,dpdl
     integer :: i,j,k
@@ -321,12 +333,14 @@ module mod_mom
     end do
   end subroutine momx_p
   !
-  subroutine momy_p(nx,ny,nz,dyi,dt_r,bforce,gacc,rho0,rhoy_av,rho12,psi,p,pp,dvdt)
+  subroutine momy_p(nx,ny,nz,nh_p,nh_psi,dyi,dt_r,bforce,gacc,rho0,rhoy_av,rho12,psi,p,pp,dvdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_p,nh_psi
     real(rp), intent(in) :: dyi,dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rhoy_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_p:,1-nh_p:,1-nh_p:), intent(in   ) :: p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     integer :: i,j,k
     real(rp) :: rhop,dpdl
@@ -354,13 +368,15 @@ module mod_mom
     end do
   end subroutine momy_p
   !
-  subroutine momz_p(nx,ny,nz,dzci,dt_r,bforce,gacc,rho0,rhoz_av,rho12,psi,p,pp,dwdt)
+  subroutine momz_p(nx,ny,nz,nh_p,nh_psi,nh_g,dzci,dt_r,bforce,gacc,rho0,rhoz_av,rho12,psi,p,pp,dwdt)
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in), dimension(0:) :: dzci
+    integer , intent(in) :: nh_p,nh_psi,nh_g
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci
     real(rp), intent(in) :: dt_r
     real(rp), intent(in) :: bforce,gacc,rho0,rhoz_av,rho12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,p,pp
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_p:,1-nh_p:,1-nh_p:), intent(in   ) :: p,pp
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: rhop,dpdl
     integer :: i,j,k
@@ -388,13 +404,14 @@ module mod_mom
     end do
   end subroutine momz_p
   !
-  subroutine momx_sigma(nx,ny,nz,dxi,sigma,kappa,psi,dudt)
+  subroutine momx_sigma(nx,ny,nz,nh_psi,dxi,sigma,kappa,psi,dudt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_psi
     real(rp), intent(in) :: dxi
     real(rp), intent(in) :: sigma
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: kappap
     integer :: i,j,k
@@ -412,13 +429,14 @@ module mod_mom
     end do
   end subroutine momx_sigma
   !
-  subroutine momy_sigma(nx,ny,nz,dyi,sigma,psi,kappa,dvdt)
+  subroutine momy_sigma(nx,ny,nz,nh_psi,dyi,sigma,psi,kappa,dvdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_psi
     real(rp), intent(in) :: dyi
     real(rp), intent(in) :: sigma
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: kappap
     integer :: i,j,k
@@ -436,13 +454,14 @@ module mod_mom
     end do
   end subroutine momy_sigma
   !
-  subroutine momz_sigma(nx,ny,nz,dzci,sigma,psi,kappa,dwdt)
+  subroutine momz_sigma(nx,ny,nz,nh_psi,nh_g,dzci,sigma,psi,kappa,dwdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    real(rp), intent(in), dimension(0:) :: dzci
+    integer , intent(in) :: nh_psi,nh_g
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci
     real(rp), intent(in) :: sigma
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: kappap
     integer :: i,j,k
@@ -460,12 +479,14 @@ module mod_mom
     end do
   end subroutine momz_sigma
   !
-  subroutine momx_buoy(nx,ny,nz,gacc,rho12,beta12,psi,s,dudt)
+  subroutine momx_buoy(nx,ny,nz,nh_s,nh_psi,gacc,rho12,beta12,psi,s,dudt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_s,nh_psi
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_s:,1-nh_s:,1-nh_s:), intent(in   ) :: s
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: psip,factorp
     integer :: i,j,k
@@ -487,12 +508,14 @@ module mod_mom
     end do
   end subroutine momx_buoy
   !
-  subroutine momy_buoy(nx,ny,nz,gacc,rho12,beta12,psi,s,dvdt)
+  subroutine momy_buoy(nx,ny,nz,nh_s,nh_psi,gacc,rho12,beta12,psi,s,dvdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_s,nh_psi
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_s:,1-nh_s:,1-nh_s:), intent(in   ) :: s
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: psip,factorp
     integer :: i,j,k
@@ -514,12 +537,14 @@ module mod_mom
     end do
   end subroutine momy_buoy
   !
-  subroutine momz_buoy(nx,ny,nz,gacc,rho12,beta12,psi,s,dwdt)
+  subroutine momz_buoy(nx,ny,nz,nh_s,nh_psi,gacc,rho12,beta12,psi,s,dwdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
+    integer , intent(in) :: nh_s,nh_psi
     real(rp), intent(in) :: gacc,rho12(2),beta12(2)
-    real(rp), dimension(0:,0:,0:), intent(in   ) :: psi,s
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_s:,1-nh_s:,1-nh_s:), intent(in   ) :: s
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: psip,factorp
     integer :: i,j,k
@@ -541,14 +566,16 @@ module mod_mom
     end do
   end subroutine momz_buoy
   !
-  subroutine mom_xyz_ad(n,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
+  subroutine mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in ), dimension(3) :: n
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in ), dimension(2) :: rho12,mu12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: u,v,w,psi
-    real(rp), intent(in ), dimension(0:,0:,0:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
@@ -561,14 +588,10 @@ module mod_mom
                 flx_x_mcc,flx_x_ccc,flx_x_pcc,flx_x_mpc,flx_x_cpc,flx_x_mcp,flx_x_ccp, &
                 flx_y_cmc,flx_y_ccc,flx_y_cpc,flx_y_pmc,flx_y_pcc,flx_y_cmp,flx_y_ccp, &
                 flx_z_ccm,flx_z_ccc,flx_z_ccp,flx_z_pcm,flx_z_pcc,flx_z_cpm,flx_z_cpc, &
-                dzci_c,dzci_m,dzfi_c,dzfi_p, &
-                psixp,psiyp,psizp
+                dzci_c,dzci_m,dzfi_c,dzfi_p
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
-    real(rp) :: dudx,dudy,dudz,dvdx,dvdy,dvdz,dwdx,dwdy,dwdz
-    real(rp) :: omxp,omxm,omyp,omym,omzp,omzm,domzdy,domydz,domxdz,domzdx,domydx,domxdy
-    real(rp) :: dpsidx,dpsidy,dpsidz,dpsidxp,dpsidxm,dpsidyp,dpsidym,dpsidzp,dpsidzm
-    real(rp) :: mux,muy,muz,muxp,muxm,muyp,muym,muzp,muzm,dmudx,dmudy,dmudz
+    real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     !
@@ -677,10 +700,6 @@ module mod_mom
           dzfi_c = dzfi(k  )
           dzfi_p = dzfi(k+1)
           !
-          psixp = 0.5*(c_pcc+c_ccc)
-          psiyp = 0.5*(c_cpc+c_ccc)
-          psizp = 0.5*(c_ccp+c_ccc)
-          !
           ! advection
           !
           !
@@ -712,139 +731,6 @@ module mod_mom
           !
           ! diffusion
           !
-#if defined(_SPLIT_VISCOUS_DIFFUSION)
-          dpsidyp = 0.5*(c_ppc+c_cpc-c_pcc-c_ccc)*dyi
-          dpsidym = 0.5*(c_pcc+c_ccc-c_pmc-c_cmc)*dyi
-          dpsidzp = 0.5*(c_pcp+c_ccp-c_pcc-c_ccc)*dzci_c
-          dpsidzm = 0.5*(c_pcc+c_ccc-c_pcm-c_ccm)*dzci_m
-          dpsidx  = (c_pcc-c_ccc)*dxi
-          dpsidy  = 0.5*(dpsidyp+dpsidym)
-          dpsidz  = 0.5*(dpsidzp+dpsidzm)
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          mux   = 1._rp/(mu+dmu*psixp)
-          dmudx = -dmu*mux**2*dpsidx
-          dmudy = -dmu*mux**2*dpsidy
-          dmudz = -dmu*mux**2*dpsidz
-#else
-          mux   = mu+dmu*psixp
-          dmudx = dmu*dpsidx
-          dmudy = dmu*dpsidy
-          dmudz = dmu*dpsidz
-#endif
-          dudxp = (u_pcc-u_ccc)*dxi
-          dudxm = (u_ccc-u_mcc)*dxi
-          dudyp = (u_cpc-u_ccc)*dyi
-          dudym = (u_ccc-u_cmc)*dyi
-          dudzp = (u_ccp-u_ccc)*dzci_c
-          dudzm = (u_ccc-u_ccm)*dzci_m
-          dvdxp = (v_pcc-v_ccc)*dxi
-          dvdxm = (v_pmc-v_cmc)*dxi
-          dwdxp = (w_pcc-w_ccc)*dxi
-          dwdxm = (w_pcm-w_ccm)*dxi
-          omyp = (dudzp-dwdxp)
-          omym = (dudzm-dwdxm)
-          omzp = (dvdxp-dudyp)
-          omzm = (dvdxm-dudym)
-          domydz = (omyp-omym)*dzfi_c
-          domzdy = (omzp-omzm)*dyi
-          dudx = 0.5*(dudxp+dudxm)
-          dudy = 0.5*(dudyp+dudym)
-          dudz = 0.5*(dudzp+dudzm)
-          dvdx = 0.5*(dvdxp+dvdxm)
-          dwdx = 0.5*(dwdxp+dwdxm)
-          dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) - &
-                                mux*(domzdy-domydz)) ! vorticity curl
-          !dudt_aux = dudt_aux + (dmudx*(dudx+dudx) + dmudy*(dudy+dvdx) + dmudz*(dudz+dwdx) + &
-          !                      mux*((dudxp-dudxm)*dxi+(dudyp-dudym)*dyi+(dudzp-dudzm)*dzfi_c)) ! laplacian
-          !
-          dpsidxp = 0.5*(c_ppc+c_pcc-c_cpc-c_ccc)*dxi
-          dpsidxm = 0.5*(c_cpc+c_ccc-c_mpc-c_mcc)*dxi
-          dpsidzp = 0.5*(c_cpp+c_ccp-c_cpc-c_ccc)*dzci_c
-          dpsidzm = 0.5*(c_cpc+c_ccc-c_cpm-c_ccm)*dzci_m
-          dpsidx  = 0.5*(dpsidxp+dpsidxm)
-          dpsidy  = (c_cpc-c_ccc)*dyi
-          dpsidz  = 0.5*(dpsidzp+dpsidzm)
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          muy   = 1._rp/(mu+dmu*psiyp)
-          dmudx = -dmu*muy**2*dpsidx
-          dmudy = -dmu*muy**2*dpsidy
-          dmudz = -dmu*muy**2*dpsidz
-#else
-          muy   = mu+dmu*psiyp
-          dmudx = dmu*dpsidx
-          dmudy = dmu*dpsidy
-          dmudz = dmu*dpsidz
-#endif
-          dvdxp = (v_pcc-v_ccc)*dxi
-          dvdxm = (v_ccc-v_mcc)*dxi
-          dvdyp = (v_cpc-v_ccc)*dyi
-          dvdym = (v_ccc-v_cmc)*dyi
-          dvdzp = (v_ccp-v_ccc)*dzci_c
-          dvdzm = (v_ccc-v_ccm)*dzci_m
-          dudyp = (u_cpc-u_ccc)*dyi
-          dudym = (u_mpc-u_mcc)*dyi
-          dwdyp = (w_cpc-w_ccc)*dyi
-          dwdym = (w_cpm-w_ccm)*dyi
-          omxp = (dwdyp-dvdzp)
-          omxm = (dwdym-dvdzm)
-          omzp = (dvdxp-dudyp)
-          omzm = (dvdxm-dudym)
-          domxdz = (omxp-omxm)*dzfi_c
-          domzdx = (omzp-omzm)*dxi
-          dvdx = 0.5*(dvdxp+dvdxm)
-          dvdy = 0.5*(dvdyp+dvdym)
-          dvdz = 0.5*(dvdzp+dvdzm)
-          dudy = 0.5*(dudyp+dudym)
-          dwdy = 0.5*(dwdyp+dwdym)
-          dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) - &
-                                muy*(domxdz-domzdx)) ! vorticity curl
-          !dvdt_aux = dvdt_aux + (dmudx*(dudy+dvdx) + dmudy*(dvdy+dvdy) + dmudz*(dvdz+dwdy) + &
-          !                      muy*((dvdxp-dvdxm)*dxi+(dvdyp-dvdym)*dyi+(dvdzp-dvdzm)*dzfi_c)) ! laplacian
-          !
-          dpsidxp = 0.5*(c_pcp+c_pcc-c_ccp-c_ccc)*dxi
-          dpsidxm = 0.5*(c_ccp+c_ccc-c_mcp-c_mcc)*dxi
-          dpsidyp = 0.5*(c_cpp+c_cpc-c_ccp-c_ccc)*dyi
-          dpsidym = 0.5*(c_ccp+c_ccc-c_cmp-c_cmc)*dyi
-          dpsidx  = 0.5*(dpsidxp+dpsidxm)
-          dpsidy  = 0.5*(dpsidyp+dpsidym)
-          dpsidz  = (c_ccp-c_ccc)*dzci_c
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          muz   = 1._rp/(mu+dmu*psizp)
-          dmudx = -dmu*muz**2*dpsidx
-          dmudy = -dmu*muz**2*dpsidy
-          dmudz = -dmu*muz**2*dpsidz
-#else
-          muz   = mu+dmu*psizp
-          dmudx = dmu*dpsidx
-          dmudy = dmu*dpsidy
-          dmudz = dmu*dpsidz
-#endif
-          dwdxp = (w_pcc-w_ccc)*dxi
-          dwdxm = (w_ccc-w_mcc)*dxi
-          dwdyp = (w_cpc-w_ccc)*dyi
-          dwdym = (w_ccc-w_cmc)*dyi
-          dwdzp = (w_ccp-w_ccc)*dzfi_p
-          dwdzm = (w_ccc-w_ccm)*dzfi_c
-          dudzp = (u_ccp-u_ccc)*dzci_c
-          dudzm = (u_mcp-u_mcc)*dzci_c
-          dvdzp = (v_ccp-v_ccc)*dzci_c
-          dvdzm = (v_cmp-v_cmc)*dzci_c
-          omxp = (dwdyp-dvdzp)
-          omxm = (dwdym-dvdzm)
-          omyp = (dudzp-dwdxp)
-          omym = (dudzm-dwdxm)
-          domxdy = (omxp-omxm)*dyi
-          domydx = (omyp-omym)*dxi
-          dwdx = 0.5*(dwdxp+dwdxm)
-          dwdy = 0.5*(dwdyp+dwdym)
-          dwdz = 0.5*(dwdzp+dwdzm)
-          dudz = 0.5*(dudzp+dudzm)
-          dvdz = 0.5*(dvdzp+dvdzm)
-          dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) - &
-                                muz*(domydx-domxdy)) ! vorticity curl
-          !dwdt_aux = dwdt_aux + (dmudx*(dudz+dwdx) + dmudy*(dvdz+dwdy) + dmudz*(dwdz+dwdz) + &
-          !                      muz*((dwdxp-dwdxm)*dxi+(dwdyp-dwdym)*dyi+(dwdzp-dwdzm)*dzci_c)) ! laplacian
-#else
           dudxp = (u_pcc-u_ccc)*dxi
           dudxm = (u_ccc-u_mcc)*dxi
           dvdxp = (v_pcc-v_ccc)*dxi
@@ -931,7 +817,6 @@ module mod_mom
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm) + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym) + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)
-#endif
           !
           dudt(i,j,k) = dudt_aux
           dvdt(i,j,k) = dvdt_aux
@@ -941,7 +826,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_oth(n,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_oth(n,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -949,15 +834,18 @@ module mod_mom
                          dudt,dvdt,dwdt)
     implicit none
     integer , intent(in   ), dimension(3) :: n
+    integer , intent(in) :: nh_p,nh_s,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   ) :: dt_r
     real(rp), intent(in   ), dimension(2) :: rho12,beta12
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av(3)
-    real(rp), intent(in   ), dimension(0:,0:,0:)           :: p,psi,kappa
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: s,pn,po
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:)           :: p
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi,kappa
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
@@ -985,7 +873,9 @@ module mod_mom
 #endif
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     real(rp) :: surf_factor
+    logical  :: is_buoyant
     !
+    is_buoyant = is_boussinesq_buoyancy.and.present(s)
     rho     = rho12(2); drho = rho12(1)-rho12(2)
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)- rho12(2)*beta12(2)
     dxi = dli(1)
@@ -1018,12 +908,12 @@ module mod_mom
           q_ccp = (1.+dt_r)*pn(i  ,j  ,k+1)-dt_r*po(i  ,j  ,k+1)
 #endif
           !
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-          s_ccc = s(i  ,j  ,k  )
-          s_pcc = s(i+1,j  ,k  )
-          s_cpc = s(i  ,j+1,k  )
-          s_ccp = s(i  ,j  ,k+1)
-#endif
+          if(is_buoyant) then
+            s_ccc = s(i  ,j  ,k  )
+            s_pcc = s(i+1,j  ,k  )
+            s_cpc = s(i  ,j+1,k  )
+            s_ccp = s(i  ,j  ,k+1)
+          end if
           !
           k_ccc = kappa(i  ,j  ,k  )
           k_pcc = kappa(i+1,j  ,k  )
@@ -1105,14 +995,14 @@ module mod_mom
           !
           ! buoyancy
           !
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-          factorxp = rhobeta + drhobeta*psixp
-          factoryp = rhobeta + drhobeta*psiyp
-          factorzp = rhobeta + drhobeta*psizp
-          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)
-          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
-          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
-#endif
+          if(is_buoyant) then
+            factorxp = rhobeta + drhobeta*psixp
+            factoryp = rhobeta + drhobeta*psiyp
+            factorzp = rhobeta + drhobeta*psizp
+            dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)
+            dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
+            dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
+          end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
           surfx_o(i,j,k) = surfx_n(i,j,k)
           surfy_o(i,j,k) = surfy_n(i,j,k)
@@ -1129,7 +1019,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_oth
   !
-  subroutine cmpt_bodyforce(n,is_cmpt,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+  subroutine cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_cmpt,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                             rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                             surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -1141,15 +1031,17 @@ module mod_mom
     !
     implicit none
     integer , intent(in), dimension(3) :: n
+    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
     logical , intent(in), dimension(3) :: is_cmpt
     real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in), dimension(0:) :: dzci,grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,grid_vol_ratio_c,grid_vol_ratio_f
     real(rp), intent(in) :: dt_r
     real(rp), intent(in), dimension(2) :: rho12,beta12
     real(rp), intent(in), dimension(3) :: gacc,rho_av
     real(rp), intent(in) :: sigma,rho0
-    real(rp), intent(in), dimension(0:,0:,0:) :: psi,psio,kappa,u,v,w
-    real(rp), intent(in), dimension(0:,0:,0:), optional :: s
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio,kappa
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     real(rp), intent(in), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                               surfx_o,surfy_o,surfz_o
@@ -1172,8 +1064,10 @@ module mod_mom
     real(rp) :: gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz
     real(rp) :: momx,momy,momz,force(3,4)
     logical :: is_cmptx,is_cmpty,is_cmptz
+    logical :: is_buoyant
     integer :: i,j,k,ierr
     !
+    is_buoyant = is_boussinesq_buoyancy.and.present(s)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     rhobeta = rho12(2)*beta12(2)
     drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
@@ -1252,39 +1146,33 @@ module mod_mom
           surfy_f = surfy
           surfz_f = surfz
 #endif
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-          s_ccc = s(i  ,j  ,k  )
-          s_pcc = s(i+1,j  ,k  )
-          s_cpc = s(i  ,j+1,k  )
-          s_ccp = s(i  ,j  ,k+1)
-          factorxp = rhobeta+drhobeta*psixp
-          factoryp = rhobeta+drhobeta*psiyp
-          factorzp = rhobeta+drhobeta*psizp
-#endif
+          if(is_buoyant) then
+            s_ccc = s(i  ,j  ,k  )
+            s_pcc = s(i+1,j  ,k  )
+            s_cpc = s(i  ,j+1,k  )
+            s_ccp = s(i  ,j  ,k+1)
+            factorxp = rhobeta+drhobeta*psixp
+            factoryp = rhobeta+drhobeta*psiyp
+            factorzp = rhobeta+drhobeta*psizp
+          end if
           !
           if(is_cmptx) then
             gravx = gravx+(rhoxp-rhox_av)*gaccx*weight_f
             surfsumx = surfsumx+surfx_f*weight_f
             momx = momx+rhox_old*u(i,j,k)*weight_f
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-            buoyx = buoyx-gaccx*factorxp*0.5_rp*(s_pcc+s_ccc)*weight_f
-#endif
+            if(is_buoyant) buoyx = buoyx-gaccx*factorxp*0.5_rp*(s_pcc+s_ccc)*weight_f
           end if
           if(is_cmpty) then
             gravy = gravy+(rhoyp-rhoy_av)*gaccy*weight_f
             surfsumy = surfsumy+surfy_f*weight_f
             momy = momy+rhoy_old*v(i,j,k)*weight_f
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-            buoyy = buoyy-gaccy*factoryp*0.5_rp*(s_cpc+s_ccc)*weight_f
-#endif
+            if(is_buoyant) buoyy = buoyy-gaccy*factoryp*0.5_rp*(s_cpc+s_ccc)*weight_f
           end if
           if(is_cmptz) then
             gravz = gravz+(rhozp-rhoz_av)*gaccz*weight_c
             surfsumz = surfsumz+surfz_f*weight_c
             momz = momz+rhoz_old*w(i,j,k)*weight_c
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-            buoyz = buoyz-gaccz*factorzp*0.5_rp*(s_ccp+s_ccc)*weight_c
-#endif
+            if(is_buoyant) buoyz = buoyz-gaccz*factorzp*0.5_rp*(s_ccp+s_ccc)*weight_c
           end if
         end do
       end do
@@ -1308,16 +1196,18 @@ module mod_mom
     end where
   end subroutine cmpt_bodyforce
   !
-  subroutine cmpt_momentum(n,is_cmpt,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+  subroutine cmpt_momentum(n,nh_v,nh_psi,nh_g,is_cmpt,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
     !
     ! computes the volume-averaged mixture momentum on the staggered grid
     !
     implicit none
     integer , intent(in), dimension(3) :: n
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     logical , intent(in), dimension(3) :: is_cmpt
-    real(rp), intent(in), dimension(0:) :: grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f
     real(rp), intent(in), dimension(2) :: rho12
-    real(rp), intent(in), dimension(0:,0:,0:) :: psi,u,v,w
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(out), dimension(3) :: momentum
     real(rp) :: rho,drho,rhoxp,rhoyp,rhozp,weight_f,weight_c
     real(rp) :: momx,momy,momz
@@ -1352,18 +1242,20 @@ module mod_mom
     where(.not.is_cmpt(:)) momentum(:) = 0._rp
   end subroutine cmpt_momentum
   !
-  subroutine cmpt_wallshear(n,is_cmpt,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
+  subroutine cmpt_wallshear(n,nh_v,nh_psi,nh_g,is_cmpt,is_bound,l,dli,dzci,dzfi,mu12,psi,u,v,w,taux,tauy,tauz)
     !
     ! n.b.: `is_bound` should exclude periodic BCs
     !
     implicit none
     integer , intent(in ), dimension(3) :: n
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     logical , intent(in ), dimension(3) :: is_cmpt
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
-    real(rp), intent(in ), dimension(0:)    :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh_g:)    :: dzci,dzfi
     real(rp), intent(in ), dimension(2)     :: mu12
-    real(rp), intent(in ), dimension(0:,0:,0:) :: psi,u,v,w
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(out), dimension(3) :: taux,tauy,tauz
     real(rp) :: dudyp,dudym,dudzp,dudzm, &
                 dvdxp,dvdxm,dvdzp,dvdzm, &

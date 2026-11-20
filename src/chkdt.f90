@@ -1,29 +1,31 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
 module mod_chkdt
   use mpi
   use mod_common_mpi, only:ierr
+  use mod_param     , only:nscal
   use mod_types
   implicit none
   private
   public chkdt
   contains
-  subroutine chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
+  subroutine chkdt(n,nh,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
     !
     ! computes maximum allowed time step
     ! see Kang et al. Journal of Scientific Computing 15, 323–360
     !
     implicit none
     integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: nh,nh_g
     real(rp), intent(in), dimension(3) :: dl
-    real(rp), intent(in), dimension(0:) :: dzci,dzfi
-    logical,  intent(in) :: is_solve_ns,is_track_interface
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
+    logical , intent(in) :: is_solve_ns,is_track_interface
     real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
-    real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
     real(rp), intent(out) :: dtmax
     real(rp), intent(in ), optional :: ka12(2),cp12(2)
     real(rp) :: dxi,dyi,dzi
@@ -38,14 +40,15 @@ module mod_chkdt
     dzi = 1./dl(3)
     if(is_first) then ! calculate dlmin only once
       is_first = .false.
-      dlmin     = minval(dl(1:2))
-      dlmin     = min(dlmin,minval(1./dzfi))
+      dlmin = minval(dl(1:2))
+      dlmin = min(dlmin,minval(1./dzfi))
       call MPI_ALLREDUCE(MPI_IN_PLACE,dlmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
     end if
     !
     dti = 0.
     !$acc data copy(dti) async(1)
     !$acc parallel loop collapse(3) default(present) private(ux,uy,uz,vx,vy,vz,wx,wy,wz,dtix,dtiy,dtiz) reduction(max:dti) async(1)
+    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)  PRIVATE(ux,uy,uz,vx,vy,vz,wx,wy,wz,dtix,dtiy,dtiz) REDUCTION(max:dti)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -83,13 +86,13 @@ module mod_chkdt
       dti = 0.5*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))
       if(dti    == 0.) dti    = 1.
       dtmax = dti**(-1)
-      if(is_track_interface) dtmax = min(dtmax,dtipsi**(-1))
+      if(is_track_interface.and.dtipsi > 0.) dtmax = min(dtmax,dtipsi**(-1))
     end if
-#if defined(_SCALAR)
-    if(present(ka12) .and. present(cp12)) &
-      dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/dlmin**2
-    if(dti == 0.) dti = 1.
-    dtmax = min(dtmax,dti**(-1))
-#endif
+    if(nscal > 0) then
+      if(present(ka12) .and. present(cp12)) &
+        dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/dlmin**2
+      if(dti == 0.) dti = 1.
+      dtmax = min(dtmax,dti**(-1))
+    end if
   end subroutine chkdt
 end module mod_chkdt

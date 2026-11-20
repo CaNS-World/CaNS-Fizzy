@@ -1,6 +1,6 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
@@ -25,9 +25,7 @@
 ! CaNS -- Canonical Navier-Stokes Solver
 !-------------------------------------------------------------------------------------
 program cans
-#if defined(_DEBUG)
   use, intrinsic :: iso_fortran_env, only: compiler_version,compiler_options
-#endif
   use, intrinsic :: iso_c_binding  , only: C_PTR
   use, intrinsic :: ieee_arithmetic, only: is_nan => ieee_is_nan
   use mpi
@@ -35,46 +33,58 @@ program cans
   use mod_bound          , only: boundp,bounduvw,updt_rhs_b
   use mod_chkdiv         , only: chkdiv
   use mod_chkdt          , only: chkdt
-  use mod_common_mpi     , only: myid,ierr
+  use mod_common_mpi     , only: myid,ierr,dinfo_dtdma
   use mod_correc         , only: correc
   use mod_fft            , only: fftini,fftend
   use mod_fillps         , only: fillps
   use mod_forcing        , only: lscale_forcing
   use mod_initflow       , only: initflow,initscal
-  use mod_initgrid       , only: initgrid
+  use mod_initgrid       , only: initgrid,save_grid
   use mod_initmpi        , only: initmpi
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
   use mod_mom            , only: cmpt_momentum
   use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
-  use mod_output         , only: out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_param          , only: small, &
-                                 nb,is_bound,cbcvel,bcvel,cbcpre,bcpre,cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
-                                 icheck,iout0d,iout1d,iout2d,iout3d,isave, &
-                                 nstep,time_max,tw_max,stop_type,restart,is_overwrite_save,nsaves_max, &
-                                 datadir,   &
-                                 is_solve_ns,is_track_interface,is_forced, &
+  use mod_output         , only: is_output_due, &
+                                 out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
+  use mod_param          , only: ng,l,dl,dli, &
+                                 gtype,gr, &
                                  cfl,dtmax,dt_f, &
+                                 is_solve_ns,is_track_interface, &
                                  inivel,inisca,inipsi, &
                                  is_wallturb,is_forced_hit, &
-                                 dims, &
-                                 gtype,gr, &
-                                 bforce,ssource, &
-                                 ng,l,dl,dli, &
-                                 read_input, &
-                                 rho0,rho12,mu12,sigma,gacc,ka12,cp12,beta12, &
+                                 nstep,time_max,tw_max,stop_type, &
+                                 restart,is_overwrite_save,nsaves_max, &
+                                 icheck,iout0d,iout1d,iout2d,iout3d,isave, &
+                                 tout0d,tout1d,tout2d,tout3d,tsave, &
+                                 cbcvel,bcvel,cbcpre,bcpre, &
+                                 cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
+                                 is_forced,bforce,ssource, &
+                                 gacc,nscal, &
+                                 rho0,rho12,mu12,sigma,ka12,cp12,beta12, &
                                  psi_thickness_factor, &
                                  acdi_gam_factor,acdi_gam_min, &
-                                 vof_thinc_beta
-#if 1
-  use mod_sanity         , only: test_sanity_input
-#endif
+                                 vof_thinc_beta, &
+                                 dims, &
+                                 nb,is_bound, &
+                                 small, &
+                                 datadir,io_ext,is_full_restart, &
+                                 read_input, &
+                                 is_debug,is_debug_poisson, &
+                                 is_timing, &
+                                 is_impdiff, &
+                                 is_poisson_dtdma, &
+                                 is_mask_divergence_check, &
+                                 nh_v,nh_p,nh_s,nh_psi,nh_g
+  use mod_sanity         , only: test_sanity_input,test_sanity_solver
+  use mod_solve_helmholtz, only: rhs_bound
+  use mod_acdi           , only: acdi_set_epsilon
 #if !defined(_INTERFACE_CAPTURING_VOF)
-  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
+  use mod_acdi           , only: acdi_set_gamma,acdi_cmpt_phi
 #elif defined(_SDF_NORMALS)
   use mod_vof_thinc_qq   , only: vof_thinc_cmpt_phi
 #endif
-  use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs
+  use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs,bulk_mean_12_stag
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc      , only: solver_vc
 #endif
@@ -82,69 +92,89 @@ program cans
   use mod_solver         , only: solver
 #else
   use mod_solver_gpu     , only: solver => solver_gpu
-  use mod_workspaces     , only: init_wspace_arrays,set_cufft_wspace
-  use mod_common_cudecomp, only: istream_acc_queue_1
+  use mod_workspaces     , only: init_wspace_arrays,set_cufft_wspace,cudecomp_finalize
+  use mod_common_cudecomp, only: istream_acc_queue_1,ap_z_dtdma
 #endif
-  use mod_timer          , only: timer_tic,timer_toc,timer_print
   use mod_updatep        , only: updatep
-  use mod_utils          , only: bulk_mean,bulk_mean_12_stag
-  !@acc use mod_utils    , only: device_memory_footprint
+  use mod_posix          , only: rename_file,read_link
+  use mod_utils          , only: bulk_mean
+#if defined(_OPENACC)
+  use mod_utils          , only: device_memory_footprint
+#endif
   use mod_types
+  use omp_lib
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
-  real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,pp,pn,po
+  real(rp), target, allocatable, dimension(:,:,:) :: u,v,w,p,pp
+  real(rp), allocatable, dimension(:,:,:) :: pn
+  real(rp), target, allocatable, dimension(:,:,:) :: po
+  real(rp), target, allocatable, dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko,dpsidtrko,dsdtrko
+  real(rp), dimension(3) :: wall_force_old
+  logical :: is_first
   real(rp), dimension(3) :: rho_av
   logical , dimension(3) :: is_cmpt_rho_av
-#if !defined(_OPENACC)
+#if !defined(_OPENACC) || defined(_USE_HIP)
   type(C_PTR), dimension(2,2) :: arrplanp
 #else
   integer    , dimension(2,2) :: arrplanp
 #endif
   real(rp), allocatable, dimension(:,:) :: lambdaxyp
   real(rp), allocatable, dimension(:) :: ap,bp,cp
+  integer , dimension(3) :: n_z_d
+  real(rp), allocatable, dimension(:,:,:) :: ap_d,cp_d
+  logical :: is_dtdma_update_p
   real(rp) :: normfftp
-  type rhs_bound
-    real(rp), allocatable, dimension(:,:,:) :: x
-    real(rp), allocatable, dimension(:,:,:) :: y
-    real(rp), allocatable, dimension(:,:,:) :: z
-  end type rhs_bound
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
-  real(rp) :: dt,dto,dt_r,dti,dt_cfl,dtrk,dtrki,time,divtot,divmax
+  !
+  real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
+  real(rp), dimension(2) :: dt_restart
   real(rp) :: gam,seps
-  integer :: istep
+  integer :: istep,iunit
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
+                                         xc_g,xf_g,yc_g,yf_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f
   real(rp), dimension(3) :: dpdl,meanvel,momentum
   real(rp), dimension(3,6) :: force_balance
-  !real(rp), allocatable, dimension(:) :: var
-  real(rp), dimension(42) :: var
-#if defined(_TIMING)
-  real(rp) :: dt12,dt12av,dt12min,dt12max
-#endif
-  real(rp) :: twi,tw
-  !
-  integer  :: savecounter
-  character(len=7  ) :: fldnum
-  character(len=4  ) :: chkptnum
-  character(len=100) :: filename,fexts(6)
-  integer :: k,kk
-  logical :: is_done,kill
   real(rp), dimension(2) :: tm_coeff
   !
   ! scalar field
   !
-  real(rp), allocatable, dimension(:,:,:) :: s
+  real(rp), target, allocatable, dimension(:,:,:) :: s
+  integer :: is,nio,nio_s
   !
   ! two-fluid solver specific
   !
-  real(rp), allocatable, dimension(:,:,:) :: psi,psio,phi,kappa,normx,normy,normz, &
+  real(rp), target, allocatable, dimension(:,:,:) :: psi
+  real(rp), allocatable, dimension(:,:,:) :: psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
-  real(rp), allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
-                                             surfx_o,surfy_o,surfz_o
+  real(rp), target, allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
+                                                     surfx_o,surfy_o,surfz_o
 #endif
+  !
+  !real(rp), allocatable, dimension(:) :: var
+  real(rp), dimension(42) :: var
+  !
+  real(rp) :: dt12,dt12av,dt12min,dt12max
+  real(dp) :: twi,tw
+  !
+  integer  :: savecounter
+  character(len=7  ) :: fldnum
+  character(len=4  ) :: chkptnum
+  character(len=100) :: filename
+  character(len=256) :: fname_save
+  logical :: is_save_tmp
+  integer :: istat
+  type :: arr_ptr
+    real(rp), pointer, contiguous , dimension(:,:,:) :: arr
+  end type arr_ptr
+  type(arr_ptr)    , allocatable, dimension(:) ::   io_vars
+  integer          , allocatable, dimension(:,:) ::    nh_io
+  character(len=10), allocatable, dimension(:) :: c_io_vars
+  integer :: i,j,k,kk
+  logical :: is_done,kill
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD,myid,ierr)
@@ -155,55 +185,65 @@ program cans
   !
   ! initialize MPI/OpenMP
   !
-  call initmpi(ng,dims,cbcpre,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z,nb,is_bound)
+  !$ call omp_set_num_threads(omp_get_max_threads())
+  call initmpi(ng,dims,cbcpre,nh_g,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z,nb,is_bound)
   twi = MPI_WTIME()
   savecounter = 0
   !
   ! allocate variables
   !
-  allocate(u( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           v( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           w( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           p( 0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-           pp(0:n(1)+1,0:n(2)+1,0:n(3)+1))
-#if !defined(_CONSTANT_COEFFS_POISSON)
-  allocate(po,mold=pp)
-  po(:,:,:) = 0._rp
-#else
-  pp(:,:,:) = 0._rp
+  allocate(u( 1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
+           v( 1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
+           w( 1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
+           p( 1-nh_p:n(1)+nh_p,1-nh_p:n(2)+nh_p,1-nh_p:n(3)+nh_p), &
+           pp(1-nh_p:n(1)+nh_p,1-nh_p:n(2)+nh_p,1-nh_p:n(3)+nh_p))
+#if defined(_CONSTANT_COEFFS_POISSON)
   allocate(pn,mold=pp)
+#endif
   allocate(po,mold=pp)
-  pn(:,:,:) = pp(:,:,:)
-  po(:,:,:) = pn(:,:,:)
-#endif
-#if defined(_SCALAR)
-  allocate(s,mold=pp)
-#endif
+  allocate(dudtrko(n(1),n(2),n(3)), &
+           dvdtrko(n(1),n(2),n(3)), &
+           dwdtrko(n(1),n(2),n(3)), &
+           dpsidtrko(n(1),n(2),n(3)))
+  if(nscal > 0) allocate(s(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s),dsdtrko(n(1),n(2),n(3)))
+  nio = 5+nscal
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
-  allocate(dzc( 0:n(3)+1), &
-           dzf( 0:n(3)+1), &
-           zc(  0:n(3)+1), &
-           zf(  0:n(3)+1), &
-           dzci(0:n(3)+1), &
-           dzfi(0:n(3)+1))
-  allocate(dzc_g( 0:ng(3)+1), &
-           dzf_g( 0:ng(3)+1), &
-           zc_g(  0:ng(3)+1), &
-           zf_g(  0:ng(3)+1), &
-           dzci_g(0:ng(3)+1), &
-           dzfi_g(0:ng(3)+1))
+  if(is_poisson_dtdma) then
+#if defined(_OPENACC)
+    n_z_d(:) = ap_z_dtdma%shape(:)
+#else
+    n_z_d(:) = dinfo_dtdma%zsz(:)
+#endif
+    allocate(ap_d(n_z_d(1),n_z_d(2),n_z_d(3)), &
+             cp_d(n_z_d(1),n_z_d(2),n_z_d(3)))
+  end if
+  allocate(dzc( 1-nh_g:n(3)+nh_g), &
+           dzf( 1-nh_g:n(3)+nh_g), &
+           zc(  1-nh_g:n(3)+nh_g), &
+           zf(  1-nh_g:n(3)+nh_g), &
+           dzci(1-nh_g:n(3)+nh_g), &
+           dzfi(1-nh_g:n(3)+nh_g))
+  allocate(dzc_g( 1-nh_g:ng(3)+nh_g), &
+           dzf_g( 1-nh_g:ng(3)+nh_g), &
+           zc_g(  1-nh_g:ng(3)+nh_g), &
+           zf_g(  1-nh_g:ng(3)+nh_g), &
+           dzci_g(1-nh_g:ng(3)+nh_g), &
+           dzfi_g(1-nh_g:ng(3)+nh_g))
+  allocate(xc_g(1-nh_g:ng(1)+nh_g),xf_g(1-nh_g:ng(1)+nh_g), &
+           yc_g(1-nh_g:ng(2)+nh_g),yf_g(1-nh_g:ng(2)+nh_g))
   allocate(grid_vol_ratio_c,mold=dzc)
   allocate(grid_vol_ratio_f,mold=dzf)
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
-  allocate(psi,kappa,normx,normy,normz,mold=pp)
-  allocate(psio,mold=pp)
+  allocate(psi(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
+  allocate(kappa,normx,normy,normz,mold=psi)
+  allocate(psio,mold=psi)
 #if defined(_SDF_NORMALS)
-  allocate(phi,mold=pp)
+  allocate(phi,mold=psi)
 #endif
-  allocate(psiflx_x,psiflx_y,psiflx_z,mold=pp)
+  allocate(psiflx_x,psiflx_y,psiflx_z,mold=psi)
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   allocate(surfx_n(n(1),n(2),n(3)),surfy_n(n(1),n(2),n(3)),surfz_n(n(1),n(2),n(3)), &
            surfx_o(n(1),n(2),n(3)),surfy_o(n(1),n(2),n(3)),surfz_o(n(1),n(2),n(3)))
@@ -214,45 +254,48 @@ program cans
   surfy_o(:,:,:) = 0._rp
   surfz_o(:,:,:) = 0._rp
 #endif
-#if defined(_DEBUG)
-  if(myid == 0) print*, 'This executable of CaNS was built with compiler: ', compiler_version()
-  if(myid == 0) print*, 'Using the options: ', compiler_options()
-  block
-    character(len=MPI_MAX_LIBRARY_VERSION_STRING) :: mpi_version
-    integer :: ilen
-    call MPI_GET_LIBRARY_VERSION(mpi_version,ilen,ierr)
-    if(myid == 0) print*, 'MPI Version: ', trim(mpi_version)
-  end block
-  if(myid == 0) print*, ''
-#endif
+  !
+  if(is_debug) then
+    if(myid == 0) print*, '*** CaNS build information ***'
+    if(myid == 0) print*, 'Compiler version: ', compiler_version()
+    if(myid == 0) print*, 'Compiler options: ', compiler_options()
+    block
+      character(len=MPI_MAX_LIBRARY_VERSION_STRING) :: mpi_version
+      integer :: ilen
+      call MPI_GET_LIBRARY_VERSION(mpi_version,ilen,ierr)
+      if(myid == 0) print*, 'MPI version: ', trim(mpi_version)
+    end block
+    if(myid == 0) print*, ''
+  end if
   if(myid == 0) print*, '*******************************'
   if(myid == 0) print*, '*** Beginning of simulation ***'
   if(myid == 0) print*, '*******************************'
   if(myid == 0) print*, ''
-  call initgrid(gtype,ng(3),gr,l(3),dzc_g,dzf_g,zc_g,zf_g)
+  call initgrid(gtype,ng(3),nh_g,gr,l(3),dzc_g,dzf_g,zc_g,zf_g,cbcpre(0,3)//cbcpre(1,3) == 'PP')
+  do kk=1-nh_g,ng(1)+nh_g
+    xc_g(kk) = (kk-0.5_rp)*dl(1)
+    xf_g(kk) = kk*dl(1)
+  end do
+  do kk=1-nh_g,ng(2)+nh_g
+    yc_g(kk) = (kk-0.5_rp)*dl(2)
+    yf_g(kk) = kk*dl(2)
+  end do
   if(myid == 0) then
-    open(99,file=trim(datadir)//'grid.bin',action='write',form='unformatted',access='stream',status='replace')
-    write(99) dzc_g(1:ng(3)),dzf_g(1:ng(3)),zc_g(1:ng(3)),zf_g(1:ng(3))
-    close(99)
-    open(99,file=trim(datadir)//'grid.out')
-    do kk=0,ng(3)+1
-      write(99,*) 0.,zf_g(kk),zc_g(kk),dzf_g(kk),dzc_g(kk)
-    end do
-    close(99)
-    open(99,file=trim(datadir)//'geometry.out')
-      write(99,*) ng(1),ng(2),ng(3)
-      write(99,*) l(1),l(2),l(3)
-    close(99)
+    open(newunit=iunit,file=trim(datadir)//'geometry.out',status='replace')
+    write(iunit,'(*(1x,i0))') ng(1),ng(2),ng(3)
+    write(iunit,'(*(1x,es24.16e3))') l(1),l(2),l(3)
+    close(iunit)
+    call save_grid(datadir,'grid',ng,nh_g,zc_g,zf_g,dzc_g,dzf_g)
   end if
   !$acc enter data copyin(lo,hi,n) async
-  !$acc enter data copyin(bforce,gacc,dl,dli,l) async
+  !$acc enter data copyin(bforce,dl,dli,l) async
+  !$acc enter data copyin(gacc) async
+  !$acc enter data copyin(rho12,mu12,ka12,cp12,beta12) async
   !$acc enter data copyin(zc_g,zf_g,dzc_g,dzf_g) async
   !$acc enter data create(zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g) async
   !
-  !$acc enter data copyin(rho12,mu12,ka12,cp12,beta12) async
-  !
   !$acc parallel loop default(present) private(k) async
-  do kk=lo(3)-1,hi(3)+1
+  do kk=lo(3)-nh_g,hi(3)+nh_g
     k = kk-(lo(3)-1)
     zc( k) = zc_g(kk)
     zf( k) = zf_g(kk)
@@ -261,15 +304,19 @@ program cans
     dzci(k) = dzc(k)**(-1)
     dzfi(k) = dzf(k)**(-1)
   end do
-  !$acc kernels default(present) async
-  dzci_g(:) = dzc_g(:)**(-1)
-  dzfi_g(:) = dzf_g(:)**(-1)
-  !$acc end kernels
+  !$acc data copy(ng) async
+  !$acc parallel loop default(present) async
+  do k=1-nh_g,ng(3)+nh_g
+    dzci_g(k) = dzc_g(k)**(-1)
+    dzfi_g(k) = dzf_g(k)**(-1)
+  end do
+  !$acc end data
   !$acc enter data create(grid_vol_ratio_c,grid_vol_ratio_f) async
-  !$acc kernels default(present) async
-  grid_vol_ratio_c(:) = dl(1)*dl(2)*dzc(:)/(l(1)*l(2)*l(3))
-  grid_vol_ratio_f(:) = dl(1)*dl(2)*dzf(:)/(l(1)*l(2)*l(3))
-  !$acc end kernels
+  !$acc parallel loop default(present) async
+  do k=1-nh_g,n(3)+nh_g
+    grid_vol_ratio_c(k) = dl(1)*dl(2)*dzc(k)/(l(1)*l(2)*l(3))
+    grid_vol_ratio_f(k) = dl(1)*dl(2)*dzf(k)/(l(1)*l(2)*l(3))
+  end do
   !$acc update self(zc,zf,dzc,dzf,dzci,dzfi) async
   !$acc exit data copyout(zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
   !$acc wait
@@ -280,10 +327,13 @@ program cans
   !
   ! initialize Poisson solver
   !
-  call initsolver(ng,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcpre,bcpre(:,:), &
+  call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcpre,bcpre(:,:), &
                   lambdaxyp,['c','c','c'],ap,bp,cp,arrplanp,normfftp,rhsbp%x,rhsbp%y,rhsbp%z)
   !$acc enter data copyin(lambdaxyp,ap,bp,cp) async
   !$acc enter data copyin(rhsbp,rhsbp%x,rhsbp%y,rhsbp%z) async
+  if(is_poisson_dtdma) then
+    !$acc enter data create(ap_d,cp_d) async
+  end if
   !$acc wait
 #if defined(_OPENACC)
   !
@@ -292,90 +342,193 @@ program cans
   call init_wspace_arrays()
   call set_cufft_wspace(pack(arrplanp,.true.),istream_acc_queue_1)
   if(myid == 0) print*,'*** Device memory footprint (Gb): ', &
-                  device_memory_footprint(n,n_z)/(1._sp*1024**3), ' ***'
+                  device_memory_footprint(n,nh_v,nh_p,nh_s,nh_g,n_z,nscal)/(1._sp*1024**3), ' ***'
 #endif
-#if defined(_DEBUG_SOLVER)
-  call test_sanity_solver(ng,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z,dli,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g, &
-                          nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
-#endif
+  if(is_debug_poisson) then
+    call test_sanity_solver(ng,lo,hi,n,nh_v,nh_p,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,n_z,l,dl,dli, &
+                            dzc,dzf,dzci,dzfi,dzci_g,dzfi_g,nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
+  end if
   !
-#if !defined(_INTERFACE_CAPTURING_VOF)
-  call acdi_set_epsilon(dl,dzfi,psi_thickness_factor,seps)
-#endif
+  call acdi_set_epsilon(dl,nh_g,dzfi,psi_thickness_factor,seps) ! interface width, used by the initial conditions of all methods
   !
-  fexts(1) = 'u'
-  fexts(2) = 'v'
-  fexts(3) = 'w'
-  fexts(4) = 'p'
-  fexts(5) = 'psi'
-#if defined(_SCALAR)
-  fexts(6) = 's'
+  ! checkpoint variables: the fields, followed by the terms of the previous time step needed to
+  ! restart the time integration exactly, saved and loaded with `is_full_restart = T`
+  !
+  nio_s = nio
+  if(is_full_restart) then
+    nio_s = nio + 5 + nscal
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    nio_s = nio_s + 6
 #endif
+  end if
+  allocate(io_vars(nio_s),c_io_vars(nio_s),nh_io(3,nio_s)) ! u,v,w,p,psi,s
+  nh_io(:,1:3) = nh_v; nh_io(:,4) = nh_p; nh_io(:,5) = nh_psi
+  io_vars(1)%arr => u  ; c_io_vars(1) = 'u'
+  io_vars(2)%arr => v  ; c_io_vars(2) = 'v'
+  io_vars(3)%arr => w  ; c_io_vars(3) = 'w'
+  io_vars(4)%arr => p  ; c_io_vars(4) = 'p'
+  io_vars(5)%arr => psi; c_io_vars(5) = 'psi'
+  if(nscal > 0) then
+    nh_io(:,6) = nh_s
+    io_vars(6)%arr => s; c_io_vars(6) = 's'
+  end if
+  if(is_full_restart) then
+    is = nio
+    nh_io(:,nio+1:) = 0; nh_io(:,nio+1) = nh_p
+    io_vars(is+1)%arr => po       ; c_io_vars(is+1) = 'po'
+    io_vars(is+2)%arr => dudtrko  ; c_io_vars(is+2) = 'dudtrko'
+    io_vars(is+3)%arr => dvdtrko  ; c_io_vars(is+3) = 'dvdtrko'
+    io_vars(is+4)%arr => dwdtrko  ; c_io_vars(is+4) = 'dwdtrko'
+    io_vars(is+5)%arr => dpsidtrko; c_io_vars(is+5) = 'dpsidtrko'
+    is = is + 5
+    if(nscal > 0) then
+      io_vars(is+1)%arr => dsdtrko; c_io_vars(is+1) = 'dsdtrko'
+      is = is + 1
+    end if
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    io_vars(is+1)%arr => surfx_n; c_io_vars(is+1) = 'surfx_n'
+    io_vars(is+2)%arr => surfy_n; c_io_vars(is+2) = 'surfy_n'
+    io_vars(is+3)%arr => surfz_n; c_io_vars(is+3) = 'surfz_n'
+    io_vars(is+4)%arr => surfx_o; c_io_vars(is+4) = 'surfx_o'
+    io_vars(is+5)%arr => surfy_o; c_io_vars(is+5) = 'surfy_o'
+    io_vars(is+6)%arr => surfz_o; c_io_vars(is+6) = 'surfz_o'
+#endif
+  end if
+  !
+  is_dtdma_update_p = .true.
+  !
+  u(:,:,:)  = 0.
+  v(:,:,:)  = 0.
+  w(:,:,:)  = 0.
+  p(:,:,:)  = 0.
+  pp(:,:,:) = 0.
+  po(:,:,:) = 0.
+  dudtrko(:,:,:) = 0.
+  dvdtrko(:,:,:) = 0.
+  dwdtrko(:,:,:) = 0.
+  dpsidtrko(:,:,:) = 0.
+  if(nscal > 0) dsdtrko(:,:,:) = 0.
+  wall_force_old(:) = 0.
+  is_first = .true.
+#if defined(_CONSTANT_COEFFS_POISSON)
+  pn(:,:,:) = 0.
+#endif
+  if(nscal > 0) s(:,:,:) = 0.
+  psi(:,:,:) = 0.
+  psio(:,:,:) = 0.
+  kappa(:,:,:) = 0.
+  normx(:,:,:) = 0.
+  normy(:,:,:) = 0.
+  normz(:,:,:) = 0.
+#if defined(_SDF_NORMALS)
+  phi(:,:,:) = 0.
+#endif
+  psiflx_x(:,:,:) = 0.
+  psiflx_y(:,:,:) = 0.
+  psiflx_z(:,:,:) = 0.
   if(.not.restart) then
     istep = 0
     time = 0.
-    call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
-#if defined(_SCALAR)
-    call initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
-#endif
-    call init2fl(inipsi,cbcpsi,seps,lo,hi,l,dl,zc_g,psi)
-    if(myid == 0) print*, '*** Initial condition succesfully set ***'
+    call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
+                  bforce,is_wallturb,time,u,v,w,p)
+    if(nscal > 0) call initscal(inisca,bcsca,ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
+    call init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
+    if(myid == 0) print*, '*** Initial condition successfully set ***'
   else
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
-#if defined(_SCALAR)
-    call load_one('r',trim(datadir)//'fld_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
-#endif
-    if(myid == 0) print*, '*** Checkpoints loaded at time = ', time, 'time step = ', istep, '. ***'
+    do is=1,nio
+      call load_one('r',trim(datadir)//'fld_'//trim(c_io_vars(is))//trim(io_ext), &
+                    MPI_COMM_WORLD,ng,nh_io(:,is),nh_g,lo,hi,io_vars(is)%arr,trim(c_io_vars(is)),time,istep, &
+                    is_check_time=is > 1)
+    end do
+    if(myid == 0) print*, '*** Checkpoint loaded at time = ', time, 'time step = ', istep, '. ***'
+    if(is_full_restart) then
+      !
+      ! terms of the previous time step, if they were all saved; otherwise the time integration restarts
+      ! as in a new run, with a first-order step
+      !
+      is_first = .false.
+      if(myid == 0) then
+        do is=nio+1,nio_s
+          inquire(file=trim(datadir)//'fld_'//trim(c_io_vars(is))//trim(io_ext),exist=is_done)
+          is_first = is_first.or..not.is_done
+        end do
+        open(newunit=iunit,file=trim(datadir)//'fld_dt.out',status='old',action='read',iostat=istat)
+        if(istat == 0) read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3)
+        if(istat == 0) close(iunit)
+        is_first = is_first.or.istat /= 0
+      end if
+      call MPI_BCAST(is_first      ,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+      call MPI_BCAST(dt_restart    ,2,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
+      call MPI_BCAST(wall_force_old,3,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
+      if(.not.is_first) then
+        do is=nio+1,nio_s
+          call load_one('r',trim(datadir)//'fld_'//trim(c_io_vars(is))//trim(io_ext), &
+                        MPI_COMM_WORLD,ng,nh_io(:,is),nh_g,lo,hi,io_vars(is)%arr,trim(c_io_vars(is)),time,istep, &
+                        is_check_time=.true.)
+        end do
+        if(myid == 0) print*, '*** Terms of the previous time step loaded. ***'
+      else
+        if(myid == 0) print*, 'WARNING: terms of the previous time step not found; restarting with a first-order step.'
+      end if
+    end if
+    if(is_overwrite_save.and.nsaves_max > 0) then
+      if(myid == 0) then
+        istat = read_link(trim(datadir)//'fld_'//trim(c_io_vars(1))//trim(io_ext),fname_save)
+        if(istat == 0) read(fname_save(5:8),'(i4)',iostat=istat) savecounter
+        if(istat /= 0) savecounter = 0
+      end if
+      call MPI_BCAST(savecounter,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+    end if
   end if
-  !$acc enter data copyin(u,v,w,p,pp,pn,po) async
+  !$acc enter data copyin(u,v,w,p,pp,pn,po)
+  !$acc enter data copyin(dudtrko,dvdtrko,dwdtrko,dpsidtrko)
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
-  !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o) async
+  !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
-  !$acc wait
-  call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-  call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+  call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
+  call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
-  !$acc kernels default(present) async(1)
-  pn(:,:,:) =  p(:,:,:)
-  po(:,:,:) = pn(:,:,:)
-  !$acc end kernels
+  !$acc parallel loop collapse(3) default(present) async(1)
+  !$OMP parallel do   collapse(3) DEFAULT(shared)
+  do k=1-nh_p,n(3)+nh_p
+    do j=1-nh_p,n(2)+nh_p
+      do i=1-nh_p,n(1)+nh_p
+        pn(i,j,k) = p(i,j,k)
+        if(is_first) po(i,j,k) = p(i,j,k)
+      end do
+    end do
+  end do
+  if(.not.is_first) call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,po)
 #endif
-#if defined(_SCALAR)
-  !$acc enter data copyin(s) async(1)
-  call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
-  !$acc wait
-#endif
+  if(nscal > 0) then
+    !$acc enter data copyin(s,dsdtrko) async(1)
+    call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+  end if
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
 #if defined(_SDF_NORMALS)
   !$acc enter data create(phi) async(1)
 #endif
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
-  call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+  call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
   !$acc wait
   !
 #if defined(_SDF_NORMALS)
 #if !defined(_INTERFACE_CAPTURING_VOF)
-  call acdi_cmpt_phi(n,seps,psi,phi)
+  call acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
 #else
-  call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)
+  call vof_thinc_cmpt_phi(n,nh_psi,vof_thinc_beta,psi,phi)
 #endif
-#endif
-#if defined(_SDF_NORMALS)
-  call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+  call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
 #else
-  call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+  call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-  call boundp(cbccur,n,bccur,nb,is_bound,dl,dzc,kappa)
-  call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-  call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-  call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+  call boundp(cbccur,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+  call boundp(cbcnor(:,:,1),n,nh_psi,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+  call boundp(cbcnor(:,:,2),n,nh_psi,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+  call boundp(cbcnor(:,:,3),n,nh_psi,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
   !
 #if !defined(_INTERFACE_CAPTURING_VOF)
-  call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
+  call acdi_set_gamma(n,nh_v,acdi_gam_factor,u,v,w,gam)
   gam = max(gam,acdi_gam_min)
   if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
 #endif
@@ -383,19 +536,22 @@ program cans
   ! post-process and write initial condition
   !
   write(fldnum,'(i7.7)') istep
-  !$acc wait
-  !$acc update self(u,v,w,p,psi,kappa,s)
-  if(iout1d > 0.and.mod(istep,max(iout1d,1)) == 0) then
-#include "out1d.h90"
+  !$acc wait ! not needed but to prevent possible future issues
+  !$acc update self(u,v,w,p,psi,kappa)
+  if(nscal > 0) then
+    !$acc update self(s)
   end if
-  if(iout2d > 0.and.mod(istep,max(iout2d,1)) == 0) then
-#include "out2d.h90"
+  if(is_output_due(istep,iout1d,tout1d,time,time,restart)) then
+    include 'out1d.h90'
   end if
-  if(iout3d > 0.and.mod(istep,max(iout3d,1)) == 0) then
-#include "out3d.h90"
+  if(is_output_due(istep,iout2d,tout2d,time,time,restart)) then
+    include 'out2d.h90'
+  end if
+  if(is_output_due(istep,iout3d,tout3d,time,time,restart)) then
+    include 'out3d.h90'
   end if
   !
-  call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+  call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
   dt = min(cfl*dt_cfl,dtmax)
   if(dt_f > 0.) then
     if(dt_f > dt) then
@@ -404,8 +560,15 @@ program cans
     end if
     dt = dt_f
   end if
-  if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
   dto = dt
+  if(restart.and..not.is_first) then
+    !
+    ! time steps of the run that is restarted
+    !
+    if(dt_f <= 0.) dt = dt_restart(1)
+    dto = dt_restart(2)
+  end if
+  if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
   dti = 1./dt
   kill = .false.
   force_balance(:,:) = 0._rp
@@ -416,11 +579,12 @@ program cans
   if(myid == 0) print*, '*** Calculation loop starts now ***'
   is_done = .false.
   do while(.not.is_done)
-#if defined(_TIMING)
-    !$acc wait(1)
-    dt12 = MPI_WTIME()
-#endif
+    if(is_timing) then
+      !$acc wait(1)
+      dt12 = MPI_WTIME()
+    end if
     istep = istep + 1
+    time_start = time
     time = time + dt
     if(myid == 0) print*, 'Time step #', istep, 'Time = ', time
     dt_r = dt/dto
@@ -431,90 +595,121 @@ program cans
     !
     ! phase field update
     !
-    !$acc kernels default(present) async(1)
-    psio(:,:,:)   = psi(:,:,:)
-    !$acc end kernels
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    do k=1-nh_psi,n(3)+nh_psi
+      do j=1-nh_psi,n(2)+nh_psi
+        do i=1-nh_psi,n(1)+nh_psi
+          psio(i,j,k) = psi(i,j,k)
+        end do
+      end do
+    end do
     if(is_track_interface) then
-      call tm_2fl(tm_coeff,n,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi,psiflx_x,psiflx_y,psiflx_z)
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
-      call boundp(cbcpsi,n,bcpsi,nb,is_bound,dl,dzc,psi)
+      call tm_2fl(tm_coeff,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
+                  psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
+      call bounduvw(cbcvel,n,nh_psi,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+      call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
 #if defined(_SDF_NORMALS)
 #if !defined(_INTERFACE_CAPTURING_VOF)
-      call acdi_cmpt_phi(n,seps,psi,phi)
+      call acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
 #else
-      call vof_thinc_cmpt_phi(n,vof_thinc_beta,psi,phi)
+      call vof_thinc_cmpt_phi(n,nh_psi,vof_thinc_beta,psi,phi)
 #endif
-#endif
-#if defined(_SDF_NORMALS)
-      call cmpt_norm_curv(n,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+      call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
 #else
-      call cmpt_norm_curv(n,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+      call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-      call boundp(cbccur,n,bccur,nb,is_bound,dl,dzc,kappa)
-      call boundp(cbcnor(:,:,1),n,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-      call boundp(cbcnor(:,:,2),n,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-      call boundp(cbcnor(:,:,3),n,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      call boundp(cbccur,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+      call boundp(cbcnor(:,:,1),n,nh_psi,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+      call boundp(cbcnor(:,:,2),n,nh_psi,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+      call boundp(cbcnor(:,:,3),n,nh_psi,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
     else
-      !$acc kernels default(present) async(1)
-      psiflx_x(:,:,:) = 0.
-      psiflx_y(:,:,:) = 0.
-      psiflx_z(:,:,:) = 0.
-      !$acc end kernels
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1-nh_psi,n(3)+nh_psi
+        do j=1-nh_psi,n(2)+nh_psi
+          do i=1-nh_psi,n(1)+nh_psi
+            psiflx_x(i,j,k) = 0.
+            psiflx_y(i,j,k) = 0.
+            psiflx_z(i,j,k) = 0.
+          end do
+        end do
+      end do
     end if
-#if defined(_SCALAR)
-    call tm_scal(tm_coeff,n,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,s)
-    call boundp(cbcsca,n,bcsca,nb,is_bound,dl,dzc,s)
-#endif
+    if(nscal > 0) then
+      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
+                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
+      call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+    end if
     if(.not.is_solve_ns) then
-      call initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2),bforce,is_wallturb,time,u,v,w,p)
+      call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
+                    bforce,is_wallturb,time,u,v,w,p)
       !$acc wait(1)
       !$acc update device(u,v,w,p) async(1)
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
     else
       rho_av(:) = 0.
       is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
       if(is_cmpt_rho_av(1)) &
-        call bulk_mean_12_stag(n,1,grid_vol_ratio_f,psi,rho12,rho_av(1))
+        call bulk_mean_12_stag(n,nh_psi,nh_g,1,grid_vol_ratio_f,psi,rho12,rho_av(1))
       if(is_cmpt_rho_av(2)) &
-        call bulk_mean_12_stag(n,2,grid_vol_ratio_f,psi,rho12,rho_av(2))
+        call bulk_mean_12_stag(n,nh_psi,nh_g,2,grid_vol_ratio_f,psi,rho12,rho_av(2))
       if(is_cmpt_rho_av(3)) &
-        call bulk_mean_12_stag(n,3,grid_vol_ratio_c,psi,rho12,rho_av(3))
-      call tm(tm_coeff,n,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
-              bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+        call bulk_mean_12_stag(n,nh_psi,nh_g,3,grid_vol_ratio_c,psi,rho12,rho_av(3))
+      call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f, &
+              dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-              psio,psiflx_x,psiflx_y,psiflx_z,u,v,w,force_balance)
+              psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance)
       if(is_forced_hit) then
-        call lscale_forcing(2,lo,hi,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
+        call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
       end if
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-      !$acc kernels default(present) async(1)
-      pp(:,:,:) = p(:,:,:)
-      !$acc end kernels
-      call fillps(n,dli,dzfi,dtrki,rho0,u,v,w,p)
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1-nh_p,n(3)+nh_p
+        do j=1-nh_p,n(2)+nh_p
+          do i=1-nh_p,n(1)+nh_p
+            pp(i,j,k) = p(i,j,k)
+          end do
+        end do
+      end do
+      call fillps(n,nh_v,nh_p,nh_g,dli,dzfi,dtrki*rho0,u,v,w,p)
 #if defined(_CONSTANT_COEFFS_POISSON)
-      call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
-      call solver(n,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p)
+      call updt_rhs_b(['c','c','c'],cbcpre,n,nh_p,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,p)
+      call solver(n,nh_p,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],p,is_dtdma_update_p,ap_d,cp_d, &
+                  .not.is_impdiff)
 #else
-      call solver_vc(ng,lo,hi,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
+      call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,p,po)
 #endif
-      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-      call correc(n,dli,dzci,rho0,rho12,dtrk,p,psi,u,v,w)
-      call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
+      call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
+#if defined(_CONSTANT_COEFFS_POISSON)
+      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk/rho0,p,psi,u,v,w)
+#else
+      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk,p,psi,u,v,w)
+#endif
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
       if(any(is_forced(:))) then
-        call cmpt_momentum(n,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+        call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
         where(is_forced(:)) force_balance(:,6) = (momentum(:)-force_balance(:,6))/dt
       end if
-      call updatep(pp,p)
-      call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
+      call updatep(n,nh_p,nh_g,dli,dzci,dzfi,alpha,pp,p)
+      call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
     end if
 #if defined(_CONSTANT_COEFFS_POISSON)
-    !$acc kernels default(present) async(1)
-    po(:,:,:) = pn(:,:,:)
-    pn(:,:,:) =  p(:,:,:)
-    !$acc end kernels
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    do k=1-nh_p,n(3)+nh_p
+      do j=1-nh_p,n(2)+nh_p
+        do i=1-nh_p,n(1)+nh_p
+          po(i,j,k) = pn(i,j,k)
+          pn(i,j,k) =  p(i,j,k)
+        end do
+      end do
+    end do
 #endif
+    is_first = .false.
     !
     ! check simulation stopping criteria
     !
@@ -526,23 +721,23 @@ program cans
     end if
     if(stop_type(3)) then ! maximum wall-clock time reached
       tw = (MPI_WTIME()-twi)/3600.
+      call MPI_ALLREDUCE(MPI_IN_PLACE,tw,1,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD,ierr)
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
     dto = dt
 #if !defined(_INTERFACE_CAPTURING_VOF)
-    if(mod(istep,1) == 0) then
-      call acdi_set_gamma(n,acdi_gam_factor,u,v,w,gam)
-      gam = max(gam,acdi_gam_min)
-    end if
+    call acdi_set_gamma(n,nh_v,acdi_gam_factor,u,v,w,gam)
+    gam = max(gam,acdi_gam_min)
 #endif
-    if(mod(istep,icheck) == 0) then
+    if(icheck > 0.and.mod(istep,max(icheck,1)) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+      call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
       dt = min(cfl*dt_cfl,dtmax)
       if(dt_f > 0.) then
         if(dt_f > dt) then
-          if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
+          if(myid == 0) print*, 'ERROR: fixed time step exceeds estimated stability limit.'
           if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+          if(myid == 0) print*, 'Aborting...'
           is_done = .true.
           kill = .true.
         else
@@ -550,28 +745,20 @@ program cans
         end if
       end if
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
-      if(dt_cfl < small) then
-        if(myid == 0) print*, 'ERROR: time step is too small.'
-        if(myid == 0) print*, 'Aborting...'
-        is_done = .true.
-        kill = .true.
-      end if
       dti = 1./dt
-      call chkdiv(lo,hi,dli,dzfi,u,v,w,divtot,divmax)
-      if(myid == 0) print*, 'Total divergence = ', divtot, '| Maximum divergence = ', divmax
-#if !defined(_MASK_DIVERGENCE_CHECK)
-      if(divmax > small.or.is_nan(divtot)) then
+      call chkdiv(lo,hi,nh_v,nh_g,l,dli,dzfi,u,v,w,divtot,divmax)
+      if(myid == 0) print*, 'Velocity divergence norms: Mean = ', divtot, '| Maximum = ', divmax
+      if((divmax > small.and..not.is_mask_divergence_check).or.is_nan(divtot)) then
         if(myid == 0) print*, 'ERROR: maximum divergence is too large.'
         if(myid == 0) print*, 'Aborting...'
         is_done = .true.
         kill = .true.
       end if
-#endif
     end if
     !
     ! output routines below
     !
-    if(iout0d > 0.and.mod(istep,max(iout0d,1)) == 0) then
+    if(is_output_due(istep,iout0d,tout0d,time_start,time)) then
       !allocate(var(4))
       var(1) = 1.*istep
       var(2) = dt
@@ -580,15 +767,21 @@ program cans
       !
       dpdl(:) = 0._rp
       where(is_forced(:)) dpdl(:) = -(force_balance(:,5)-bforce(:))
-      if(any(abs(bforce(:)) > 0._rp) .or. any(abs(dpdl(:)) > 0._rp)) then
+      if(any(abs(bforce(:)) > 0.).or.any(abs(dpdl(:)) > 0.)) then
         meanvel(:) = 0._rp
-        if(abs(bforce(1)) > 0._rp .or. abs(dpdl(1)) > 0._rp) call bulk_mean(n,grid_vol_ratio_f,u,meanvel(1))
-        if(abs(bforce(2)) > 0._rp .or. abs(dpdl(2)) > 0._rp) call bulk_mean(n,grid_vol_ratio_f,v,meanvel(2))
-        if(abs(bforce(3)) > 0._rp .or. abs(dpdl(3)) > 0._rp) call bulk_mean(n,grid_vol_ratio_c,w,meanvel(3))
-        var(1) = time
-        var(2:4) = bforce(:)
-        var(5:7) = dpdl(:)
-        var(8:10) = meanvel(:)
+        if(abs(bforce(1)) > 0..or.abs(dpdl(1)) > 0.) then
+          call bulk_mean(n,nh_v,nh_g,grid_vol_ratio_f,u,meanvel(1))
+        end if
+        if(abs(bforce(2)) > 0..or.abs(dpdl(2)) > 0.) then
+          call bulk_mean(n,nh_v,nh_g,grid_vol_ratio_f,v,meanvel(2))
+        end if
+        if(abs(bforce(3)) > 0..or.abs(dpdl(3)) > 0.) then
+          call bulk_mean(n,nh_v,nh_g,grid_vol_ratio_c,w,meanvel(3))
+        end if
+        var(1)   = time
+        var(2:4) = bforce(1:3)
+        var(5:7) = dpdl(1:3)
+        var(8:10) = meanvel(1:3)
         call out0d(trim(datadir)//'forcing.out',10,var)
       end if
       if(any(is_forced(:))) then
@@ -611,69 +804,128 @@ program cans
 #endif
     end if
     write(fldnum,'(i7.7)') istep
-    if(iout1d > 0.and.mod(istep,max(iout1d,1)) == 0) then
+    if(is_output_due(istep,iout1d,tout1d,time_start,time)) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa,s)
-#include "out1d.h90"
+      !$acc update self(u,v,w,p,psi,kappa)
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
+      include 'out1d.h90'
     end if
-    if(iout2d > 0.and.mod(istep,max(iout2d,1)) == 0) then
+    if(is_output_due(istep,iout2d,tout2d,time_start,time)) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa,s)
-#include "out2d.h90"
+      !$acc update self(u,v,w,p,psi,kappa)
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
+      include 'out2d.h90'
     end if
-    if(iout3d > 0.and.mod(istep,max(iout3d,1)) == 0) then
+    if(is_output_due(istep,iout3d,tout3d,time_start,time)) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa,s)
-#include "out3d.h90"
+      !$acc update self(u,v,w,p,psi,kappa)
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
+      include 'out3d.h90'
     end if
-    if(isave > 0.and.((mod(istep,max(isave,1)) == 0).or.(is_done.and..not.kill))) then
-      if(is_overwrite_save) then
+    if((isave > 0.or.tsave > 0.).and.(.not.kill).and.(is_output_due(istep,isave,tsave,time_start,time).or.is_done)) then
+      if(is_overwrite_save.and.nsaves_max <= 0) then
         filename = 'fld'
       else
         filename = 'fld_'//fldnum
-        if(nsaves_max > 0) then
+        if(is_overwrite_save) then
           if(savecounter >= nsaves_max) savecounter = 0
           savecounter = savecounter + 1
           write(chkptnum,'(i4.4)') savecounter
           filename = 'fld_'//chkptnum
-          var(1) = 1.*istep
-          var(2) = time
-          var(3) = 1.*savecounter
-          call out0d(trim(datadir)//'log_checkpoints.out',3,var)
         end if
       end if
       !$acc wait
-      !$acc update self(u,v,w,p,psi,s)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(1))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,u,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(2))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,v,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(3))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,w,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(4))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,p,time,istep)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(5))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,psi,time,istep)
-#if defined(_SCALAR)
-      call load_one('w',trim(datadir)//trim(filename)//'_'//trim(fexts(6))//'.bin',MPI_COMM_WORLD,ng,[1,1,1],lo,hi,s,time,istep)
-#endif
-      if(.not.is_overwrite_save) then
-        !
-        ! fld_?.bin -> last checkpoint file (symbolic link)
-        !
-        do k = 1,5
-          call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin')
-        end do
-#if defined(_SCALAR)
-        call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(fexts(k))//'.bin','fld_'//trim(fexts(k))//'.bin') ! k = 6 now
+      !$acc update self(u,v,w,p,psi,kappa)
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
+      if(is_full_restart) then
+        !$acc update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+        if(nscal > 0) then
+          !$acc update self(dsdtrko)
+        end if
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+        !$acc update self(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
       end if
-      if(myid == 0) print*, '*** Checkpoints saved at time = ', time, 'time step = ', istep, '. ***'
+      is_save_tmp = trim(io_ext) /= '.bp'
+      do is=1,nio_s
+        fname_save = trim(datadir)//trim(filename)//'_'//trim(c_io_vars(is))//trim(io_ext)
+        if(is_save_tmp) fname_save = trim(datadir)//'fld_'//trim(c_io_vars(is))//'.tmp'//trim(io_ext)
+        select case(trim(c_io_vars(is)))
+        case('u')
+          call load_one('w',trim(fname_save), &
+                        MPI_COMM_WORLD,ng,nh_io(:,is),nh_g,lo,hi,io_vars(is)%arr,trim(c_io_vars(is)),time,istep, &
+                        xf_g,yc_g,zc_g)
+        case('v')
+          call load_one('w',trim(fname_save), &
+                        MPI_COMM_WORLD,ng,nh_io(:,is),nh_g,lo,hi,io_vars(is)%arr,trim(c_io_vars(is)),time,istep, &
+                        xc_g,yf_g,zc_g)
+        case('w')
+          call load_one('w',trim(fname_save), &
+                        MPI_COMM_WORLD,ng,nh_io(:,is),nh_g,lo,hi,io_vars(is)%arr,trim(c_io_vars(is)),time,istep, &
+                        xc_g,yc_g,zf_g)
+        case default
+          call load_one('w',trim(fname_save), &
+                        MPI_COMM_WORLD,ng,nh_io(:,is),nh_g,lo,hi,io_vars(is)%arr,trim(c_io_vars(is)),time,istep, &
+                        xc_g,yc_g,zc_g)
+        end select
+      end do
+      if(is_save_tmp) then
+        call MPI_BARRIER(MPI_COMM_WORLD,ierr)
+        if(myid == 0) then
+          do is=1,nio_s
+            istat = rename_file(trim(datadir)//'fld_'//trim(c_io_vars(is))//'.tmp'//trim(io_ext), &
+                                trim(datadir)//trim(filename)//'_'//trim(c_io_vars(is))//trim(io_ext))
+            if(istat /= 0) print*, 'WARNING: could not rename the temporary checkpoint file of ', trim(c_io_vars(is)), '.'
+          end do
+        end if
+      end if
+      if(.not.is_overwrite_save.or.nsaves_max > 0) then
+        !
+        ! fld_*.<ext> -> last checkpoint file (symbolic link)
+        !
+        do is=1,nio_s
+          call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(c_io_vars(is))//trim(io_ext), &
+                         'fld_'//trim(c_io_vars(is))//trim(io_ext))
+        end do
+      end if
+      if(is_full_restart) then
+        !
+        ! time steps and wall force of the previous time step
+        !
+        if(myid == 0) then
+          open(newunit=iunit,file=trim(datadir)//trim(filename)//'_dt.out',status='replace')
+          write(iunit,'(*(es24.16e3,1x))') dt,dto,wall_force_old(1:3)
+          close(iunit)
+        end if
+        if(.not.is_overwrite_save.or.nsaves_max > 0) then
+          call gen_alias(myid,trim(datadir),trim(filename)//'_dt.out','fld_dt.out')
+        end if
+      end if
+      if(is_overwrite_save.and.nsaves_max > 0) then
+        var(1) = 1.*istep
+        var(2) = time
+        var(3) = 1.*savecounter
+        call out0d(trim(datadir)//'log_checkpoints.out',3,var)
+      end if
+      if(myid == 0) print*, '*** Checkpoint saved at time = ', time, 'time step = ', istep, '. ***'
     end if
-#if defined(_TIMING)
+    if(is_timing) then
       !$acc wait(1)
       dt12 = MPI_WTIME()-dt12
       call MPI_ALLREDUCE(dt12,dt12av ,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
       call MPI_ALLREDUCE(dt12,dt12min,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
       call MPI_ALLREDUCE(dt12,dt12max,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
-      if(myid == 0) print*, 'Avrg, min & max elapsed time: '
+      if(myid == 0) print*, 'Average, minimum & maximum elapsed time: '
       if(myid == 0) print*, dt12av/(1.*product(dims)),dt12min,dt12max
-#endif
+    end if
   end do
   !
   ! clear ffts
@@ -681,5 +933,9 @@ program cans
   call fftend(arrplanp)
   if(myid == 0.and.(.not.kill)) print*, '*** Fim ***'
   call decomp_2d_finalize
+#if defined(_OPENACC)
+  call cudecomp_finalize
+#endif
   call MPI_FINALIZE(ierr)
+  if(kill) error stop
 end program cans

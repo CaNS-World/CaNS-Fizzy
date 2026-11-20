@@ -1,90 +1,190 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
 module mod_workspaces
 #if defined(_OPENACC)
   use mod_types
-  use mod_common_cudecomp, only: work,work_cuda,work_halo,work_halo_cuda
-  use mod_utils, only: f_sizeof
+  use mod_common_cudecomp, only: work,work_cuda,work_halo,work_halo_cuda,work_dtdma,work_dtdma_cuda
+  use mod_utils          , only: f_sizeof
   implicit none
   private
-  public init_wspace_arrays,set_cufft_wspace
+  public init_wspace_arrays,set_cufft_wspace,cudecomp_finalize
 contains
   subroutine init_wspace_arrays
-    use mod_common_cudecomp, only: handle,gd_halo,gd_poi     , &
+    use mod_common_cudecomp, only: handle,gd_halo,gd_poi,gd_poi_io,gd_dtdma, &
                                    ap_x_poi,ap_y_poi,ap_z_poi, &
                                    solver_buf_0,solver_buf_1, &
-                                   ap_z,pz_aux_1,pz_aux_2, &
-                                   istream_acc_queue_1
-    use mod_common_mpi     , only: ipencil => ipencil_axis
-    use mod_fft            , only: wsize_fft
-    use mod_param          , only: cudecomp_is_t_in_place,cbcpre
+                                   ap_z,pz_aux_1, &
+                                   istream_acc_queue_1,istream_acc_queue_1_comm_lib
+    use mod_fft            , only: wsize_fft,wsize_tmp
+    use mod_param          , only: ng,dims,cudecomp_is_t_in_place,cbcpre,ipencil => ipencil_axis,is_poisson_dtdma, &
+                                   is_use_diezdecomp,nh_g
+#if defined(_USE_DIEZDECOMP)
+    use diezdecomp
+#elif defined(_USE_HIP)
+    use hipdecomp
+#else
     use cudecomp
+#endif
     use openacc
     implicit none
     integer :: istat
-    integer(i8) :: wsize,max_wsize
+    integer(i8) :: i,wsize,max_wsize,elem_round
     integer :: nh(3)
     !
-    ! allocate cuDecomp workspace buffer for transposes (reused for FFTs)
+    ! allocate cuDecomp workspace buffer for transposes (reused for FFTs and other temporaries)
     !
     max_wsize = -1
-    wsize     = wsize_fft
+    !
+    ! work space for temporaries, rounded up to 256 byte boundary
+    !
+    elem_round = 256/f_sizeof(1._rp)
+    wsize_tmp = (max(wsize_tmp,ap_x_poi%size,ap_y_poi%size) + elem_round - 1)/elem_round*elem_round
+    wsize     = max(1_i8,wsize_fft) + wsize_tmp ! keep work(wsize_tmp+1) valid when a plan needs no cuFFT workspace
     max_wsize = max(max_wsize,wsize)
     istat = cudecompGetTransposeWorkspaceSize(handle,gd_poi,wsize)
+    max_wsize = max(max_wsize,wsize)
+    istat = cudecompGetTransposeWorkspaceSize(handle,gd_poi_io,wsize)
     max_wsize = max(max_wsize,wsize)
     !
     ! one can append more checks here (e.g., for spectra calculation)
     !
     allocate(work(max_wsize))
+    !$acc enter data create(work) if(is_use_diezdecomp)
+#if !defined(_USE_DIEZDECOMP)
     istat = cudecompMalloc(handle,gd_poi,work_cuda,max_wsize)
-    call acc_map_data(work,work_cuda,max_wsize*f_sizeof(work(1)))
+#if defined(_USE_HIP)
+    call acc_map_data(work,c_loc(work_cuda),max_wsize*f_sizeof(work(1)))
+#else
+    call acc_map_data(work,work_cuda       ,max_wsize*f_sizeof(work(1)))
+#endif
+#endif
     !
     ! allocate cuDecomp workspace buffer for halos
-    ! (needs to be different due to the possible need of an NVSHMEM allocator
-    !  in one of the descriptors, rather than a simple cudaMaloc)
+    ! (needs to be separate due to the possible need for an NVSHMEM allocator
+    !  in one of the descriptors, rather than a simple cudaMalloc)
     !
-    nh(:) = 1
+    nh(:) = nh_g ! largest halo width
     istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nh,max_wsize)
     allocate(work_halo(max_wsize))
     !
+    !$acc enter data create(work_halo) if(is_use_diezdecomp)
+#if !defined(_USE_DIEZDECOMP)
     istat = cudecompMalloc(handle,gd_halo,work_halo_cuda,max_wsize)
-    call acc_map_data(work_halo,work_halo_cuda,max_wsize*f_sizeof(work_halo(1)))
+#if defined(_USE_HIP)
+    call acc_map_data(work_halo,c_loc(work_halo_cuda),max_wsize*f_sizeof(work_halo(1)))
+#else
+    call acc_map_data(work_halo,work_halo_cuda       ,max_wsize*f_sizeof(work_halo(1)))
+#endif
+#endif
     !
     ! allocate transpose buffers
     !
     wsize = max(ap_x_poi%size,ap_y_poi%size,ap_z_poi%size)
-    allocate(solver_buf_0(wsize))
-    if(.not.cudecomp_is_t_in_place) allocate(solver_buf_1,mold=solver_buf_0)
+    allocate(solver_buf_0(wsize),solver_buf_1(wsize))
     !$acc enter data create(solver_buf_0,solver_buf_1)
+    !$acc parallel loop default(present)
+    do i=1,wsize
+      solver_buf_0(i) = 0.
+      solver_buf_1(i) = 0.
+    end do
     if(cbcpre(0,3)//cbcpre(1,3) == 'PP') then
-      allocate(pz_aux_1(ap_z%shape(1),ap_z%shape(2),ap_z%shape(3)), &
-               pz_aux_2(ap_z%shape(1),ap_z%shape(2),ap_z%shape(3)))
-      !$acc enter data create(pz_aux_1,pz_aux_2)
+      allocate(pz_aux_1(ap_z%shape(1),ap_z%shape(2),ap_z%shape(3)))
+      !$acc enter data create(pz_aux_1)
     end if
+    if(is_poisson_dtdma) then
+      if(.not.allocated(pz_aux_1)) then
+        allocate(pz_aux_1(ap_z%shape(1),ap_z%shape(2),ap_z%shape(3)))
+        !$acc enter data create(pz_aux_1)
+      end if
+      !
+      ! allocate DTDMA transpose workspaces: a separate buffer is needed because `work` is used along with `work_dtdma`
+      !
+      istat = cudecompGetTransposeWorkspaceSize(handle,gd_dtdma,wsize)
+      wsize = max(wsize,3*((ng(3)+dims(2)-1)/dims(2))*dims(2)) ! considers largest Z slab on every rank
+      allocate(work_dtdma(wsize))
+      !$acc enter data create(work_dtdma) if(is_use_diezdecomp)
+#if !defined(_USE_DIEZDECOMP)
+      istat = cudecompMalloc(handle,gd_dtdma,work_dtdma_cuda,wsize)
+#if defined(_USE_HIP)
+      call acc_map_data(work_dtdma,c_loc(work_dtdma_cuda),wsize*f_sizeof(work_dtdma(1)))
+#else
+      call acc_map_data(work_dtdma,work_dtdma_cuda       ,wsize*f_sizeof(work_dtdma(1)))
+#endif
+#endif
+    end if
+    !
+#if !defined(_USE_HIP)
     istream_acc_queue_1 = acc_get_cuda_stream(1) ! fetch CUDA stream of OpenACC queue 1
+#else
+    istream_acc_queue_1 = acc_get_hip_stream(1)
+#endif
+    istream_acc_queue_1_comm_lib = istream_acc_queue_1
+#if defined(_USE_DIEZDECOMP)
+    istream_acc_queue_1_comm_lib = 1
+#endif
   end subroutine init_wspace_arrays
   subroutine set_cufft_wspace(arrplan,istream)
+#if !defined(_USE_HIP)
     use cufft
+#else
+    use, intrinsic :: iso_c_binding, only: C_PTR,c_loc
+    use hipfort_hipfft, only: cufftSetWorkArea => hipfftSetWorkArea_, &
+                              cufftSetStream   => hipfftSetStream_
+#endif
     use openacc
+    use mod_fft       , only: wsize_tmp
     !
     ! to be done after initializing all FFTs and allocating work
     !
     implicit none
-    integer                 , intent(in)           :: arrplan(:)
-    integer(acc_handle_kind), intent(in), optional :: istream
+#if !defined(_USE_HIP)
+    integer    , intent(in) :: arrplan(:)
+#else
+    type(C_PTR), intent(in) :: arrplan(:)
+#endif
+#if defined(_USE_HIP) && !defined(_USE_DIEZDECOMP)
+    type(C_PTR), target, intent(in), optional :: istream
+#else
+    integer(acc_handle_kind), target, intent(in), optional :: istream
+#endif
     integer :: istat,i
     do i=1,size(arrplan)
       !$acc host_data use_device(work)
-      istat = cufftSetWorkArea(arrplan(i),work)
-      !$acc end host_data
+#if !defined(_USE_HIP)
+      istat = cufftSetWorkArea(arrplan(i),work(wsize_tmp + 1))
+#else
+      istat = cufftSetWorkArea(arrplan(i),c_loc(work(wsize_tmp + 1)))
+#endif
+#if !defined(_USE_DIEZDECOMP)
       if(present(istream)) then
         istat = cufftSetStream(arrplan(i),istream)
       end if
+#endif
+      !$acc end host_data
     end do
   end subroutine set_cufft_wspace
+  subroutine cudecomp_finalize
+#if !defined(_USE_DIEZDECOMP)
+#if defined(_USE_HIP)
+    use hipdecomp
+#else
+    use cudecomp
+#endif
+    use mod_common_cudecomp, only: handle,gd_halo,gd_poi,gd_poi_io,gd_dtdma
+    use mod_param          , only: is_poisson_dtdma
+    !
+    implicit none
+    integer :: istat
+    istat = cudecompGridDescDestroy(handle,gd_halo)
+    istat = cudecompGridDescDestroy(handle,gd_poi)
+    istat = cudecompGridDescDestroy(handle,gd_poi_io)
+    if(is_poisson_dtdma) istat = cudecompGridDescDestroy(handle,gd_dtdma)
+    istat = cudecompFinalize(handle)
+#endif
+  end subroutine cudecomp_finalize
 #endif
 end module mod_workspaces

@@ -1,16 +1,18 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
 module mod_utils
   implicit none
   private
-  public bulk_mean,bulk_mean_12,bulk_mean_12_stag,f_sizeof,swap
-  !@acc public device_memory_footprint
+  public bulk_mean,f_sizeof,swap
+#if defined(_OPENACC)
+  public device_memory_footprint
+#endif
 contains
-  subroutine bulk_mean(n,grid_vol_ratio,p,mean)
+  subroutine bulk_mean(n,nh,nh_g,grid_vol_ratio,p,mean)
     !
     ! compute the mean value of an observable over the entire domain
     !
@@ -18,14 +20,16 @@ contains
     use mod_types
     implicit none
     integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(0:) :: grid_vol_ratio
-    real(rp), intent(in), dimension(0:,0:,0:) :: p
+    integer , intent(in)               :: nh,nh_g
+    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio
+    real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: p
     real(rp), intent(out) :: mean
     integer :: i,j,k
     integer :: ierr
     mean = 0.
     !$acc data copy(mean) async(1)
     !$acc parallel loop collapse(3) default(present) reduction(+:mean) async(1)
+    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)  REDUCTION(+:mean)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -37,103 +41,6 @@ contains
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,mean,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine bulk_mean
-  subroutine bulk_mean_12(n,grid_vol_ratio,psi,p12,mean)
-    !
-    ! compute the mean value of an observable over the entire domain
-    !
-    use mpi
-    use mod_types
-    implicit none
-    integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(0:) :: grid_vol_ratio
-    real(rp), intent(in), dimension(0:,0:,0:) :: psi
-    real(rp), intent(in), dimension(2)        :: p12
-    real(rp), intent(out) :: mean
-    integer :: i,j,k
-    integer :: ierr
-    mean = 0.
-    !$acc data copy(mean) async(1)
-    !$acc parallel loop collapse(3) default(present) reduction(+:mean) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          mean = mean + (psi(i,j,k)*p12(1)+(1.-psi(i,j,k))*p12(2))*grid_vol_ratio(k)
-        end do
-      end do
-    end do
-    !$acc end data
-    !$acc wait(1)
-    call MPI_ALLREDUCE(MPI_IN_PLACE,mean,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-  end subroutine bulk_mean_12
-  subroutine bulk_mean_12_stag(n,idir,grid_vol_ratio,psi,p12,mean)
-    !
-    ! compute the mean value of an observable over the entire domain
-    !
-    use mpi
-    use mod_types
-    implicit none
-    integer , intent(in), dimension(3) :: n
-    integer , intent(in)               :: idir
-    real(rp), intent(in), dimension(0:) :: grid_vol_ratio
-    real(rp), intent(in), dimension(0:,0:,0:) :: psi
-    real(rp), intent(in), dimension(2)        :: p12
-    real(rp), intent(out) :: mean
-    real(rp) :: psi_loc
-    integer  :: i,j,k
-    integer  :: ierr
-    mean = 0.
-    select case(idir)
-    case(1)
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
-      do k=1,n(3)
-        do j=1,n(2)
-          do i=1,n(1)
-            psi_loc = 0.5*(psi(i+1,j,k)+psi(i,j,k))
-            mean = mean + (psi_loc*p12(1)+(1.-psi_loc)*p12(2))*grid_vol_ratio(k)
-          end do
-        end do
-      end do
-      !$acc end data
-    case(2)
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
-      do k=1,n(3)
-        do j=1,n(2)
-          do i=1,n(1)
-            psi_loc = 0.5*(psi(i,j+1,k)+psi(i,j,k))
-            mean = mean + (psi_loc*p12(1)+(1.-psi_loc)*p12(2))*grid_vol_ratio(k)
-          end do
-        end do
-      end do
-      !$acc end data
-    case(3)
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
-      do k=1,n(3)
-        do j=1,n(2)
-          do i=1,n(1)
-            psi_loc = 0.5*(psi(i,j,k+1)+psi(i,j,k))
-            mean = mean + (psi_loc*p12(1)+(1.-psi_loc)*p12(2))*grid_vol_ratio(k)
-          end do
-        end do
-      end do
-      !$acc end data
-    case default 
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) reduction(+:mean) async(1)
-      do k=1,n(3)
-        do j=1,n(2)
-          do i=1,n(1)
-            mean = mean + (psi(i,j,k)*p12(1)+(1.-psi(i,j,k))*p12(2))*grid_vol_ratio(k)
-          end do
-        end do
-      end do
-      !$acc end data
-    end select
-    !$acc wait(1)
-    call MPI_ALLREDUCE(MPI_IN_PLACE,mean,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-  end subroutine bulk_mean_12_stag
   pure integer function f_sizeof(val) result(isize)
     !
     ! returns storage size of the scalar argument val in bytes
@@ -152,70 +59,78 @@ contains
     arr2 => tmp
   end subroutine swap
 #if defined(_OPENACC)
-  function device_memory_footprint(n,n_z) result(itotal)
+  function device_memory_footprint(n,nh_v,nh_p,nh_s,nh_g,n_z,nscal) result(itotal)
     !
     ! estimate GPU memory footprint, assuming one MPI task <-> one GPU
     !
-    ! NOTE: not updated for the two-fluid solver
-    !
     use mod_types, only: i8,rp
+    use mod_param, only: is_impdiff,is_impdiff_1d,is_poisson_dtdma
     integer, intent(in), dimension(3) :: n,n_z
-    integer :: nh(3)
+    integer, intent(in)               :: nh_v,nh_p,nh_s,nh_g
+    integer, intent(in) :: nscal
     integer(i8) :: itotal,itemp,rp_size
     rp_size = f_sizeof(1._rp)
     itotal = 0
     !
-    ! 1. 'main' arrays: u,v,w,p,pp
+    ! 1. 'main' arrays: u,v,w,p,pp,scalars
     !
-    nh(:) = 1
-    itotal = itotal + product(n(:)+2*nh(:))*rp_size*5
+    itotal = itotal + product(int(n(:),i8)+2*int(nh_v,i8))*rp_size*3
+    itotal = itotal + product(int(n(:),i8)+2*int(nh_p,i8))*rp_size*2
+    itotal = itotal + product(int(n(:),i8)+2*int(nh_s,i8))*rp_size*nscal
     !
     ! 2. grids arrays: zc,zf,dzc,dzf,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f (tiny footprint)
     !
-    nh(:) = 1
-    itotal = itotal + (n(3)+2*nh(3))*rp_size*8
+    itotal = itotal + (n(3)+2*nh_g)*rp_size*8
     !
     ! 3. solver eigenvalues and Gauss elimination coefficient arrays (small footprint)
     !    rhs?%[x,y,z] arrays, lambdaxy? arrays, and a?,b?,c? arrays
     !
     block
       integer(i8) :: itemp1,itemp1_(3),itemp2,itemp3
-      itemp1_(:) = [n_z(2)*n_z(3)*2,n_z(1)*n_z(3)*2,n_z(1)*n_z(2)*2]
+      itemp1_(:) = [int(n_z(2),i8)*int(n_z(3),i8)*2, &
+                    int(n_z(1),i8)*int(n_z(3),i8)*2, &
+                    int(n_z(1),i8)*int(n_z(2),i8)*2]
       itemp1 = sum(itemp1_(:))   ! rhs
-      itemp2 = product(n_z(1:2)) ! lambdaxy
-      itemp3 = n_z(3)*3          ! a,b,c
-      !
-      ! rhsbp, lambdaxyp, ap,bp,cp
-      !
-      itotal = itotal + itemp1*rp_size                + itemp2*rp_size   + itemp3*rp_size
+      itemp2 = product(int(n_z(1:2),i8)) ! lambdaxy
+      itemp3 = int(n_z(3),i8)*3          ! a,b,c
+      if(.not.is_impdiff) then
+        !
+        ! rhsbp, lambdaxyp, ap,bp,cp
+        !
+        itotal = itotal + itemp1*rp_size                        + itemp2*rp_size           + itemp3*rp_size
+      else if(is_impdiff_1d) then
+        !
+        ! rhsbp,rhsb[u,v,w,scalars,buf]%z, lambdaxyp, a?,b?,c? [p,u,v,w,scalars,buf]
+        !
+        itotal = itotal + (itemp1+itemp1_(3)*(4+nscal))*rp_size + itemp2*rp_size           + itemp3*rp_size*(5+nscal)
+      else
+        !
+        ! rhsbp,rhsb[u,v,w,scalars,buf]%[x,y,z], lambdaxy[p,u,v,w,scalars], (a?,b?,c?)[p,u,v,w,scalars,buf]
+        !
+        itotal = itotal + itemp1*rp_size*(1+4+nscal)            + itemp2*rp_size*(5+nscal) + itemp3*rp_size*(5+nscal)
+      end if
     end block
     !
-    ! 4. prediction velocity arrays arrays d[u,v,w]dtrk_t, d[u,v,w]dtrko_t
+    ! 4. prediction velocity arrays arrays d[u,v,w]dtrk_t, d[u,v,w]dtrko_t + scalars equivalent
     !
-    itemp  = product(n(:))*rp_size
-    itotal = itotal + itemp*6
+    itemp  = product(int(n(:),i8))*rp_size
+    itotal = itotal + itemp*(2*(3+nscal))
+    if(is_impdiff) then
+      itotal = itotal + itemp*(1*(3+nscal))
+    end if
     !
     ! 5. transpose & FFT buffer arrays, halo buffer arrays, and solver arrays
     !    taken directly from `mod_common_cudecomp`
     !
     block
-      use mod_common_cudecomp, only: work,work_halo,solver_buf_0,solver_buf_1,pz_aux_1,pz_aux_2
-      itemp = storage_size(work        ,i8)*size(work        ) + storage_size(work_halo   ,i8)*size(work_halo   ) + &
-              storage_size(solver_buf_0,i8)*size(solver_buf_0) + storage_size(solver_buf_1,i8)*size(solver_buf_1) + &
-              storage_size(pz_aux_1    ,i8)*size(pz_aux_1    ) + storage_size(pz_aux_2    ,i8)*size(pz_aux_2    )
-      itotal = itotal + itemp/8
+      use mod_common_cudecomp, only: work,work_halo,work_dtdma,solver_buf_0,solver_buf_1,pz_aux_1,pz_aux_2
+      itemp = size(work        ,kind=i8) + size(work_halo   ,kind=i8) + &
+              size(solver_buf_0,kind=i8) + size(solver_buf_1,kind=i8)
+      if(allocated(pz_aux_1)) itemp = itemp + size(pz_aux_1,kind=i8)
+      if(allocated(pz_aux_2)) itemp = itemp + size(pz_aux_2,kind=i8)
+      if(is_poisson_dtdma) itemp = itemp + size(work_dtdma,kind=i8)
+      itotal = itotal + itemp*rp_size
     end block
-    !
-    ! 6. scalar and multiphase flow related (psi,norm[x,y,z],kappa)
-    !
-    itemp  = product(n(:))*rp_size
-    itotal = itotal + itemp*5
-    itotal = itotal + itemp*2 ! time marching array dpsidtrk_t, dpsidtrko_t
-    itotal = itotal + itemp*4 ! psio and kappao for surface tension extrapolation
-#if defined(_SCALAR)
-    itotal = itotal + itemp*1
-    itotal = itotal + itemp*2 ! time marching array dsdtrk_t, dsdtrko_t
-#endif
   end function device_memory_footprint
 #endif
 end module mod_utils

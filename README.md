@@ -61,6 +61,7 @@ The prerequisites for compiling Fizzy are the following:
  * MPI
  * FFTW3/cuFFT library for CPU/GPU runs
  * The `nvfortran` compiler (for GPU runs)
+ * CMake for compiling the cuDecomp library (for GPU runs)
  * NCCL and NVSHMEM (optional, may be exploited by the cuDecomp library)
  * HYPRE library in case the variable-coefficients Poisson equation is solved without the pressure splitting technique (only available for CPU runs)
 
@@ -70,9 +71,6 @@ For most systems, Fizzy can be compiled from the root directory with the followi
 #### Detailed instructions
 The `Makefile` in root directory is used to compile the code, and is expected to work out-of-the-box for most systems. The `build.conf` file in the root directory can be used to choose the Fortran compiler (MPI wrapper), and a few pre-defined profiles depending on the nature of the run (e.g., production vs debugging), and pre-processing options. The following general pre-processing options are available:
 
- * `DEBUG`                    : performs some basic checks for debugging purposes
- * `TIMING`                   : wall-clock time per time step is computed
- * `PENCIL_AXIS`              : sets the default pencil direction, one of [1,2,3] for [X,Y,Z]-aligned pencils; X-aligned is the default and should be optimal for all cases
  * `SINGLE_PRECISION`         : calculation will be carried out in single precision (the default precision is double)
  * `GPU`                      : enable GPU-accelerated runs
 
