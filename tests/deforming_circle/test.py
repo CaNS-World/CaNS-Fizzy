@@ -5,8 +5,8 @@ def test_deforming_circle():
     #
     # comparing initial condition with psi field after one cycle (t=4)
     #
-    data_beg,xp,yp,zp,xu,yv,zw = read_single_field_binary("psi_fld_0000000.bin",np.array([1,1,1]))
-    data_end,xp,yp,zp,xu,yv,zw = read_single_field_binary("psi_fld_0016000.bin",np.array([1,1,1]))
+    data_beg,xp,yp,zp,xu,yv,zw = read_single_field_binary("./","psi_fld_0000000.bin",np.array([1,1,1]))
+    data_end,xp,yp,zp,xu,yv,zw = read_single_field_binary("./","psi_fld_0016000.bin",np.array([1,1,1]))
     ly = 1.
     lz = 1.
     dy = yv[1]-yv[0]

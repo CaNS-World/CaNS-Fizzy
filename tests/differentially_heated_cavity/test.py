@@ -5,15 +5,15 @@ def test_dht():
     #
     # testing u
     #
-    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("sca_fld_0050000.bin",np.array([1,1,1]))
+    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("./","sca_fld_0050000.bin",np.array([1,1,1]))
     islice = np.size(data[0,0,:])//2
     tw = -0.5
     l  = 1.
     nusselt = (1./l)*np.sum((data[0,0,:]-tw)/(2.*yp[0])*(2.*zp[0]))*l/(-tw)
-    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("vey_fld_0050000.bin",np.array([1,1,1]))
+    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("./","vey_fld_0050000.bin",np.array([1,1,1]))
     islice = int(np.size(data[0,0,:])/2)
     vmax = np.max(data[0,islice,:]+data[0,islice+1,:])/2
-    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("vez_fld_0050000.bin",np.array([1,1,1]))
+    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("./","vez_fld_0050000.bin",np.array([1,1,1]))
     islice = int(np.size(data[0,0,:])/2)
     wmax = np.max(data[0,:,islice]+data[0,:,islice+1])/2
     #
