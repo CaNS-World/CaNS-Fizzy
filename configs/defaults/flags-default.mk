@@ -134,7 +134,6 @@ CUSTOM_DEFINES_2FL = CONSTANT_COEFFS_POISSON \
                      INTERFACE_CAPTURING_VOF \
                      SDF_NORMALS \
                      CAPILLARY_BRACKBILL_NORMALIZATION \
-                     SPLIT_VISCOUS_DIFFUSION \
                      VISC_HARMONIC_INTERPOLATION
 
 DEFINES += $(foreach var,$(CUSTOM_DEFINES_2FL),$(if $(filter 1,$(strip $($(var)))), -D_$(var)))

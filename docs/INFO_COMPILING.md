@@ -43,7 +43,6 @@ and the following ones select the two-fluid method:
  * `SDF_NORMALS`                      : enables approximate signed-distance fields for interface transport, normals, and curvature (default); setting it to `0` uses CDI or standard THINC directly from the phase indicator without allocating a distance field
  * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method
  * `CAPILLARY_BRACKBILL_NORMALIZATION`: enables density-based Brackbill scaling of the surface-tension force (default); setting it to `0` disables the scaling
- * `SPLIT_VISCOUS_DIFFUSION`          : discretizes the viscous term in split form, i.e., the viscosity times the Laplacian of the velocity plus the terms with the viscosity gradient, instead of the divergence of the viscous stress tensor (default)
  * `VISC_HARMONIC_INTERPOLATION`      : uses harmonic phase interpolation for viscosity and thermal conductivity instead of the default arithmetic interpolation
 
 The transport of a scalar and the Boussinesq buoyancy term are selected in the input file (`nscal` and `is_boussinesq_buoyancy`; see [`INFO_INPUT.md`](INFO_INPUT.md)), and so are the pencil orientation, the debugging checks and the timing of each step.
