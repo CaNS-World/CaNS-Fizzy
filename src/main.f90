@@ -41,7 +41,8 @@ program cans
   use mod_initflow       , only: initflow,initscal
   use mod_initgrid       , only: initgrid,save_grid
   use mod_initmpi        , only: initmpi
-  use mod_impdiff        , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing
+  use mod_impdiff        , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing, &
+                                 impdiff_cc_mom_updt,impdiff_cc_scal_updt
   use mod_initsolver     , only: initsolver
   use mod_load           , only: load_one
   use mod_mom            , only: cmpt_momentum
@@ -62,7 +63,7 @@ program cans
                                  cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
                                  is_forced,bforce,ssource, &
                                  gacc,nscal, &
-                                 rho0,rho12,mu12,sigma,ka12,cp12,beta12, &
+                                 rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
                                  psi_thickness_factor, &
                                  acdi_gam_factor,acdi_gam_min, &
                                  vof_thinc_beta, &
@@ -73,12 +74,12 @@ program cans
                                  read_input, &
                                  is_debug,is_debug_poisson, &
                                  is_timing, &
-                                 is_impdiff, &
+                                 is_impdiff,is_impdiff_1d, &
                                  is_poisson_dtdma, &
                                  is_mask_divergence_check, &
                                  nh_v,nh_p,nh_s,nh_psi,nh_g
   use mod_sanity         , only: test_sanity_input,test_sanity_solver
-  use mod_solve_helmholtz, only: rhs_bound
+  use mod_solve_helmholtz, only: solve_helmholtz,rhs_bound
   use mod_acdi           , only: acdi_set_epsilon
 #if !defined(_INTERFACE_CAPTURING_VOF)
   use mod_acdi           , only: acdi_set_gamma,acdi_cmpt_phi
@@ -127,6 +128,15 @@ program cans
   real(rp) :: normfftp
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
+#if !defined(_OPENACC) || defined(_USE_HIP)
+  type(C_PTR), dimension(2,2) :: arrplanu,arrplanv,arrplanw,arrplans
+#else
+  integer    , dimension(2,2) :: arrplanu,arrplanv,arrplanw,arrplans
+#endif
+  real(rp), allocatable, dimension(:,:) :: lambdaxyu,lambdaxyv,lambdaxyw,lambdaxys
+  real(rp), allocatable, dimension(:) :: au,av,aw,bu,bv,bw,cu,cv,cw,as,bs,cs
+  real(rp) :: normfftu,normfftv,normfftw,normffts
+  type(rhs_bound) :: rhsbu,rhsbv,rhsbw,rhsbs
   !
   real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
   real(rp), dimension(2) :: dt_restart
@@ -238,6 +248,30 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
+  if(is_impdiff .and. .not.is_impdiff_1d) then
+    allocate(lambdaxyu(n_z(1),n_z(2)), &
+             lambdaxyv(n_z(1),n_z(2)), &
+             lambdaxyw(n_z(1),n_z(2)))
+    allocate(au(n_z(3)),bu(n_z(3)),cu(n_z(3)), &
+             av(n_z(3)),bv(n_z(3)),cv(n_z(3)), &
+             aw(n_z(3)),bw(n_z(3)),cw(n_z(3)))
+    allocate(rhsbu%x(n(2),n(3),0:1), &
+             rhsbu%y(n(1),n(3),0:1), &
+             rhsbu%z(n(1),n(2),0:1), &
+             rhsbv%x(n(2),n(3),0:1), &
+             rhsbv%y(n(1),n(3),0:1), &
+             rhsbv%z(n(1),n(2),0:1), &
+             rhsbw%x(n(2),n(3),0:1), &
+             rhsbw%y(n(1),n(3),0:1), &
+             rhsbw%z(n(1),n(2),0:1))
+    if(nscal > 0) then
+      allocate(lambdaxys(n_z(1),n_z(2)))
+      allocate(as(n_z(3)),bs(n_z(3)),cs(n_z(3)))
+      allocate(rhsbs%x(n(2),n(3),0:1), &
+               rhsbs%y(n(1),n(3),0:1), &
+               rhsbs%z(n(1),n(2),0:1))
+    end if
+  end if
   allocate(psi(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
   allocate(kappa,normx,normy,normz,mold=psi)
   allocate(psio,mold=psi)
@@ -332,6 +366,24 @@ program cans
                   lambdaxyp,['c','c','c'],ap,bp,cp,arrplanp,normfftp,rhsbp%x,rhsbp%y,rhsbp%z)
   !$acc enter data copyin(lambdaxyp,ap,bp,cp) async
   !$acc enter data copyin(rhsbp,rhsbp%x,rhsbp%y,rhsbp%z) async
+  if(is_impdiff .and. .not.is_impdiff_1d) then
+    call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,1),bcvel(:,:,1), &
+                    lambdaxyu,['f','c','c'],au,bu,cu,arrplanu,normfftu,rhsbu%x,rhsbu%y,rhsbu%z)
+    call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,2),bcvel(:,:,2), &
+                    lambdaxyv,['c','f','c'],av,bv,cv,arrplanv,normfftv,rhsbv%x,rhsbv%y,rhsbv%z)
+    call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,3),bcvel(:,:,3), &
+                    lambdaxyw,['c','c','f'],aw,bw,cw,arrplanw,normfftw,rhsbw%x,rhsbw%y,rhsbw%z)
+    !$acc enter data copyin(lambdaxyu,au,bu,cu,lambdaxyv,av,bv,cv,lambdaxyw,aw,bw,cw) async
+    !$acc enter data copyin(rhsbu,rhsbu%x,rhsbu%y,rhsbu%z) async
+    !$acc enter data copyin(rhsbv,rhsbv%x,rhsbv%y,rhsbv%z) async
+    !$acc enter data copyin(rhsbw,rhsbw%x,rhsbw%y,rhsbw%z) async
+    if(nscal > 0) then
+      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcsca,bcsca, &
+                      lambdaxys,['c','c','c'],as,bs,cs,arrplans,normffts,rhsbs%x,rhsbs%y,rhsbs%z)
+      !$acc enter data copyin(lambdaxys,as,bs,cs) async
+      !$acc enter data copyin(rhsbs,rhsbs%x,rhsbs%y,rhsbs%z) async
+    end if
+  end if
   if(is_poisson_dtdma) then
     !$acc enter data create(ap_d,cp_d) async
   end if
@@ -342,6 +394,12 @@ program cans
   !
   call init_wspace_arrays()
   call set_cufft_wspace(pack(arrplanp,.true.),istream_acc_queue_1)
+  if(is_impdiff .and. .not.is_impdiff_1d) then
+    call set_cufft_wspace(pack(arrplanu,.true.),istream_acc_queue_1)
+    call set_cufft_wspace(pack(arrplanv,.true.),istream_acc_queue_1)
+    call set_cufft_wspace(pack(arrplanw,.true.),istream_acc_queue_1)
+    if(nscal > 0) call set_cufft_wspace(pack(arrplans,.true.),istream_acc_queue_1)
+  end if
   if(myid == 0) print*,'*** Device memory footprint (Gb): ', &
                   device_memory_footprint(n,nh_v,nh_p,nh_s,nh_g,n_z,nscal)/(1._sp*1024**3), ' ***'
 #endif
@@ -592,7 +650,8 @@ program cans
     tm_coeff(1) = 1. + 0.5*dt_r
     tm_coeff(2) =    - 0.5*dt_r
     dtrk = dt
-    alpha = 0. ! no correction of the pressure update for the implicit diffusion, whose coefficients vary (see `updatep`)
+    alpha = 0. ! no correction of the pressure update for the implicit Z diffusion, whose coefficients vary (see `updatep`)
+    if(is_impdiff .and. .not.is_impdiff_1d) alpha = -.5*visc0*dtrk
     dtrki = dtrk**(-1)
     !
     ! phase field update
@@ -642,7 +701,13 @@ program cans
       call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
                    psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
       if(is_impdiff) then
-        call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
+        if(is_impdiff_1d) then
+          call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
+        else
+          call impdiff_cc_scal_updt(n,nh_s,0.5_rp*dt,s)
+          call solve_helmholtz(n,nh_s,ng,hi,arrplans,normffts,-0.5*alpha0*dt, &
+                               lambdaxys,as,bs,cs,rhsbs%x,rhsbs%y,rhsbs%z,is_bound,cbcsca,['c','c','c'],s)
+        end if
       end if
       call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
     end if
@@ -672,7 +737,7 @@ program cans
       end if
       if(is_impdiff) then
         !
-        ! diffusion along z (Crank-Nicolson): adds the explicit half and solves for the implicit one
+        ! implicit diffusion (Crank-Nicolson): adds the explicit half and solves for the implicit one
         !
         if(any(is_forced(:))) then
           !
@@ -680,11 +745,22 @@ program cans
           ! here, first with its value at the old time level, before the solve
           !
           call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum_o)
-          call impdiff_wall_force(n,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wall_force_imp)
+          call impdiff_wall_force(n,nh_psi,nh_g,is_forced,.not.is_impdiff_1d,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+                                  wall_force_imp,momentum)
           wall_force_imp(:) = wall_force_imp(:)*dtrk
           call impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,wall_force_imp,u,v,w)
         end if
-        call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
+        if(is_impdiff_1d) then
+          call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
+        else
+          call impdiff_cc_mom_updt(n,nh_v,0.5_rp*dtrk,u,v,w)
+          call solve_helmholtz(n,nh_v,ng,hi,arrplanu,normfftu,alpha, &
+                               lambdaxyu,au,bu,cu,rhsbu%x,rhsbu%y,rhsbu%z,is_bound,cbcvel(:,:,1),['f','c','c'],u)
+          call solve_helmholtz(n,nh_v,ng,hi,arrplanv,normfftv,alpha, &
+                               lambdaxyv,av,bv,cv,rhsbv%x,rhsbv%y,rhsbv%z,is_bound,cbcvel(:,:,2),['c','f','c'],v)
+          call solve_helmholtz(n,nh_v,ng,hi,arrplanw,normfftw,alpha, &
+                               lambdaxyw,aw,bw,cw,rhsbw%x,rhsbw%y,rhsbw%z,is_bound,cbcvel(:,:,3),['c','c','f'],w)
+        end if
         if(any(is_forced(:))) then
           !
           ! and then with the small remainder that keeps the momentum unchanged by the implicit integration
@@ -953,6 +1029,12 @@ program cans
   ! clear ffts
   !
   call fftend(arrplanp)
+  if(is_impdiff .and. .not.is_impdiff_1d) then
+    call fftend(arrplanu)
+    call fftend(arrplanv)
+    call fftend(arrplanw)
+    if(nscal > 0) call fftend(arrplans)
+  end if
 #if !defined(_CONSTANT_COEFFS_POISSON)
   call solver_vc_end
 #endif

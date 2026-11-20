@@ -87,6 +87,7 @@ real(rp), protected, dimension(2) :: ka12,cp12,beta12
 real(rp), protected               :: acdi_gam_factor,acdi_gam_min,vof_thinc_beta
 real(rp), protected               :: psi_thickness_factor
 real(rp), protected               :: rho0 ! not an input
+real(rp), protected               :: visc0,alpha0 ! reference diffusivities of the constant-coefficient implicit diffusion; not inputs
 !
 #if defined(_OPENACC)
 !
@@ -394,6 +395,8 @@ contains
 #if defined(_CONSTANT_COEFFS_POISSON)
       rho0 = minval(rho12(:))
 #endif
+      visc0  = maxval(mu12(:)/rho12(:))
+      alpha0 = maxval(ka12(:)/(rho12(:)*cp12(:)))
       vof_thinc_beta = 1._rp/(2._rp*psi_thickness_factor)
       !
       ! read `numerics` namelist

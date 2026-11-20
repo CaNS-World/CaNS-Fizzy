@@ -6,9 +6,9 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_wall_force
+  use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_cc_mom_rhs,impdiff_cc_scal_rhs,impdiff_wall_force
   use mod_mom    , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
-  use mod_param  , only: is_impdiff
+  use mod_param  , only: is_impdiff,is_impdiff_1d,visc0,alpha0
   use mod_types
   implicit none
   private
@@ -57,7 +57,7 @@ module mod_rk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
     real(rp) :: factor1,factor2,factor12
-    real(rp), dimension(3) :: taux,tauy,tauz,wall_force
+    real(rp), dimension(3) :: taux,tauy,tauz,wall_force,wall_force_imp,dwall_force_old
     integer :: i,j,k
     !
     factor1  = rkpar(1)*dt
@@ -104,17 +104,24 @@ module mod_rk
       !
       ! the diffusion along z that is integrated implicitly leaves the explicit terms (see `mod_impdiff`)
       !
-      call impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudtrk,dvdtrk,dwdtrk)
+      if(is_impdiff_1d) then
+        call impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudtrk,dvdtrk,dwdtrk)
+      else
+        call impdiff_cc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,visc0,rho12,psi,psio,u,v,w,dudtrk,dvdtrk,dwdtrk, &
+                                dudtrko,dvdtrko,dwdtrko)
+      end if
       if(any(is_forced(:))) then
         !
         ! the forcing leaves out the wall shear of the terms integrated implicitly, which is balanced
         ! together with the implicit solve (see the main program)
         !
-        call impdiff_wall_force(n,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wall_force)
-        wall_force_old(:)  = wall_force_old(:) - wall_force(:)
-        wall_force(:)      = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force(:)
-        force_balance(:,1) = force_balance(:,1) - wall_force(:)
-        bforce_eff(:)      = bforce_eff(:)      - wall_force(:)
+        call impdiff_wall_force(n,nh_psi,nh_g,is_forced,.not.is_impdiff_1d,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+                                wall_force_imp,dwall_force_old)
+        wall_force_old(:)  = wall_force_old(:) - wall_force_imp(:)
+        wall_force_imp(:)  = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force_imp(:)
+        if(.not.is_first) wall_force_imp(:) = wall_force_imp(:) - rkpar(2)*dwall_force_old(:)
+        force_balance(:,1) = force_balance(:,1) - wall_force_imp(:)
+        bforce_eff(:)      = bforce_eff(:)      - wall_force_imp(:)
         force_balance(:,5) = bforce_eff(:)
         !$acc update device(bforce_eff) async(1)
       end if
@@ -221,7 +228,11 @@ module mod_rk
       !
       ! the diffusion along z that is integrated implicitly leaves the explicit terms (see `mod_impdiff`)
       !
-      call impdiff_z_scal_rhs(n,nh_s,nh_psi,nh_g,dzci,dzfi,ka12,psi,s,dsdtrk)
+      if(is_impdiff_1d) then
+        call impdiff_z_scal_rhs(n,nh_s,nh_psi,nh_g,dzci,dzfi,ka12,psi,s,dsdtrk)
+      else
+        call impdiff_cc_scal_rhs(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,alpha0,rhocp12,psi,psio,s,dsdtrk,dsdtrko)
+      end if
     end if
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)

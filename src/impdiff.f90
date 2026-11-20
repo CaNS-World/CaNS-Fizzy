@@ -19,6 +19,7 @@ module mod_impdiff
   implicit none
   private
   public impdiff_z_mom_rhs,impdiff_z_mom_solve,impdiff_z_scal_rhs,impdiff_z_scal_solve
+  public impdiff_cc_mom_rhs,impdiff_cc_mom_updt,impdiff_cc_scal_rhs,impdiff_cc_scal_updt
   public impdiff_wall_force,impdiff_updt_forcing
   real(rp), allocatable, dimension(:,:,:), save :: cw            ! work array of the line solver
   real(rp), allocatable, dimension(:,:,:), save :: dud,dvd,dwd,dsd ! implicit terms at the old time level
@@ -98,40 +99,216 @@ module mod_impdiff
     call solve_lines_f(n,nh_v,nh_psi,nh_g    ,cbc(:,3,3),bc(:,3,3),dzf,dzci,dzfi,theta,rho12,mu12,psi,dwd,cw,w)
   end subroutine impdiff_z_mom_solve
   !
-  subroutine impdiff_wall_force(n,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wall_force)
+  subroutine impdiff_cc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,visc0,rho12,psi,psio,u,v,w,dudt,dvdt,dwdt,dudto,dvdto,dwdto)
     !
-    ! computes the wall shear force per unit volume carried by the terms that are integrated implicitly,
-    ! i.e., minus their volume average, at the old time level (see `impdiff_z_mom_rhs`);
-    ! the zero-net-acceleration forcing leaves it out of the wall shear that it balances explicitly,
-    ! and balances what the implicit integration applies together with the solve (see the main program)
+    ! constant-coefficient implicit diffusion in all directions: the term that is integrated implicitly is
+    ! the Laplacian of each velocity component times a reference kinematic viscosity, visc0*lap(u_q);
+    ! it is computed here, taken out of the terms that are integrated explicitly (times the local density,
+    ! since `dudt`, `dvdt` and `dwdt` are per unit volume), and kept for the explicit half of the
+    ! Crank-Nicolson scheme (see `impdiff_cc_mom_updt`);
+    ! the explicit terms of the previous step (`dudto`, `dvdto`, `dwdto`) hold this term times the density
+    ! of that step: they are updated to the present density, which keeps the scheme second-order accurate
+    ! where the density changes in time
     !
     implicit none
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in )               :: nh_g
-    logical , intent(in ), dimension(3) :: is_forced
-    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f
-    real(rp), intent(out), dimension(3) :: wall_force
-    real(rp) :: fx,fy,fz
-    integer  :: i,j,k,ierr
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   )               :: visc0
+    real(rp), intent(in   ), dimension(2) :: rho12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(inout), dimension(:,:,:) :: dudt,dvdt,dwdt,dudto,dvdto,dwdto
+    real(rp) :: rho,drho,dxi2,dyi2
+    integer  :: i,j,k
     !
-    fx = 0._rp; fy = 0._rp; fz = 0._rp
-    !$acc data copy(fx,fy,fz) async(1)
-    !$acc parallel loop collapse(3) default(present) reduction(+:fx,fy,fz) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)  reduction(+:fx,fy,fz)
+    if(.not.allocated(dud)) then
+      allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
+      !$acc enter data create(dud,dvd,dwd) async(1)
+    end if
+    rho = rho12(2); drho = rho12(1)-rho12(2)
+    dxi2 = dli(1)**2; dyi2 = dli(2)**2
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          fx = fx - dud(i,j,k)*grid_vol_ratio_f(k)
-          fy = fy - dvd(i,j,k)*grid_vol_ratio_f(k)
-          fz = fz - dwd(i,j,k)*grid_vol_ratio_c(k)
+          dud(i,j,k) = visc0*((u(i+1,j,k)-2.*u(i,j,k)+u(i-1,j,k))*dxi2 + &
+                              (u(i,j+1,k)-2.*u(i,j,k)+u(i,j-1,k))*dyi2 + &
+                              ((u(i,j,k+1)-u(i,j,k))*dzci(k)-(u(i,j,k)-u(i,j,k-1))*dzci(k-1))*dzfi(k))
+          dvd(i,j,k) = visc0*((v(i+1,j,k)-2.*v(i,j,k)+v(i-1,j,k))*dxi2 + &
+                              (v(i,j+1,k)-2.*v(i,j,k)+v(i,j-1,k))*dyi2 + &
+                              ((v(i,j,k+1)-v(i,j,k))*dzci(k)-(v(i,j,k)-v(i,j,k-1))*dzci(k-1))*dzfi(k))
+          dwd(i,j,k) = visc0*((w(i+1,j,k)-2.*w(i,j,k)+w(i-1,j,k))*dxi2 + &
+                              (w(i,j+1,k)-2.*w(i,j,k)+w(i,j-1,k))*dyi2 + &
+                              ((w(i,j,k+1)-w(i,j,k))*dzfi(k+1)-(w(i,j,k)-w(i,j,k-1))*dzfi(k))*dzci(k))
+          dudt(i,j,k) = dudt(i,j,k) - (rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k)))*dud(i,j,k)
+          dvdt(i,j,k) = dvdt(i,j,k) - (rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k)))*dvd(i,j,k)
+          dwdt(i,j,k) = dwdt(i,j,k) - (rho + drho*0.5*(psi(i,j,k)+psi(i,j,k+1)))*dwd(i,j,k)
+          dudto(i,j,k) = dudto(i,j,k) + drho*0.5*(psio(i,j,k)+psio(i+1,j,k)-psi(i,j,k)-psi(i+1,j,k))*dud(i,j,k)
+          dvdto(i,j,k) = dvdto(i,j,k) + drho*0.5*(psio(i,j,k)+psio(i,j+1,k)-psi(i,j,k)-psi(i,j+1,k))*dvd(i,j,k)
+          dwdto(i,j,k) = dwdto(i,j,k) + drho*0.5*(psio(i,j,k)+psio(i,j,k+1)-psi(i,j,k)-psi(i,j,k+1))*dwd(i,j,k)
         end do
       end do
     end do
+  end subroutine impdiff_cc_mom_rhs
+  !
+  subroutine impdiff_cc_mom_updt(n,nh_v,theta,u,v,w)
+    !
+    ! adds the explicit half of the Crank-Nicolson integration of the constant-coefficient diffusion,
+    ! with `theta` half of the time step; the implicit half follows, with the Helmholtz solver
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v
+    real(rp), intent(in   )               :: theta
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    integer  :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          u(i,j,k) = u(i,j,k) + theta*dud(i,j,k)
+          v(i,j,k) = v(i,j,k) + theta*dvd(i,j,k)
+          w(i,j,k) = w(i,j,k) + theta*dwd(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine impdiff_cc_mom_updt
+  !
+  subroutine impdiff_cc_scal_rhs(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,alpha0,rhocp12,psi,psio,s,dsdt,dsdto)
+    !
+    ! constant-coefficient implicit diffusion of the scalar, alpha0*lap(s), with a reference diffusivity
+    ! (see `impdiff_cc_mom_rhs`; the role of the density is played by the volumetric heat capacity)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_s,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   )               :: alpha0
+    real(rp), intent(in   ), dimension(2) :: rhocp12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp), intent(inout), dimension(:,:,:) :: dsdt,dsdto
+    real(rp) :: rhocp,drhocp,dxi2,dyi2
+    integer  :: i,j,k
+    !
+    if(.not.allocated(dsd)) then
+      allocate(dsd(n(1),n(2),n(3)))
+      !$acc enter data create(dsd) async(1)
+    end if
+    rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    dxi2 = dli(1)**2; dyi2 = dli(2)**2
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          dsd(i,j,k) = alpha0*((s(i+1,j,k)-2.*s(i,j,k)+s(i-1,j,k))*dxi2 + &
+                               (s(i,j+1,k)-2.*s(i,j,k)+s(i,j-1,k))*dyi2 + &
+                               ((s(i,j,k+1)-s(i,j,k))*dzci(k)-(s(i,j,k)-s(i,j,k-1))*dzci(k-1))*dzfi(k))
+          dsdt(i,j,k)  = dsdt(i,j,k)  - (rhocp + drhocp*psi(i,j,k))*dsd(i,j,k)
+          dsdto(i,j,k) = dsdto(i,j,k) + drhocp*(psio(i,j,k)-psi(i,j,k))*dsd(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine impdiff_cc_scal_rhs
+  !
+  subroutine impdiff_cc_scal_updt(n,nh_s,theta,s)
+    !
+    ! adds the explicit half of the Crank-Nicolson integration of the constant-coefficient diffusion
+    ! of the scalar (see `impdiff_cc_mom_updt`)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_s
+    real(rp), intent(in   )               :: theta
+    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    integer  :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          s(i,j,k) = s(i,j,k) + theta*dsd(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine impdiff_cc_scal_updt
+  !
+  subroutine impdiff_wall_force(n,nh_psi,nh_g,is_forced,is_cc,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+                                wall_force,dwall_force_old)
+    !
+    ! computes the wall shear force per unit volume carried by the terms that are integrated implicitly,
+    ! i.e., minus their volume average, at the old time level (see `impdiff_z_mom_rhs`, `impdiff_cc_mom_rhs`);
+    ! the zero-net-acceleration forcing leaves it out of the wall shear that it balances explicitly,
+    ! and balances what the implicit integration applies together with the solve (see the main program);
+    ! with constant coefficients (`is_cc`) the terms are per unit mass, and `dwall_force_old` is the change of
+    ! the force of the previous step due to the update of its density (zero otherwise)
+    !
+    implicit none
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_psi,nh_g
+    logical , intent(in ), dimension(3) :: is_forced
+    logical , intent(in )               :: is_cc
+    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in ), dimension(2) :: rho12
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
+    real(rp), intent(out), dimension(3) :: wall_force,dwall_force_old
+    real(rp) :: rho,drho,fx,fy,fz,gx,gy,gz,psixp,psiyp,psizp
+    real(rp), dimension(6) :: force
+    integer  :: i,j,k,ierr
+    !
+    rho = rho12(2); drho = rho12(1)-rho12(2)
+    fx = 0._rp; fy = 0._rp; fz = 0._rp
+    gx = 0._rp; gy = 0._rp; gz = 0._rp
+    !$acc data copy(fx,fy,fz,gx,gy,gz) async(1)
+    if(.not.is_cc) then
+      !$acc parallel loop collapse(3) default(present) reduction(+:fx,fy,fz) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)  reduction(+:fx,fy,fz)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            fx = fx - dud(i,j,k)*grid_vol_ratio_f(k)
+            fy = fy - dvd(i,j,k)*grid_vol_ratio_f(k)
+            fz = fz - dwd(i,j,k)*grid_vol_ratio_c(k)
+          end do
+        end do
+      end do
+    else
+      !$acc parallel loop collapse(3) default(present) private(psixp,psiyp,psizp) reduction(+:fx,fy,fz,gx,gy,gz) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)  private(psixp,psiyp,psizp) reduction(+:fx,fy,fz,gx,gy,gz)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            psixp = 0.5*(psi(i,j,k)+psi(i+1,j,k))
+            psiyp = 0.5*(psi(i,j,k)+psi(i,j+1,k))
+            psizp = 0.5*(psi(i,j,k)+psi(i,j,k+1))
+            fx = fx - (rho+drho*psixp)*dud(i,j,k)*grid_vol_ratio_f(k)
+            fy = fy - (rho+drho*psiyp)*dvd(i,j,k)*grid_vol_ratio_f(k)
+            fz = fz - (rho+drho*psizp)*dwd(i,j,k)*grid_vol_ratio_c(k)
+            gx = gx - drho*(0.5*(psio(i,j,k)+psio(i+1,j,k))-psixp)*dud(i,j,k)*grid_vol_ratio_f(k)
+            gy = gy - drho*(0.5*(psio(i,j,k)+psio(i,j+1,k))-psiyp)*dvd(i,j,k)*grid_vol_ratio_f(k)
+            gz = gz - drho*(0.5*(psio(i,j,k)+psio(i,j,k+1))-psizp)*dwd(i,j,k)*grid_vol_ratio_c(k)
+          end do
+        end do
+      end do
+    end if
     !$acc end data
     !$acc wait(1)
-    wall_force(:) = [fx,fy,fz]
-    call MPI_ALLREDUCE(MPI_IN_PLACE,wall_force,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-    where(.not.is_forced(:)) wall_force(:) = 0._rp
+    force(:) = [fx,fy,fz,gx,gy,gz]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,force,6,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    wall_force(:)      = force(1:3)
+    dwall_force_old(:) = force(4:6)
+    where(.not.is_forced(:))
+      wall_force(:)      = 0._rp
+      dwall_force_old(:) = 0._rp
+    end where
   end subroutine impdiff_wall_force
   !
   subroutine impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,dtf,u,v,w)
