@@ -13,13 +13,14 @@ module mod_acdi
   private
   public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi
   contains
-  subroutine acdi_set_epsilon(dl,dzfi,seps_factor,seps)
+  subroutine acdi_set_epsilon(dl,nh_g,dzfi,seps_factor,seps)
     !
     ! computes the acdi epsilon parameter
     !
     implicit none
     real(rp), intent(in), dimension(3) :: dl
-    real(rp), intent(in), dimension(0:) :: dzfi
+    integer , intent(in) :: nh_g
+    real(rp), intent(in), dimension(1-nh_g:) :: dzfi
     real(rp), intent(in)  :: seps_factor
     real(rp), intent(out) :: seps
     real(rp), save :: dlmax
@@ -29,13 +30,14 @@ module mod_acdi
     seps = dlmax*seps_factor
   end subroutine acdi_set_epsilon
   !
-  subroutine acdi_set_gamma(n,gam_factor,u,v,w,gam)
+  subroutine acdi_set_gamma(n,nh_v,gam_factor,u,v,w,gam)
     !
     ! computes the acdi gamma parameter
     !
     implicit none
     integer , intent(in), dimension(3) :: n
-    real(rp), intent(in), dimension(0:,0:,0:) :: u,v,w
+    integer , intent(in) :: nh_v
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in) :: gam_factor
     real(rp), intent(out) :: gam
     real(rp) :: uc,vc,wc,vel,velmax
@@ -61,21 +63,23 @@ module mod_acdi
     gam = sqrt(velmax)*gam_factor
   end subroutine acdi_set_gamma
   !
-  subroutine acdi_transport_pf(n,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt,flux_x,flux_y,flux_z)
+  subroutine acdi_transport_pf(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt, &
+                               flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the phase field transport equation
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
+    integer , intent(in) :: nh_v,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
-    real(rp), intent(in   ), dimension(0:)       :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:)       :: dzci,dzfi
     real(rp), intent(in   )                      :: gam,seps
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(0:,0:,0:), optional :: phi
-    real(rp), intent(inout), dimension(0:,0:,0:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: phi
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(0:,0:,0:), optional :: flux_x,flux_y,flux_z
+    real(rp), intent(out  ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: flux_x,flux_y,flux_z
     integer :: i,j,k
     real(rp) :: dxi,dyi
     real(rp) :: adv,diff,sharp,rglr
@@ -224,15 +228,16 @@ module mod_acdi
     end do
   end subroutine acdi_transport_pf
   !
-  subroutine acdi_cmpt_phi(n,seps,psi,phi)
+  subroutine acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
     !
     ! computes the signed-distance field phi from the smoothed volume fraction field psi
     !
     implicit none
     integer , intent(in ), dimension(3)           :: n
+    integer , intent(in) :: nh_psi
     real(rp), intent(in )                         :: seps
-    real(rp), intent(in ), dimension(0:,0:,0:)    :: psi
-    real(rp), intent(out), dimension(0:,0:,0:)    :: phi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
+    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: phi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !

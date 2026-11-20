@@ -1,35 +1,37 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
 module mod_debug
   use mpi
-  use mod_common_mpi, only: myid,ierr
-  use mod_param     , only: dims
+  use mod_common_mpi, only: ierr
   use mod_types
   implicit none
   private
   public chk_helmholtz
   contains
   !
-  subroutine chk_helmholtz(lo,hi,dli,dzci,dzfi,alpha,fp,fpp,bc,is_bound,c_or_f,diffmax)
+  subroutine chk_helmholtz(lo,hi,nh_fp,nh_fpp,nh_g,l,dli,dzci,dzfi,alpha,fp,fpp,bc,is_bound,c_or_f,difftot,diffmax)
     !
-    ! this subroutine checks if the implementation of implicit diffusion is
-    ! correct under sanity.f90
+    ! this subroutine checks the correctness of the solution of a Helmholtz equation
+    ! with collocated or staggered boundary conditions
     !
     implicit none
     integer , intent(in), dimension(3) :: lo,hi
+    integer , intent(in)               :: nh_fp,nh_fpp,nh_g
+    real(rp), intent(in), dimension(3) :: l
     real(rp), intent(in), dimension(2) :: dli
+    real(rp), intent(in), dimension(lo(3)-nh_g:) :: dzci,dzfi
     real(rp), intent(in) :: alpha
-    real(rp), intent(in), dimension(lo(3)-1:) :: dzci,dzfi
-    real(rp), intent(in), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: fp,fpp
+    real(rp), intent(in), dimension(lo(1)-nh_fp :,lo(2)-nh_fp :,lo(3)-nh_fp :) :: fp
+    real(rp), intent(in), dimension(lo(1)-nh_fpp:,lo(2)-nh_fpp:,lo(3)-nh_fpp:) :: fpp
     character(len=1), intent(in), dimension(0:1,3) :: bc
     character(len=1), intent(in), dimension(3) :: c_or_f
     logical         , intent(in), dimension(0:1,3) :: is_bound
-    real(rp), intent(out) :: diffmax
-    real(rp) :: val
+    real(rp), intent(out) :: difftot,diffmax
+    real(rp) :: val,res
     integer :: i,j,k
     integer :: idir
     integer, dimension(3) :: q
@@ -39,12 +41,14 @@ module mod_debug
     do idir = 1,3
       if(bc(1,idir) /= 'P'.and.c_or_f(idir) == 'f'.and.is_bound(1,idir)) q(idir) = 1
     end do
+    difftot = 0.
     diffmax = 0.
     !$acc wait
-    !$acc data copy(diffmax,q)
+    !$acc data copy(difftot,diffmax,q)
     select case(c_or_f(3))
     case('c')
-      !$acc parallel loop collapse(3) default(present) private(val) reduction(max:diffmax)
+      !$acc parallel loop collapse(3) default(present) private(val,res) reduction(+:difftot) reduction(max:diffmax)
+      !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared ) PRIVATE(val,res) REDUCTION(+:difftot) REDUCTION(max:diffmax)
       do k=lo(3),hi(3)-q(3)
         do j=lo(2),hi(2)-q(2)
           do i=lo(1),hi(1)-q(1)
@@ -54,12 +58,16 @@ module mod_debug
                  ((fpp(i,j,k+1)-fpp(i,j,k  ))*dzci(k ) - &
                   (fpp(i,j,k  )-fpp(i,j,k-1))*dzci(k-1))*dzfi(k) )
             val = val*alpha
-            diffmax = max(diffmax,abs(val-fp(i,j,k)))
+            res = abs(val-fp(i,j,k))
+            difftot = difftot + res/(dxi*dyi*dzfi(k)) ! abs(residual)*cell_volume
+            diffmax = max(diffmax,res)
+            !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val-fp(i,j,k),i,j,k
           end do
         end do
       end do
     case('f')
-      !$acc parallel loop collapse(3) default(present) private(val) reduction(max:diffmax)
+      !$acc parallel loop collapse(3) default(present) private(val,res) reduction(+:difftot) reduction(max:diffmax)
+      !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared ) PRIVATE(val,res) REDUCTION(+:difftot) REDUCTION(max:diffmax)
       do k=lo(3),hi(3)-q(3)
         do j=lo(2),hi(2)-q(2)
           do i=lo(1),hi(1)-q(1)
@@ -69,16 +77,20 @@ module mod_debug
                  ((fpp(i,j,k+1)-fpp(i,j,k  ))*dzfi(k+1) - &
                   (fpp(i,j,k  )-fpp(i,j,k-1))*dzfi(k ))*dzci(k) )
             val = val*alpha
-            diffmax = max(diffmax,abs(val-fp(i,j,k)))
+            res = abs(val-fp(i,j,k))
+            difftot = difftot + res/(dxi*dyi*dzci(k)) ! abs(residual)*cell_volume
+            diffmax = max(diffmax,res)
+            !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val,fp(i,j,k),i,j,k
           end do
         end do
       end do
     end select
     !$acc end data
+    call MPI_ALLREDUCE(MPI_IN_PLACE,difftot,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE,diffmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
+    difftot = difftot/product(l(:))
   end subroutine chk_helmholtz
-  !
-  subroutine chk_poisson(lo,hi,dli,dzci,dzfi,fp,fpp,diffmax)
+  subroutine chk_poisson(lo,hi,nh,nh_g,l,dli,dzci,dzfi,fp,fpp,difftot,diffmax)
     !
     ! this subroutine checks if the Poisson equation is correctly solved;
     ! the inputs should be downcasted to precision `gp` to ensure proper
@@ -86,18 +98,22 @@ module mod_debug
     !
     implicit none
     integer , intent(in), dimension(3) :: lo,hi
+    integer , intent(in)               :: nh,nh_g
+    real(rp), intent(in), dimension(3) :: l
     real(rp), intent(in), dimension(2) :: dli
-    real(rp), intent(in), dimension(lo(3)-1:) :: dzci,dzfi
-    real(rp), intent(in), dimension(lo(1)-1:,lo(2)-1:,lo(3)-1:) :: fp,fpp
-    real(rp), intent(out) :: diffmax
-    real(rp) :: val
+    real(rp), intent(in), dimension(lo(3)-nh_g:) :: dzci,dzfi
+    real(rp), intent(in), dimension(lo(1)-nh:,lo(2)-nh:,lo(3)-nh:) :: fp,fpp
+    real(rp), intent(out) :: difftot,diffmax
+    real(rp) :: val,res
     integer :: i,j,k
     real(rp) :: dxi,dyi
     dxi = dli(1); dyi = dli(2)
+    difftot = 0.
     diffmax = 0.
     !$acc wait
-    !$acc data copy(diffmax)
-    !$acc parallel loop collapse(3) default(present) private(val) reduction(max:diffmax)
+    !$acc data copy(difftot,diffmax)
+    !$acc parallel loop collapse(3) default(present) private(val,res) reduction(+:difftot) reduction(max:diffmax)
+    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared ) PRIVATE(val,res) REDUCTION(+:difftot) REDUCTION(max:diffmax)
     do k=lo(3),hi(3)
       do j=lo(2),hi(2)
         do i=lo(1),hi(1)
@@ -105,11 +121,16 @@ module mod_debug
                 (fpp(i,j+1,k)-2.*fpp(i,j,k)+fpp(i,j-1,k))*(dyi**2) + &
                ((fpp(i,j,k+1)-fpp(i,j,k  ))*dzci(k ) - &
                 (fpp(i,j,k  )-fpp(i,j,k-1))*dzci(k-1))*dzfi(k)
-          diffmax = max(diffmax,abs(val-fp(i,j,k)))
+          res = abs(val-fp(i,j,k))
+          difftot = difftot + res/(dxi*dyi*dzfi(k)) ! abs(residual)*cell_volume
+          diffmax = max(diffmax,res)
+          !if(abs(val-fp(i,j,k)) > 1.e-8) print*, 'Large difference : ', val-fp(i,j,k),i,j,k
         end do
       end do
     end do
     !$acc end data
+    call MPI_ALLREDUCE(MPI_IN_PLACE,difftot,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call MPI_ALLREDUCE(MPI_IN_PLACE,diffmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
+    difftot = difftot/product(l(:))
   end subroutine chk_poisson
 end module mod_debug

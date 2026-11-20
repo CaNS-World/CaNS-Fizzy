@@ -1,6 +1,6 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
@@ -10,7 +10,7 @@ module mod_sanity
   use decomp_2d
   use mod_bound     , only: boundp,bounduvw,updt_rhs_b
   use mod_chkdiv    , only: chkdiv
-  use mod_common_mpi, only: myid,ierr,ipencil_axis
+  use mod_common_mpi, only: myid,ierr
   use mod_correc    , only: correc
   use mod_debug     , only: chk_helmholtz
   use mod_fft       , only: fftend
@@ -18,7 +18,7 @@ module mod_sanity
   use mod_initflow  , only: add_noise
   use mod_initmpi   , only: initmpi
   use mod_initsolver, only: initsolver
-  use mod_param     , only: small
+  use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -27,7 +27,7 @@ module mod_sanity
   use mod_types
   implicit none
   private
-  public test_sanity_input
+  public test_sanity_input,test_sanity_solver
   contains
   subroutine test_sanity_input(ng,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre,is_forced)
     !
@@ -42,162 +42,287 @@ module mod_sanity
     real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
     real(rp)        , intent(in), dimension(0:1,3)   :: bcpre
     logical         , intent(in), dimension(3)       :: is_forced
-    logical :: passed
+    logical :: passed,passed_loc
     !
-    call chk_dims(ng,dims,passed);                 if(.not.passed) call abortit
-    call chk_stop_type(stop_type,passed);          if(.not.passed) call abortit
-    call chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed); if(.not.passed) call abortit
+    call chk_dims(ng,dims,cbcvel,cbcpre,passed);      if(.not.passed) call abortit
+    call chk_stop_type(stop_type,passed);             if(.not.passed) call abortit
+    call chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed);    if(.not.passed) call abortit
     call chk_forcing(cbcvel,cbcpre,bcvel,is_forced,passed); if(.not.passed) call abortit
+    !
+    if(is_poisson_dtdma) then
+      passed_loc = ng(3)/dims(2) >= 2
+      if(is_impdiff.and.(.not.is_impdiff_1d .or. dims(2) > 1)) then
+        if(cbcvel(1,3,3) /= 'P') passed_loc = passed_loc.and.(ng(3)/dims(2)-1 >= 2)
+      end if
+      if(myid == 0.and.(.not.passed_loc)) &
+        print*, 'ERROR: DTDMA requires at least two active points per Z slab.'
+      passed = passed.and.passed_loc
+      if(.not.passed) call abortit
+    end if
+    !
+    if(is_impdiff) then
+      if(myid == 0)  print*, 'ERROR: implicit diffusion (`is_impdiff = T`) is not available yet.'; call abortit
+    end if
+    if(is_impdiff_1d.and.(.not.is_impdiff)) then
+      if(myid == 0)  print*, 'ERROR: `is_impdiff_1d = T` requires `is_impdiff = T` (forced in `param.f90`).'; call abortit
+    end if
+    if(is_impdiff_1d .and. .not.(ipencil_axis == 3) .and. .not.is_poisson_dtdma) then
+      if(dims(2) > 1) then
+        if(myid == 0)  print*, 'Warning: a run with implicit Z diffusion (`is_impdiff_1d = T`) is much more efficient &
+                                       & when the flow is not decomposed along the Z direction.'
+      end if
+    end if
+    if(is_poisson_dtdma.and.(ipencil_axis == 3)) then
+      if(myid == 0)  print*, 'ERROR: `is_poisson_dtdma = T` requires X/Y-aligned pencils.'; call abortit
+    end if
   end subroutine test_sanity_input
   !
   subroutine chk_stop_type(stop_type,passed)
-  implicit none
-  logical, intent(in), dimension(3) :: stop_type
-  logical, intent(out) :: passed
-  passed = .true.
-  if(.not.any(stop_type(:))) then
-    if(myid == 0) print*, 'ERROR: stopping criterion not chosen.'
-    passed = .false.
-  end if
+    implicit none
+    logical, intent(in), dimension(3) :: stop_type
+    logical, intent(out) :: passed
+    passed = .true.
+    if(.not.any(stop_type(:))) then
+      if(myid == 0) print*, 'ERROR: stopping criterion not chosen.'
+      passed = .false.
+    end if
   end subroutine chk_stop_type
   !
-  subroutine chk_dims(ng,dims,passed)
+  subroutine chk_dims(ng,dims,cbcvel,cbcpre,passed)
+#if defined(_SCALAR)
+    use mod_param, only: cbcsca
+#endif
     implicit none
     integer, intent(in), dimension(3) :: ng
     integer, intent(in), dimension(2) :: dims
+    character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
+    character(len=1), intent(in), dimension(0:1,3)   :: cbcpre
     logical, intent(out) :: passed
     integer, dimension(2) :: ii
+    integer, dimension(3) :: ntasks
     logical :: passed_loc
+    integer :: idir
+    character(len=2) :: bc01v
     passed = .true.
+    passed_loc = all(ng(:) >= 1)
+    if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: ng(:) must be positive in every direction.'
+    passed = passed.and.passed_loc
+    !
     ii = pack([1,2,3],[1,2,3] /= ipencil_axis)
     passed_loc = all(dims(:)<=ng(ii)).and.all(dims(:)>=1)
     if(myid == 0.and.(.not.passed_loc)) &
-      print*, 'ERROR: 1 <= dims(:) <= [itot,jtot], or [itot,ktot], or [jtot ktot] depending on the decomposition.'
+      print*, 'ERROR: 1 <= dims(:) <= [ng(1),ng(2)], or [ng(1),ng(3)], or [ng(2),ng(3)] depending on the decomposition.'
     passed = passed.and.passed_loc
+    !
+    ! the halo layers are filled from a single neighbour, or mirrored about a boundary;
+    ! only a periodic direction held by a single task may have fewer cells than halo layers,
+    ! as its halo is then wrapped locally, one layer at a time (see `updthalo`)
+    !
+    ntasks(:) = 1
+    ntasks(ii(:)) = max(dims(:),1)
+    passed_loc = all(ng(:)/ntasks(:) >= nh_g.or.(cbcpre(0,:)//cbcpre(1,:) == 'PP'.and.ntasks(:) == 1))
+    if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: fewer cells per task than halo layers (nh_g) along a split or non-periodic direction.'
+    passed = passed.and.passed_loc
+    !
+    if(is_impdiff) then
+      passed_loc = .true.
+      do idir=1,2
+        if(ng(idir) /= 1) cycle
+        bc01v = cbcvel(0,idir,idir)//cbcvel(1,idir,idir)
+        passed_loc = passed_loc.and.bc01v /= 'NN'
+#if !defined(_OPENACC)
+        if(.not.is_impdiff_1d) passed_loc = passed_loc.and.(bc01v == 'PP'.or.bc01v == 'ND')
+#endif
+      end do
+      if(myid == 0.and.(.not.passed_loc)) &
+        print*, 'ERROR: unsupported one-point X/Y direction for the selected implicit velocity BCs.'
+      passed = passed.and.passed_loc
+    end if
+    !
+    if(ng(3) == 1) then
+      if(cbcpre(0,3)//cbcpre(1,3) == 'PP') then
+        passed_loc = all(cbcvel(:,3,:) == 'P')
+#if defined(_SCALAR)
+        passed_loc = passed_loc.and.all(cbcsca(:,3) == 'P')
+#endif
+      else
+#if defined(_OPENACC)
+        passed_loc = .false.
+#else
+        passed_loc = .not.is_impdiff
+        if(cbcpre(0,3)//cbcpre(1,3) == 'NN') passed_loc = passed_loc.and.any(cbcpre(:,1:2) == 'D')
+#endif
+      end if
+      if(myid == 0.and.(.not.passed_loc)) &
+        print*, 'ERROR: unsupported one-point Z configuration; use periodic BCs for all fields.'
+      passed = passed.and.passed_loc
+    end if
   end subroutine chk_dims
   !
   subroutine chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed)
-  implicit none
-  character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
-  character(len=1), intent(in), dimension(0:1,3  ) :: cbcpre
-  real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
-  real(rp)        , intent(in), dimension(0:1,3  ) :: bcpre
-  logical         , intent(out) :: passed
-  character(len=2) :: bc01v,bc01p
-  integer :: ivel,idir
-  logical :: passed_loc
-  passed = .true.
-  !
-  ! check validity of pressure and velocity BCs
-  !
-  passed_loc = .true.
-  do ivel = 1,3
-    do idir=1,3
-      bc01v = cbcvel(0,idir,ivel)//cbcvel(1,idir,ivel)
-      passed_loc = passed_loc.and.( (bc01v == 'PP').or. &
-                                    (bc01v == 'ND').or. &
-                                    (bc01v == 'DN').or. &
-                                    (bc01v == 'NN').or. &
-                                    (bc01v == 'DD') )
+#if defined(_SCALAR)
+    use mod_param, only: cbcsca
+#endif
+    implicit none
+    character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
+    character(len=1), intent(in), dimension(0:1,3  ) :: cbcpre
+    real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
+    real(rp)        , intent(in), dimension(0:1,3  ) :: bcpre
+    logical         , intent(out) :: passed
+    character(len=2) :: bc01v,bc01p
+    integer :: ivel,idir
+#if defined(_OPENACC) && defined(_SCALAR)
+    character(len=2) :: bc01s
+#endif
+    logical :: passed_loc
+    passed = .true.
+    !
+    ! check validity of pressure and velocity BCs
+    !
+    passed_loc = .true.
+    do ivel = 1,3
+      do idir=1,3
+        bc01v = cbcvel(0,idir,ivel)//cbcvel(1,idir,ivel)
+        passed_loc = passed_loc.and.( (bc01v == 'PP').or. &
+                                      (bc01v == 'ND').or. &
+                                      (bc01v == 'DN').or. &
+                                      (bc01v == 'NN').or. &
+                                      (bc01v == 'DD') )
+      end do
     end do
-  end do
-  if(myid == 0.and.(.not.passed_loc)) print*, 'ERROR: velocity BCs not valid.'
-  passed = passed.and.passed_loc
-  !
-  passed_loc = .true.
-  do idir=1,3
-    bc01p = cbcpre(0,idir)//cbcpre(1,idir)
-    passed_loc = passed_loc.and.( (bc01p == 'PP').or. &
-                                  (bc01p == 'ND').or. &
-                                  (bc01p == 'DN').or. &
-                                  (bc01p == 'NN').or. &
-                                  (bc01p == 'DD') )
-  end do
-  if(myid == 0.and.(.not.passed_loc)) print*, 'ERROR: pressure BCs not valid.'
-  passed = passed.and.passed_loc
-  !
-  passed_loc = .true.
-  do idir=1,3
-    ivel = idir
-    bc01v = cbcvel(0,idir,ivel)//cbcvel(1,idir,ivel)
-    bc01p = cbcpre(0,idir)//cbcpre(1,idir)
-    passed_loc = passed_loc.and.( (bc01v == 'PP'.and.bc01p == 'PP').or. &
-                                  (bc01v == 'ND'.and.bc01p == 'DN').or. &
-                                  (bc01v == 'DN'.and.bc01p == 'ND').or. &
-                                  (bc01v == 'DD'.and.bc01p == 'NN').or. &
-                                  (bc01v == 'NN'.and.bc01p == 'DD') )
-  end do
-  if(myid == 0.and.(.not.passed_loc)) print*, 'ERROR: velocity and pressure BCs not compatible.'
-  passed = passed.and.passed_loc
-  !
-  passed_loc = .true.
-  do idir=1,2
-    passed_loc = passed_loc.and.((bcpre(0,idir) == 0.).and.(bcpre(1,idir) == 0.))
-  end do
-  if(myid == 0.and.(.not.passed_loc)) &
-    print*, 'ERROR: pressure BCs in directions x and y must be homogeneous (value = 0.).'
-  passed = passed.and.passed_loc
-#if defined(_OPENACC)
-  do idir=1,2
-    bc01p = cbcpre(0,idir)//cbcpre(1,idir)
-    passed_loc = passed_loc.and..not.( (bc01p == 'DN').or. &
-                                       (bc01p == 'ND') )
-  end do
-  if(myid == 0.and.(.not.passed_loc)) &
-    print*, 'ERROR: pressure BCs "ND" or "DN" along x or y not implemented on GPUs yet.'
+    if(myid == 0.and.(.not.passed_loc)) print*, 'ERROR: velocity BCs not valid.'
+    passed = passed.and.passed_loc
+    !
+    passed_loc = .true.
+    do idir=1,3
+      bc01p = cbcpre(0,idir)//cbcpre(1,idir)
+      passed_loc = passed_loc.and.( (bc01p == 'PP').or. &
+                                    (bc01p == 'ND').or. &
+                                    (bc01p == 'DN').or. &
+                                    (bc01p == 'NN').or. &
+                                    (bc01p == 'DD') )
+    end do
+    if(myid == 0.and.(.not.passed_loc)) print*, 'ERROR: pressure BCs not valid.'
+    passed = passed.and.passed_loc
+    !
+    ! check that all variables have the same periodic directions
+    !
+    passed_loc = .true.
+    do idir=1,3
+      do ivel=1,3
+        passed_loc = passed_loc.and.all((cbcvel(:,idir,ivel) == 'P').eqv.(cbcpre(:,idir) == 'P'))
+      end do
+#if defined(_SCALAR)
+      passed_loc = passed_loc.and.all((cbcsca(:,idir) == 'P').eqv.(cbcpre(:,idir) == 'P'))
+#endif
+    end do
+    if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: velocity and scalar periodic BCs must match pressure BCs in every direction.'
+    passed = passed.and.passed_loc
+    !
+    passed_loc = .true.
+    do idir=1,3
+      ivel = idir
+      bc01v = cbcvel(0,idir,ivel)//cbcvel(1,idir,ivel)
+      bc01p = cbcpre(0,idir)//cbcpre(1,idir)
+      passed_loc = passed_loc.and.( (bc01v == 'PP'.and.bc01p == 'PP').or. &
+                                    (bc01v == 'ND'.and.bc01p == 'DN').or. &
+                                    (bc01v == 'DN'.and.bc01p == 'ND').or. &
+                                    (bc01v == 'DD'.and.bc01p == 'NN').or. &
+                                    (bc01v == 'NN'.and.bc01p == 'DD') )
+    end do
+    if(myid == 0.and.(.not.passed_loc)) print*, 'ERROR: velocity and pressure BCs not compatible.'
+    passed = passed.and.passed_loc
+    !
+    passed_loc = .true.
+    do idir=1,2
+      passed_loc = passed_loc.and.((bcpre(0,idir) == 0.).and.(bcpre(1,idir) == 0.))
+    end do
+    if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: pressure BCs in directions x and y must be homogeneous (value = 0.).'
+    passed = passed.and.passed_loc
+    if(is_impdiff .and. .not.is_impdiff_1d) then
+      passed_loc = .true.
+      do ivel = 1,3
+        do idir=1,2
+          passed_loc = passed_loc.and.((bcvel(0,idir,ivel) == 0.).and.(bcvel(1,idir,ivel) == 0.))
+        end do
+      end do
+      if(myid == 0.and.(.not.passed_loc)) &
+        print*, 'ERROR: velocity BCs with implicit diffusion in directions x and y must be homogeneous (value = 0.).'
+      passed = passed.and.passed_loc
+    end if
+#if defined(_OPENACC) && defined(_SCALAR)
+    if(is_impdiff .and. .not.is_impdiff_1d) then
+      passed_loc = .true.
+      do idir=1,2
+        bc01s = cbcsca(0,idir)//cbcsca(1,idir)
+        passed_loc = passed_loc.and.( (bc01s == 'PP').or. &
+                                      (bc01s == 'ND').or. &
+                                      (bc01s == 'DN').or. &
+                                      (bc01s == 'NN').or. &
+                                      (bc01s == 'DD') )
+      end do
+      if(myid == 0.and.(.not.passed_loc)) &
+        print*, 'ERROR: scalar BCs along x or y not valid.'
+      passed = passed.and.passed_loc
+    end if
 #endif
   end subroutine chk_bc
   !
   subroutine chk_forcing(cbcvel,cbcpre,bcvel,is_forced,passed)
-  implicit none
-  character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
-  character(len=1), intent(in), dimension(0:1,3) :: cbcpre
-  real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
-  logical         , intent(in), dimension(3) :: is_forced
-  logical         , intent(out) :: passed
-  integer :: idir,jdir
-  logical :: passed_periodic,passed_closed,is_closed
-  passed = .true.
-  !
-  ! zero-net-acceleration forcing assumes periodicity along the forced
-  ! direction and no advective momentum flux through transverse boundaries
-  !
-  passed_periodic = .true.
-  passed_closed = .true.
-  do idir=1,3
-    if(is_forced(idir)) then
-      passed_periodic = passed_periodic.and. &
-                        (cbcpre(0,idir)//cbcpre(1,idir) == 'PP').and. &
-                        all(cbcvel(:,idir,:) == 'P')
-      do jdir=1,3
-        if(jdir /= idir) then
-          is_closed = (cbcpre(0,jdir)//cbcpre(1,jdir) == 'PP' .and. &
-                       all(cbcvel(:,jdir,:) == 'P')).or. &
-                      (cbcvel(0,jdir,jdir)//cbcvel(1,jdir,jdir) == 'DD' .and. &
-                       all(bcvel(:,jdir,jdir) == 0._rp))
-          passed_closed = passed_closed.and.is_closed
-        end if
-      end do
-    end if
-  end do
-  if(myid == 0.and.(.not.passed_periodic)) &
-    print*, 'ERROR: zero-net-acceleration forcing requires periodic pressure BCs in each forced direction.'
-  if(myid == 0.and.(.not.passed_closed)) &
-    print*, 'ERROR: zero-net-acceleration forcing requires periodic or impermeable transverse boundaries.'
-  passed = passed_periodic.and.passed_closed
+    implicit none
+    character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
+    character(len=1), intent(in), dimension(0:1,3) :: cbcpre
+    real(rp)        , intent(in), dimension(0:1,3,3) :: bcvel
+    logical         , intent(in), dimension(3) :: is_forced
+    logical         , intent(out) :: passed
+    integer :: idir,jdir
+    logical :: passed_periodic,passed_closed,is_closed
+    passed = .true.
+    !
+    ! zero-net-acceleration forcing assumes periodicity along the forced
+    ! direction and no advective momentum flux through transverse boundaries
+    !
+    passed_periodic = .true.
+    passed_closed = .true.
+    do idir=1,3
+      if(is_forced(idir)) then
+        passed_periodic = passed_periodic.and. &
+                          (cbcpre(0,idir)//cbcpre(1,idir) == 'PP').and. &
+                          all(cbcvel(:,idir,:) == 'P')
+        do jdir=1,3
+          if(jdir /= idir) then
+            is_closed = (cbcpre(0,jdir)//cbcpre(1,jdir) == 'PP' .and. &
+                         all(cbcvel(:,jdir,:) == 'P')).or. &
+                        (cbcvel(0,jdir,jdir)//cbcvel(1,jdir,jdir) == 'DD' .and. &
+                         all(bcvel(:,jdir,jdir) == 0._rp))
+            passed_closed = passed_closed.and.is_closed
+          end if
+        end do
+      end if
+    end do
+    if(myid == 0.and.(.not.passed_periodic)) &
+      print*, 'ERROR: zero-net-acceleration forcing requires periodic pressure BCs in each forced direction.'
+    if(myid == 0.and.(.not.passed_closed)) &
+      print*, 'ERROR: zero-net-acceleration forcing requires periodic or impermeable transverse boundaries.'
+    passed = passed_periodic.and.passed_closed
   end subroutine chk_forcing
   !
-#if 0
-  subroutine test_sanity_solver(ng,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z,dli,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g, &
+  subroutine test_sanity_solver(ng,lo,hi,n,nh_v,nh_p,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,n_z,l,dl,dli,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g, &
                                 nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #if defined(_OPENACC)
-    use mod_workspaces, only: set_cufft_wspace
-    use openacc,        only: acc_get_cuda_stream
+    use mod_workspaces     , only: set_cufft_wspace
+    use mod_common_cudecomp, only: istream_acc_queue_1
 #endif
     implicit none
     integer , intent(in), dimension(3) :: ng,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
-    real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in), dimension(0:) :: dzc,dzf,dzci,dzfi,dzci_g,dzfi_g
+    integer , intent(in)               :: nh_v,nh_p,nh_g
+    real(rp), intent(in), dimension(3) :: l
+    real(rp), intent(in), dimension(3) :: dl,dli
+    real(rp), intent(in), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,dzci_g,dzfi_g
     integer , intent(in), dimension(0:1,3) :: nb
     logical , intent(in), dimension(0:1,3) :: is_bound
     character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
@@ -205,7 +330,7 @@ module mod_sanity
     real(rp), intent(in), dimension(0:1,3,3)          :: bcvel
     real(rp), intent(in), dimension(0:1,3)            :: bcpre
     real(rp), allocatable, dimension(:,:,:) :: u,v,w,p
-#if !defined(_OPENACC)
+#if !defined(_OPENACC) || defined(_USE_HIP)
     type(C_PTR), dimension(2,2) :: arrplan
 #else
     integer    , dimension(2,2) :: arrplan
@@ -214,21 +339,22 @@ module mod_sanity
     real(rp), allocatable, dimension(:,:) ::  lambdaxy
     real(rp), allocatable, dimension(:) :: a,b,c,bb
     real(rp), allocatable, dimension(:,:,:) :: rhsbx,rhsby,rhsbz
-    real(rp), dimension(3) :: dl
     real(rp) :: dt,dti,alpha
-    real(rp) :: divtot,divmax,resmax
+    real(rp) :: divtot,divmax,restot,resmax
+    integer :: i,j,k
     logical :: passed,passed_loc
     passed = .true.
     !$acc wait
-    allocate(u(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-             v(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-             w(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
-             p(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+    allocate(u(1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
+             v(1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
+             w(1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
+             p(1-nh_p:n(1)+nh_p,1-nh_p:n(2)+nh_p,1-nh_p:n(3)+nh_p), &
              lambdaxy(n_z(1),n_z(2)), &
              a(n_z(3)),b(n_z(3)),c(n_z(3)), &
              rhsbx(n(2),n(3),0:1), &
              rhsby(n(1),n(3),0:1), &
              rhsbz(n(1),n(2),0:1))
+    !$acc enter data copyin(n,n_z)
     !
     ! initialize velocity below with some random noise
     !
@@ -243,26 +369,147 @@ module mod_sanity
     !
     ! test pressure correction
     !
-    call initsolver(ng,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcpre,bcpre(:,:), &
+    call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcpre,bcpre(:,:), &
                     lambdaxy,['c','c','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
     !$acc enter data copyin(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-    !@acc call set_cufft_wspace(pack(arrplan,.true.),acc_get_cuda_stream(1))
-    dl  = dli**(-1)
+#if defined(_OPENACC)
+    call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
+#endif
     dt  = acos(-1.) ! value is irrelevant
     dti = dt**(-1)
-    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.false.,dl,dzc,dzf,u,v,w)
-    call fillps(n,dli,dzfi,dti,u,v,w,p)
-    call updt_rhs_b(['c','c','c'],cbcpre,n,is_bound,rhsbx,rhsby,rhsbz,p)
-    call solver(n,ng,arrplan,normfft,lambdaxy,a,b,c,cbcpre,['c','c','c'],p)
-    call boundp(cbcpre,n,bcpre,nb,is_bound,dl,dzc,p)
-    call correc(n,dli,dzci,dt,p,u,v,w)
-    call bounduvw(cbcvel,n,bcvel,nb,is_bound,.true.,dl,dzc,dzf,u,v,w)
-    call chkdiv(lo,hi,dli,dzfi,u,v,w,divtot,divmax)
+    call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
+    call fillps(n,nh_v,nh_p,nh_g,dli,dzfi,dti,1._rp,u,v,w,p)
+    call updt_rhs_b(['c','c','c'],cbcpre,n,nh_p,is_bound,rhsbx,rhsby,rhsbz,p)
+    call solver(n,nh_p,ng,arrplan,normfft,lambdaxy,a,b,c,cbcpre,['c','c','c'],p)
+    call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
+    call correc(n,nh_v,nh_p,nh_p,nh_g,dli,dzci,1._rp,[1._rp,1._rp],dt,p,p,u,v,w) ! unit density
+    call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
+    call chkdiv(lo,hi,nh_v,nh_g,l,dli,dzfi,u,v,w,divtot,divmax)
     passed_loc = divmax < small
     if(myid == 0.and.(.not.passed_loc)) &
     print*, 'ERROR: Pressure correction: Divergence is too large, with maximum = ', divmax
     passed = passed.and.passed_loc
     call fftend(arrplan)
+    if(is_impdiff .and. .not.is_impdiff_1d) then
+      allocate(bb(n_z(3)))
+      alpha = -acos(-1.) ! negative shift, as in implicit diffusion
+      !$acc parallel loop collapse(3) default(present)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=0,n(3)+1
+        do j=0,n(2)+1
+          do i=0,n(1)+1
+            u(i,j,k) = 0.
+            v(i,j,k) = 0.
+            w(i,j,k) = 0.
+          end do
+        end do
+      end do
+      !$acc update self(u,v,w)
+      call add_noise(ng,lo,123,.5_rp,u(1:n(1),1:n(2),1:n(3)))
+      call add_noise(ng,lo,456,.5_rp,v(1:n(1),1:n(2),1:n(3)))
+      call add_noise(ng,lo,789,.5_rp,w(1:n(1),1:n(2),1:n(3)))
+      !$acc update device(u,v,w)
+      !$acc enter data create(bb)
+      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,1),bcvel(:,:,1), &
+                      lambdaxy,['f','c','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
+      !$acc update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+#if defined(_OPENACC)
+      call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
+#endif
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+      !$acc parallel loop collapse(3) default(present)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=0,n(3)+1
+        do j=0,n(2)+1
+          do i=0,n(1)+1
+            u(i,j,k) = u(i,j,k)*alpha
+            p(i,j,k) = u(i,j,k)
+          end do
+        end do
+      end do
+      !$acc parallel loop default(present)
+      !$OMP parallel do   DEFAULT(shared)
+      do k=1,n_z(3)
+        bb(k) = b(k) + alpha
+      end do
+      call updt_rhs_b(['f','c','c'],cbcvel(:,:,1),n,nh_v,is_bound,rhsbx,rhsby,rhsbz,u)
+      call solver(n,nh_v,ng,arrplan,normfft,lambdaxy,a,bb,c,cbcvel(:,:,1),['f','c','c'],u)
+      call fftend(arrplan)
+      ! actually, we are only interested in the boundary condition in `u`
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+      call chk_helmholtz(lo,hi,nh_p,nh_v,nh_g,l,dli,dzci,dzfi,alpha,p,u,cbcvel(:,:,1),is_bound,['f','c','c'],restot,resmax)
+      passed_loc = resmax < small
+      if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: wrong solution of Helmholtz equation in x direction.'
+      passed = passed.and.passed_loc
+      !
+      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,2),bcvel(:,:,2), &
+                      lambdaxy,['c','f','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
+      !$acc update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+#if defined(_OPENACC)
+      call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
+#endif
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+      !$acc parallel loop collapse(3) default(present)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=0,n(3)+1
+        do j=0,n(2)+1
+          do i=0,n(1)+1
+            v(i,j,k) = v(i,j,k)*alpha
+            p(i,j,k) = v(i,j,k)
+          end do
+        end do
+      end do
+      !$acc parallel loop default(present)
+      !$OMP parallel do   DEFAULT(shared)
+      do k=1,n_z(3)
+        bb(k) = b(k) + alpha
+      end do
+      call updt_rhs_b(['c','f','c'],cbcvel(:,:,2),n,nh_v,is_bound,rhsbx,rhsby,rhsbz,v)
+      call solver(n,nh_v,ng,arrplan,normfft,lambdaxy,a,bb,c,cbcvel(:,:,2),['c','f','c'],v)
+      call fftend(arrplan)
+      ! actually, we are only interested in the boundary condition in `v`
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+      call chk_helmholtz(lo,hi,nh_p,nh_v,nh_g,l,dli,dzci,dzfi,alpha,p,v,cbcvel(:,:,2),is_bound,['c','f','c'],restot,resmax)
+      passed_loc = resmax < small
+      if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: wrong solution of Helmholtz equation in y direction.'
+      passed = passed.and.passed_loc
+      !
+      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,3),bcvel(:,:,3), &
+                      lambdaxy,['c','c','f'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
+      !$acc update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+#if defined(_OPENACC)
+      call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
+#endif
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+      !$acc parallel loop collapse(3) default(present)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=0,n(3)+1
+        do j=0,n(2)+1
+          do i=0,n(1)+1
+            w(i,j,k) = w(i,j,k)*alpha
+            p(i,j,k) = w(i,j,k)
+          end do
+        end do
+      end do
+      !$acc parallel loop default(present)
+      !$OMP parallel do   DEFAULT(shared)
+      do k=1,n_z(3)
+        bb(k) = b(k) + alpha
+      end do
+      call updt_rhs_b(['c','c','f'],cbcvel(:,:,3),n,nh_v,is_bound,rhsbx,rhsby,rhsbz,w)
+      call solver(n,nh_v,ng,arrplan,normfft,lambdaxy,a,bb,c,cbcvel(:,:,3),['c','c','f'],w)
+      call fftend(arrplan)
+      ! actually, we are only interested in the boundary condition in `w`
+      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+      call chk_helmholtz(lo,hi,nh_p,nh_v,nh_g,l,dli,dzci,dzfi,alpha,p,w,cbcvel(:,:,3),is_bound,['c','c','f'],restot,resmax)
+      passed_loc = resmax < small
+      if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: wrong solution of Helmholtz equation in z direction.'
+      passed = passed.and.passed_loc
+      !$acc exit data delete(bb)
+    end if
     !$acc exit data delete(u,v,w,p,lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
     if(.not.passed) then
       call decomp_2d_finalize
@@ -270,13 +517,12 @@ module mod_sanity
       error stop
     end if
   end subroutine test_sanity_solver
-#endif
   !
   subroutine abortit
     implicit none
     if(myid == 0) print*, ''
     if(myid == 0) print*, '*** Simulation aborted due to errors in the input file ***'
-    if(myid == 0) print*, '    check dns.in'
+    if(myid == 0) print*, '    check `input.nml`.'
     call decomp_2d_finalize
     call MPI_FINALIZE(ierr)
     error stop

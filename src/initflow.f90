@@ -1,6 +1,6 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
@@ -13,89 +13,119 @@ module mod_initflow
   private
   public initflow,initscal,add_noise
   contains
-  subroutine initflow(inivel,bcvel,ng,lo,l,dl,zc,zf,dzc,dzf,rho,mu,bforce,is_wallturb,time,u,v,w,p)
+  subroutine initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho,mu, &
+                      bforce,is_wallturb,time,u,v,w,p)
     !
     ! computes initial conditions for the velocity field
     !
     implicit none
     character(len=*), intent(in) :: inivel
+    character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
     real(rp), intent(in), dimension(0:1,3,3) :: bcvel
     integer , intent(in), dimension(3) :: ng,lo
+    integer , intent(in)               :: nh_v,nh_p,nh_g
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(0:) :: dzc,dzf,zc,zf
+    real(rp), intent(in), dimension(1-nh_g:) :: zc,zf,dzc,dzf
     real(rp), intent(in)               :: rho,mu
     real(rp), intent(in), dimension(3) :: bforce
     logical , intent(in)               :: is_wallturb
     real(rp), intent(in)               :: time
-    real(rp), dimension(0:,0:,0:), intent(out) :: u,v,w,p
-    real(rp), allocatable, dimension(:) :: u1d
-    !real(rp), allocatable, dimension(:,:) :: u2d
-    integer :: i,j,k
-    logical :: is_noise,is_mean,is_pair
+    real(rp), target, dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(inout) :: u,v,w
+    real(rp), target, dimension(1-nh_p:,1-nh_p:,1-nh_p:), intent(inout) :: p
+    real(rp), pointer, dimension(:,:,:) :: us,ut,un
+    real(rp), allocatable, dimension(:) :: u1d_n,u1d_t,rn,rt,rs,rft,rfn
+    character(len=len(inivel)) :: ini
+    integer :: i,j,k,idir_s,idir_t,idir_n,ih,ia,ib,isuffix
+    logical :: is_noise,is_mean,is_pair,is_duct
     real(rp) :: xc,yc,zcc,xf,yf,zff
-    real(rp), allocatable, dimension(:) :: zc2
-    real(rp) :: uref,lref
+    real(rp) :: uref,lref,lprof
     real(rp) :: ubulk,visc,reb,retau
-    integer, dimension(3) :: n
+    real(rp), dimension(3) :: xyz_c,xyz_f,vel
+    integer, dimension(3) :: n,ii
     !
-    n(:) = shape(p) - 2*1
-    allocate(u1d(n(3)))
+    n(:) = shape(p) - 2*nh_p
+    visc = mu/rho
+    ini = inivel
+    isuffix = len_trim(ini)
+    idir_s = 1
+    if(isuffix == 5) then
+      if((ini(isuffix-1:isuffix-1) == '-').and. &
+         (.not.any(ini(1:3) == ['tgv','ant','rox','roy','roz','vox','voy','voz']))) then
+        select case(ini(isuffix:isuffix))
+        case('x','y','z')
+          idir_s = index('xyz',ini(isuffix:isuffix))
+          ini = ini(:isuffix-2)
+        end select
+      end if
+    end if
+    !
+    ! streamwise, transverse and normal directions for the profile
+    !
+    select case(idir_s)
+    case(1)
+      idir_t = 2; idir_n = 3
+      us => u; ut => v; un => w
+    case(2)
+      idir_t = 1; idir_n = 3
+      us => v; ut => u; un => w
+    case(3)
+      idir_t = 2; idir_n = 1
+      us => w; ut => v; un => u
+    end select
+    allocate(u1d_n(n(idir_n)),u1d_t(n(idir_t)),rn(0:n(idir_n)+1),rt(0:n(idir_t)+1))
+    if(idir_n == 3) then
+      rn(:) = zc(0:n(3)+1)
+    else
+      do i=0,n(idir_n)+1
+        rn(i) = (i+lo(idir_n)-1-.5)*dl(idir_n)
+      end do
+    end if
+    do j=0,n(idir_t)+1
+      rt(j) = (j+lo(idir_t)-1-.5)*dl(idir_t)
+    end do
+    u1d_t(:) = 1.
+    lprof = l(idir_n)
+    if(any(trim(ini) == ['hcp','hcl','hdc'])) lprof = 2.*lprof
+    is_duct = any(trim(ini) == ['poi','log']) .and. &
+              (cbcvel(0,idir_t,idir_s)//cbcvel(1,idir_t,idir_s) == 'DD')
     is_noise = .false.
     is_mean  = .false.
     is_pair  = .false.
     uref  = 1.
     ubulk = uref
-    visc = mu/rho
-    select case(trim(inivel))
+    select case(trim(ini))
     case('cou')
-      uref = (bcvel(0,3,1)-bcvel(1,3,1)) ! uref = (ubot - utop)
-      call couette(   n(3),zc/l(3),uref ,u1d)
-      uref = abs(uref)
-    case('poi')
-      call poiseuille(n(3),zc/l(3),ubulk,u1d)
+      call couette(   n(idir_n),rn/lprof,1._rp,u1d_n)
+      u1d_n(:) = u1d_n(:) + 0.5 ! from 1 to 0
+      u1d_n(:) = bcvel(0,idir_n,idir_s)*(u1d_n(:)) + bcvel(1,idir_n,idir_s)*(1.-u1d_n(:))
+      uref = abs(bcvel(1,idir_n,idir_s)-bcvel(0,idir_n,idir_s))
+    case('poi','hcp')
+      call poiseuille(n(idir_n),rn/lprof,ubulk,u1d_n)
+      if(is_duct) call poiseuille(n(idir_t),rt/l(idir_t),1._rp,u1d_t)
       is_mean = .true.
     case('tbl')
-      call temporal_bl(n(3),zc,1._rp,visc,uref,u1d)
+      call temporal_bl(n(idir_n),rn,1._rp,visc,uref,u1d_n)
       is_noise = .true.
     case('iop') ! reversed 'poi'
       !
-      ! convective reference frame moving with velocit `ubulk`;
+      ! convective reference frame moving with velocity `ubulk`;
       ! walls have negative velocity equal to `ubulk` in the laboratory frame
       !
-      ubulk = 0.5*abs(bcvel(0,3,1)+bcvel(1,3,1))
-      call poiseuille(n(3),zc/l(3),ubulk,u1d)
-      u1d(:) = u1d(:) - ubulk
+      ubulk = 0.5*abs(bcvel(0,idir_n,idir_s)+bcvel(1,idir_n,idir_s))
+      call poiseuille(n(idir_n),rn/lprof,ubulk,u1d_n)
       is_mean = .true.
     case('zer')
-      u1d(:) = 0.
+      u1d_n(:) = 0.
     case('uni')
-      u1d(:) = uref
-    case('log')
-      reb = ubulk*l(3)/visc
-      call log_profile(n(3),zc/l(3),reb,u1d)
+      u1d_n(:) = uref
+    case('log','hcl')
+      reb = ubulk*lprof/visc
+      call log_profile(n(idir_n),rn/lprof,reb,u1d_n)
+      if(is_duct) then
+        reb = ubulk*l(idir_t)/visc
+        call log_profile(n(idir_t),rt/l(idir_t),reb,u1d_t)
+      end if
       is_noise = .true.
-      is_mean = .true.
-    case('hcl')
-      deallocate(u1d)
-      allocate(u1d(2*n(3)))
-      allocate(zc2(0:2*n(3)+1))
-      zc2(1     :  n(3)) =        zc(1   :n(3): 1)
-      zc2(n(3)+1:2*n(3)) = 2*l(3) - zc(n(3):1   :-1)
-      zc2(0)        = -zc(0)
-      zc2(2*n(3)+1) = 2*l(3) + zc(0)
-      reb = ubulk*(2*l(3))/visc
-      call log_profile(2*n(3),zc2/(2*l(3)),reb,u1d)
-      is_noise = .true.
-      is_mean = .true.
-    case('hcp')
-      deallocate(u1d)
-      allocate(u1d(2*n(3)))
-      allocate(zc2(0:2*n(3)+1))
-      zc2(1     :  n(3)) =        zc(1   :n(3): 1)
-      zc2(n(3)+1:2*n(3)) = 2*l(3) - zc(n(3):1   :-1)
-      zc2(0)        = -zc(0)
-      zc2(2*n(3)+1) = 2*l(3) + zc(0)
-      call poiseuille(2*n(3),zc2/(2*l(3)),ubulk,u1d)
       is_mean = .true.
     case('tgv')
       do k=1,n(3)
@@ -110,6 +140,29 @@ module mod_initflow
             v(i,j,k) = -cos(xc)*sin(yf)*cos(zcc)*uref
             w(i,j,k) = 0.
             p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+          end do
+        end do
+      end do
+    case('tgv-2d-x','tgv-2d-y','tgv-2d-z')
+      ih = index('xyz',ini(isuffix:isuffix))
+      ia = mod(ih  ,3)+1
+      ib = mod(ih+1,3)+1
+      do k=1,n(3)
+        xyz_c(3) = zc(k)
+        xyz_f(3) = zf(k)
+        do j=1,n(2)
+          xyz_c(2) = (j+lo(2)-1-.5)*dl(2)
+          xyz_f(2) = (j+lo(2)-1-.0)*dl(2)
+          do i=1,n(1)
+            xyz_c(1) = (i+lo(1)-1-.5)*dl(1)
+            xyz_f(1) = (i+lo(1)-1-.0)*dl(1)
+            vel(:) = 0.
+            vel(ia) =  cos(xyz_f(ia))*sin(xyz_c(ib))*uref
+            vel(ib) = -sin(xyz_c(ia))*cos(xyz_f(ib))*uref
+            u(i,j,k) = vel(1)
+            v(i,j,k) = vel(2)
+            w(i,j,k) = vel(3)
+            p(i,j,k) = -(cos(2.*xyz_c(ia))+cos(2.*xyz_c(ib)))/4.*uref**2
           end do
         end do
       end do
@@ -136,44 +189,17 @@ module mod_initflow
           end do
         end do
       end do
-    case('tgw')
-      do k=1,n(3)
-        do j=1,n(2)
-          yc = (j+lo(2)-1-.5)*dl(2)
-          yf = (j+lo(2)-1-.0)*dl(2)
-          do i=1,n(1)
-            xc = (i+lo(1)-1-.5)*dl(1)
-            xf = (i+lo(1)-1-.0)*dl(1)
-            u(i,j,k) =  cos(xf)*sin(yc)*uref
-            v(i,j,k) = -sin(xc)*cos(yf)*uref
-            w(i,j,k) = 0.
-            p(i,j,k) = -(cos(2.*xc)+cos(2.*yc))/4.*uref**2
-          end do
-        end do
-      end do
     case('pdc','hdc')
-      lref  = l(3)/2.
-      if(trim(inivel) /= 'pdc') lref = 2.*lref
+      lref = lprof/2.
       if(is_wallturb) then ! turbulent flow
-        uref  = (bforce(1)*lref/rho)**(0.5) ! utau = sqrt(-dpdl(1)*h/rho)
+        uref  = (bforce(idir_s)*lref/rho)**(0.5) ! utau = sqrt(-dpdx*h/rho)
         retau = uref*lref/visc
         reb   = (retau/.09)**(1./.88)
         ubulk = reb*visc/(2*lref)
       else                 ! laminar flow
-        ubulk = (bforce(1)*lref**2/(3.*visc))
+        ubulk = (bforce(idir_s)*lref**2/(3.*visc))
       end if
-      if(trim(inivel) == 'pdc') then
-        call poiseuille(n(3),zc/l(3),ubulk,u1d)
-      else
-        deallocate(u1d)
-        allocate(u1d(2*n(3)))
-        allocate(zc2(0:2*n(3)+1))
-        zc2(1     :  n(3)) =        zc(1   :n(3): 1)
-        zc2(n(3)+1:2*n(3)) = 2*l(3) - zc(n(3):1   :-1)
-        zc2(0)        = -zc(0)
-        zc2(2*n(3)+1) = 2*l(3) + zc(0)
-        call poiseuille(2*n(3),zc2/(2*l(3)),ubulk,u1d)
-      end if
+      call poiseuille(n(idir_n),rn/lprof,ubulk,u1d_n)
       is_mean = .true.
     case('roz') ! solid body rotation around z
       do k=1,n(3)
@@ -281,32 +307,45 @@ module mod_initflow
       call MPI_FINALIZE(ierr)
       error stop
     end select
-    if(.not.any(inivel == ['tgv','tgw','ant','rox','roy','roz','vox','voy','voz'])) then
+    if(.not.any(trim(ini(1:3)) == ['tgv','ant','rox','roy','roz','vox','voy','voz'])) then
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
-            u(i,j,k) = u1d(k)
-            v(i,j,k) = 0.
-            w(i,j,k) = 0.
+            ii = [i,j,k]
+            us(i,j,k) = u1d_t(ii(idir_t))*u1d_n(ii(idir_n))
+            ut(i,j,k) = 0.
+            un(i,j,k) = 0.
             p(i,j,k) = 0.
           end do
         end do
       end do
     end if
     if(is_noise) then
-      call add_noise(ng,lo,123,.05_rp,u(1:n(1),1:n(2),1:n(3)))
-      call add_noise(ng,lo,456,.05_rp,v(1:n(1),1:n(2),1:n(3)))
-      call add_noise(ng,lo,789,.05_rp,w(1:n(1),1:n(2),1:n(3)))
+      call add_noise(ng,lo,123,.05_rp,us(1:n(1),1:n(2),1:n(3)))
+      call add_noise(ng,lo,456,.05_rp,ut(1:n(1),1:n(2),1:n(3)))
+      call add_noise(ng,lo,789,.05_rp,un(1:n(1),1:n(2),1:n(3)))
     end if
     if(is_mean) then
-      if(trim(inivel) /= 'iop') then
-        call set_mean(n,ubulk,dzf/l(3)*(dl(1)/l(1))*(dl(2)/l(2)),u(1:n(1),1:n(2),1:n(3)))
+      if(idir_s == 3) then
+        call set_mean(n,nh_g,dzc/l(3)*(dl(1)/l(1))*(dl(2)/l(2)),ubulk,us(1:n(1),1:n(2),1:n(3)))
       else
-        call set_mean(n,0._rp,dzf/l(3)*(dl(1)/l(1))*(dl(2)/l(2)),u(1:n(1),1:n(2),1:n(3)))
+        call set_mean(n,nh_g,dzf/l(3)*(dl(1)/l(1))*(dl(2)/l(2)),ubulk,us(1:n(1),1:n(2),1:n(3)))
       end if
+      if(trim(ini) == 'iop') us(1:n(1),1:n(2),1:n(3)) = us(1:n(1),1:n(2),1:n(3)) - ubulk
     end if
     if(is_wallturb) is_pair = .true.
     if(is_pair) then
+      allocate(rs(0:n(idir_s)+1),rft(0:n(idir_t)+1),rfn(0:n(idir_n)+1))
+      if(idir_s == 3) then
+        rs(:) = zc(0:n(3)+1)
+      else
+        do i=0,n(idir_s)+1
+          rs(i) = (i+lo(idir_s)-1-.5)*dl(idir_s)
+        end do
+      end if
+      do j=0,n(idir_t)+1
+        rft(j) = (j+lo(idir_t)-1-.0)*dl(idir_t)
+      end do
       if(.false.) then
         !
         ! initialize a streamwise vortex pair for a fast transition
@@ -318,18 +357,24 @@ module mod_initflow
         !
         ! see Henningson and Kim, JFM 1991
         !
+        if(idir_n == 3) then
+          rfn(:) = 2.*(rn(:)/l(idir_n) + .5*dzf(0:n(3)+1)/l(idir_n)) - 1.
+        else
+          rfn(:) = 2.*(rn(:)/l(idir_n) + .5*dl(idir_n)/l(idir_n)) - 1.
+        end if
+        rn(:) = 2.*rn(:)/l(idir_n) - 1. ! normal coordinate between -1 and +1
+        rs(:)  = (rs(:) -.5*l(idir_s))*2./l(idir_n)
+        rt(:)  = (rt(:) -.5*l(idir_t))*2./l(idir_n)
+        rft(:) = (rft(:)-.5*l(idir_t))*2./l(idir_n)
         do k=1,n(3)
-          zcc = 2.*zc(k)/l(3) - 1. ! z rescaled to be between -1 and +1
-          zff = 2.*(zc(k)/l(3) + .5*dzf(k)/l(3)) - 1.
           do j=1,n(2)
-            yc = ((lo(2)-1+j-0.5)*dl(2)-.5*l(2))*2./l(3)
-            yf = ((lo(2)-1+j-0.0)*dl(2)-.5*l(2))*2./l(3)
             do i=1,n(1)
-              xc = ((lo(1)-1+i-0.5)*dl(1)-.5*l(1))*2./l(3)
-              xf = ((lo(1)-1+i-0.0)*dl(1)-.5*l(1))*2./l(3)
-              !u(i,j,k) = u1d(k)
-              v(i,j,k) = -1.*gxy(yf,xc)*dfz(zcc)*ubulk*1.5
-              w(i,j,k) =  1.*fz(zff)*dgxy(yc,xc)*ubulk*1.5
+              ii = [i,j,k]
+              xc = rs(ii(idir_s))
+              yc = rt(ii(idir_t)); yf = rft(ii(idir_t))
+              zcc = rn(ii(idir_n)); zff = rfn(ii(idir_n))
+              ut(i,j,k) = -1.*gxy(yf,xc)*dfz(zcc)*ubulk*1.5
+              un(i,j,k) =  1.*fz(zff)*dgxy(yc,xc)*ubulk*1.5
               p(i,j,k) = 0.
             end do
           end do
@@ -338,20 +383,25 @@ module mod_initflow
         !
         ! alternatively, using a Taylor-Green vortex
         ! for the cross-stream velocity components
-        ! (commented below)
         !
+        if(idir_n == 3) then
+          rfn(:) = (rn(:)/l(idir_n)+0.5*dzc(0:n(3)+1)/l(idir_n))*2.*pi
+        else
+          rfn(:) = (rn(:)/l(idir_n)+0.5*dl(idir_n)/l(idir_n))*2.*pi
+        end if
+        rn(:)  = rn(:) /l(idir_n)*2.*pi
+        rs(:)  = rs(:) /l(idir_s)*2.*pi
+        rt(:)  = rt(:) /l(idir_t)*2.*pi
+        rft(:) = rft(:)/l(idir_t)*2.*pi
         do k=1,n(3)
-          zcc = (zc(k)/l(3)              )*2.*pi
-          zff = (zc(k)/l(3)+0.5*dzc(k)/l(3))*2.*pi
           do j=1,n(2)
-            yc = (j+lo(2)-1-.5)*dl(2)/l(2)*2.*pi
-            yf = (j+lo(2)-1-.0)*dl(2)/l(2)*2.*pi
             do i=1,n(1)
-              xc = (i+lo(1)-1-.5)*dl(1)/l(1)*2.*pi
-              xf = (i+lo(1)-1-.0)*dl(1)/l(1)*2.*pi
-              !u(i,j,k) = u1d(k)
-              v(i,j,k) =  sin(xc)*cos(yf)*cos(zcc)*ubulk
-              w(i,j,k) = -cos(xc)*sin(yc)*cos(zff)*ubulk
+              ii = [i,j,k]
+              xc = rs(ii(idir_s))
+              yc = rt(ii(idir_t)); yf = rft(ii(idir_t))
+              zcc = rn(ii(idir_n)); zff = rfn(ii(idir_n))
+              ut(i,j,k) =  sin(xc)*cos(yf)*cos(zcc)*ubulk
+              un(i,j,k) = -cos(xc)*sin(yc)*cos(zff)*ubulk
               p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.
             end do
           end do
@@ -360,7 +410,7 @@ module mod_initflow
     end if
   end subroutine initflow
   !
-  subroutine initscal(inisca,bcsca,ng,lo,l,dl,dzf,zc,s)
+  subroutine initscal(inisca,bcsca,ng,lo,nh,nh_g,l,dl,zc,dzf,s)
     !
     ! computes initial conditions for the scalar field
     !
@@ -368,9 +418,10 @@ module mod_initflow
     character(len=*), intent(in) :: inisca
     real(rp), intent(in), dimension(0:1,3) :: bcsca
     integer , intent(in), dimension(3) :: ng,lo
+    integer , intent(in)               :: nh,nh_g
     real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(0:) :: dzf,zc
-    real(rp), dimension(0:,0:,0:), intent(out) :: s
+    real(rp), intent(in), dimension(1-nh_g:) :: zc,dzf
+    real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(out) :: s
     real(rp), allocatable, dimension(:) :: s1d
     !real(rp), allocatable, dimension(:,:) :: u2d
     integer :: i,j,k
@@ -380,7 +431,7 @@ module mod_initflow
     integer  :: ii
     real(rp) :: xx
     !
-    n(:) = shape(s) - 2*1
+    n(:) = shape(s) - 2*nh
     allocate(s1d(n(3)))
     is_noise = .false.
     is_mean  = .false.
@@ -388,7 +439,7 @@ module mod_initflow
     sref = 0.5*(bcsca(0,3)+bcsca(1,3))
     select case(trim(inisca))
     case('cou','dhc')
-      call couette(   n(3),zc/l(3),1._rp,s1d)
+      call couette(   n(3),zc(0:n(3)+1)/l(3),1._rp,s1d)
       s1d(:) = s1d(:) + 0.5 ! from 0 to 1
       s1d(:) = bcsca(0,3)*(s1d(:)) + bcsca(1,3)*(1.-s1d(:))
     case('uni')
@@ -425,7 +476,7 @@ module mod_initflow
       call add_noise(ng,lo,123,.05_rp,s(1:n(1),1:n(2),1:n(3)))
     end if
     if(is_mean) then
-      call set_mean(n,sref,dzf/l(3)*(dl(1)/l(1))*(dl(2)/l(2)),s(1:n(1),1:n(2),1:n(3)))
+      call set_mean(n,nh_g,dzf/l(3)*(dl(1)/l(1))*(dl(2)/l(2)),sref,s(1:n(1),1:n(2),1:n(3)))
     end if
   end subroutine initscal
   !
@@ -461,15 +512,17 @@ module mod_initflow
     end do
   end subroutine add_noise
   !
-  subroutine set_mean(n,mean,grid_vol_ratio,p)
+  subroutine set_mean(n,nh,grid_vol_ratio,mean,p)
   implicit none
   integer , intent(in), dimension(3) :: n
-  real(rp), intent(in), dimension(0:) :: grid_vol_ratio
+  integer , intent(in)               :: nh
+  real(rp), intent(in), dimension(1-nh:) :: grid_vol_ratio
   real(rp), intent(in) :: mean
   real(rp), intent(inout), dimension(:,:,:) :: p
   real(rp) :: meanold
   integer :: i,j,k
   meanold = 0.
+  !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(shared) REDUCTION(+:meanold)
   do k=1,n(3)
     do j=1,n(2)
       do i=1,n(1)
@@ -479,8 +532,10 @@ module mod_initflow
   end do
   call MPI_ALLREDUCE(MPI_IN_PLACE,meanold,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   !
-  if(meanold /= 0.) then
+  if(abs(meanold) > epsilon(0._rp)) then
+    !$OMP PARALLEL WORKSHARE
     p(:,:,:) = p(:,:,:)/meanold*mean
+    !$OMP END PARALLEL WORKSHARE
   end if
   end subroutine set_mean
   !
@@ -527,7 +582,7 @@ module mod_initflow
     integer  :: k
     real(rp) :: theta
     !
-    ! temporal boudary layer profile
+    ! temporal boundary layer profile
     ! with thickness d, viscosity nu, and wall velocity norm (at z=0)
     !
     theta = 54.*nu/norm
@@ -549,7 +604,7 @@ module mod_initflow
       z = zc(k)*2.*retau
       if(z >= retau) z = 2.*retau-z
       p(k) = 2.5*log(z) + 5.5
-      if (z <= 11.6) p(k)=z
+      if(z <= 11.6 ) p(k)=z
     end do
   end subroutine log_profile
   !

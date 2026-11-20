@@ -17,4 +17,4 @@ jobs:
       run: |
         make libs
         make && make clean
-        make FFLAGS+=-fopenmp LIBS+=-lfftw3_threads && make clean
+        make OPENMP=1 && make clean

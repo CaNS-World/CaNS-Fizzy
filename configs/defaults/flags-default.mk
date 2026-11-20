@@ -1,17 +1,26 @@
 ifeq ($(strip $(FCOMP)),GNU)
-FFLAGS_MOD_DIR := -J
+FFLAGS_MOD_DIR := -J # extra space
 endif
 ifeq ($(findstring INTEL,$(strip $(FCOMP))),INTEL)
-FFLAGS_MOD_DIR := -module
+FFLAGS_MOD_DIR := -module # extra space
 endif
 ifeq ($(strip $(FCOMP)),NVIDIA)
-FFLAGS_MOD_DIR := -module
+FFLAGS_MOD_DIR := -module # extra space
 ifeq ($(strip $(GPU)),1)
-override FFLAGS += -acc -cuda -Minfo=accel -gpu=cc60,cc70,cc80
+NVHPC_GPU_TARGET ?= ccall-major
+override FFLAGS += -acc -cuda -Minfo=accel -gpu=$(NVHPC_GPU_TARGET)
 endif
 endif
 ifeq ($(strip $(FCOMP)),CRAY)
-FFLAGS_MOD_DIR := -J
+FFLAGS_MOD_DIR := -I./build -ef -J
+ifeq ($(strip $(GPU)),1)
+override FFLAGS += -hacc
+else
+override FFLAGS += -hnoacc
+endif
+endif
+ifeq ($(strip $(FCOMP)),FUJITSU)
+FFLAGS_MOD_DIR := -M # extra space
 endif
 
 ifeq ($(strip $(FFLAGS_DEBUG)),1)
@@ -28,6 +37,9 @@ endif
 ifeq ($(strip $(FCOMP)),CRAY)
 override FFLAGS += -g -G0
 endif
+ifeq ($(strip $(FCOMP)),FUJITSU)
+override FFLAGS += -g -g0
+endif
   
 endif
 
@@ -37,13 +49,16 @@ ifeq ($(strip $(FCOMP)),GNU)
 override FFLAGS += -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -Wno-unused-function -fPIC -fcheck=all -ffpe-trap=invalid,zero,overflow -finit-real=snan -finit-integer=-99999999 -std=f2018
 endif
 ifeq ($(findstring INTEL,$(strip $(FCOMP))),INTEL)
-override FFLAGS += -O0 -warn all -g -traceback -fpe0 -stand f18
+override FFLAGS += -O0 -warn all -g -traceback -fpe0 -stand f18 -check bounds,pointers,shape,stack -init=snan,arrays
 endif
 ifeq ($(strip $(FCOMP)),NVIDIA)
 override FFLAGS += -O0 -g -traceback -Ktrap=fp -Mstandard -Minform=inform -Mbackslash -Mbounds -Mchkptr -Mchkstk
 endif
 ifeq ($(strip $(FCOMP)),CRAY)
 override FFLAGS += -g -G0
+endif
+ifeq ($(strip $(FCOMP)),FUJITSU)
+override FFLAGS += -g -g0
 endif
 
 endif
@@ -60,6 +75,9 @@ ifeq ($(strip $(FCOMP)),NVIDIA)
 override FFLAGS += -O3 -fast
 endif
 ifeq ($(strip $(FCOMP)),CRAY)
+override FFLAGS += -O3
+endif
+ifeq ($(strip $(FCOMP)),FUJITSU)
 override FFLAGS += -O3
 endif
   
@@ -79,24 +97,25 @@ endif
 ifeq ($(strip $(FCOMP)),CRAY)
 override FFLAGS += -O3 -hfp3
 endif
+ifeq ($(strip $(FCOMP)),FUJITSU)
+override FFLAGS += -O3 -Kfast
+endif
   
 endif
 
-ifeq ($(strip $(DEBUG)),1)
-DEFINES += -D_DEBUG
-endif
-ifeq ($(strip $(DEBUG_SOLVER)),1)
-DEFINES += -D_DEBUG_SOLVER
-endif
-ifeq ($(strip $(TIMING)),1)
-DEFINES += -D_TIMING
-endif
-ifeq      ($(strip $(DECOMP_X)),1)
-DEFINES += -D_DECOMP_X
-else ifeq ($(strip $(DECOMP_Y)),1)
-DEFINES += -D_DECOMP_Y
-else ifeq ($(strip $(DECOMP_Z)),1)
-DEFINES += -D_DECOMP_Z
+CUSTOM_DEFINES =  SINGLE_PRECISION \
+		          LOOP_UNSWITCHING \
+		          DECOMP_X_IO \
+				  USE_DIEZDECOMP \
+		          USE_HDF5 \
+				  USE_ADIOS2 \
+		          USE_HIP \
+                  USE_NVTX
+
+DEFINES += $(foreach var,$(CUSTOM_DEFINES),$(if $(filter 1,$(strip $($(var)))), -D_$(var)))
+
+ifeq ($(strip $(IMPDIFF_1D)),1)
+DEFINES += -D_IMPDIFF -D_IMPDIFF_1D
 endif
 ifeq      ($(strip $(PENCIL_AXIS)),1)
 DEFINES += -D_DECOMP_X
@@ -105,59 +124,30 @@ DEFINES += -D_DECOMP_Y
 else ifeq ($(strip $(PENCIL_AXIS)),3)
 DEFINES += -D_DECOMP_Z
 endif
-ifeq ($(strip $(SINGLE_PRECISION)),1)
-DEFINES += -D_SINGLE_PRECISION
-endif
 
-ifeq      ($(strip $(DECOMP_X_IO)),1)
-DEFINES += -D_DECOMP_X_IO
-endif
+#
+# CaNS-Fizzy: two-fluid options
+#
+SDF_NORMALS ?= 1
+CAPILLARY_BRACKBILL_NORMALIZATION ?= 1
+CUSTOM_DEFINES_2FL = CONSTANT_COEFFS_POISSON \
+                     INTERFACE_CAPTURING_VOF \
+                     SDF_NORMALS \
+                     CAPILLARY_BRACKBILL_NORMALIZATION \
+                     SPLIT_VISCOUS_DIFFUSION \
+                     VISC_HARMONIC_INTERPOLATION \
+                     SCALAR \
+                     BOUSSINESQ_BUOYANCY
 
-ifeq ($(strip $(USE_NVTX)),1)
-DEFINES += -D_USE_NVTX
-endif
-
-ifeq ($(strip $(GRIDPOINT_NATURAL_CHANNEL)),1)
-DEFINES += -D_GRIDPOINT_NATURAL_CHANNEL
-endif
-ifeq ($(strip $(MASK_DIVERGENCE_CHECK)),1)
-DEFINES += -D_MASK_DIVERGENCE_CHECK
-endif
-
-ifeq ($(strip $(SCALAR)),1)
-DEFINES += -D_SCALAR
-endif
-ifeq ($(strip $(BOUSSINESQ_BUOYANCY)),1)
-DEFINES += -D_BOUSSINESQ_BUOYANCY
-endif
+DEFINES += $(foreach var,$(CUSTOM_DEFINES_2FL),$(if $(filter 1,$(strip $($(var)))), -D_$(var)))
 
 ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),1)
-DEFINES += -D_CONSTANT_COEFFS_POISSON
 ifeq ($(strip $(BALANCED_CAPILLARY_PRESSURE_SPLIT)),1)
 DEFINES += -D_BALANCED_CAPILLARY_PRESSURE_SPLIT
 endif
 endif
 
-ifeq ($(strip $(SPLIT_VISCOUS_DIFFUSION)),1)
-DEFINES += -D_SPLIT_VISCOUS_DIFFUSION
-endif
-ifeq ($(strip $(VISC_HARMONIC_INTERPOLATION)),1)
-DEFINES += -D_VISC_HARMONIC_INTERPOLATION
-endif
-
-SDF_NORMALS ?= 1
-ifeq ($(strip $(SDF_NORMALS)),1)
-DEFINES += -D_SDF_NORMALS
-endif
-
-ifeq ($(strip $(INTERFACE_CAPTURING_VOF)),1)
-DEFINES += -D_INTERFACE_CAPTURING_VOF
-endif
-
-CAPILLARY_BRACKBILL_NORMALIZATION ?= 1
-ifeq ($(strip $(CAPILLARY_BRACKBILL_NORMALIZATION)),1)
-DEFINES += -D_CAPILLARY_BRACKBILL_NORMALIZATION
-endif
+DEFINES := $(sort $(DEFINES)) # remove duplicates
 
 ifeq ($(strip $(OPENMP)),1)
 ifeq      ($(strip $(FCOMP)),GNU)
@@ -167,8 +157,22 @@ override FFLAGS += -qopenmp
 else ifeq ($(strip $(FCOMP)),NVIDIA)
 override FFLAGS += -mp
 else ifeq ($(strip $(FCOMP)),CRAY)
-override FFLAGS += -homp
+override FFLAGS += -fopenmp
+else ifeq ($(strip $(FCOMP)),FUJITSU)
+override FFLAGS += -fopenmp
 else
 override FFLAGS += -fopenmp
+endif
+else
+ifeq ($(strip $(FCOMP)),CRAY)
+override FFLAGS += -fno-openmp
+endif
+endif
+
+# CI artifacts may run on a different GitHub-hosted CPU model.
+# Allow CI to request a portable NVHPC target without changing native user builds.
+ifeq ($(strip $(FCOMP)),NVIDIA)
+ifneq ($(strip $(NVHPC_CPU_TARGET)),)
+override FFLAGS += -tp=$(NVHPC_CPU_TARGET)
 endif
 endif

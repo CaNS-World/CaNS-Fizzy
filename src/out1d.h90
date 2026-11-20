@@ -1,34 +1,36 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
   !
-  !  out1d(fname,n,idir,z,dzlzi,p)
+  !  out1d(fname,ng,nh,nh_g,lo,hi,idir,l,dl,z_g,dz,p)
   !
   ! writes the profile of a variable averaged
   ! over two domain directions (see output.f90)
   !
   ! fname -> name of the file
   ! ng    -> global domain sizes
-  ! lo,hi -> upper and lower extents of the input array
+  ! lo,hi -> lower and upper extents of the input array
+  ! nh    -> halo width of the input array, e.g. nh_v for a velocity component
+  ! nh_g  -> halo width of the grid arrays
   ! idir  -> direction of the profile
-  ! dl,dl -> uniform grid spacing and length arrays
+  ! l,dl  -> domain lengths and uniform grid spacing arrays
   ! z_g   -> global z coordinate array (grid is non-uniform in z)
-  ! dz    -> global z grid spacing array (should work also with the global one)
+  ! dz    -> local z grid spacing array (the global one also works)
   ! p     -> 3D input scalar field
   !
   ! modify the calls below as desired
   !
-  call out1d(trim(datadir)//'umean_z_fld_'//fldnum//'.out',ng,lo,hi,3,l,dl,zc_g,dzf,u)
-  call out1d(trim(datadir)//'vmean_z_fld_'//fldnum//'.out',ng,lo,hi,3,l,dl,zc_g,dzf,v)
-  call out1d(trim(datadir)//'wmean_z_fld_'//fldnum//'.out',ng,lo,hi,3,l,dl,zf_g,dzc,w)
-  !call out1d(trim(datadir)//'umean_y_fld_'//fldnum//'.out',ng,lo,hi,2,l,dl,zc_g,dzf,u)
-  !call out1d(trim(datadir)//'vmean_y_fld_'//fldnum//'.out',ng,lo,hi,2,l,dl,zc_g,dzf,v)
-  !call out1d(trim(datadir)//'wmean_y_fld_'//fldnum//'.out',ng,lo,hi,2,l,dl,zc_g,dzf,w)
-  !call out1d(trim(datadir)//'umean_x_fld_'//fldnum//'.out',ng,lo,hi,1,l,dl,zc_g,dzf,u)
-  !call out1d(trim(datadir)//'vmean_x_fld_'//fldnum//'.out',ng,lo,hi,1,l,dl,zc_g,dzf,v)
-  !call out1d(trim(datadir)//'wmean_x_fld_'//fldnum//'.out',ng,lo,hi,1,l,dl,zc_g,dzf,w)
-  !call out1d_chan(trim(datadir)//'velstats_fld_'//fldnum//'.out',ng,lo,hi,3,l,dl,zc_g,u,v,w)
+  call out1d(trim(datadir)//'umean_z_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,3,l,dl,zc_g,dzf,u)
+  call out1d(trim(datadir)//'vmean_z_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,3,l,dl,zc_g,dzf,v)
+  call out1d(trim(datadir)//'wmean_z_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,3,l,dl,zf_g,dzc,w)
+  !call out1d(trim(datadir)//'umean_y_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,2,l,dl,zc_g,dzf,u)
+  !call out1d(trim(datadir)//'vmean_y_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,2,l,dl,zc_g,dzf,v)
+  !call out1d(trim(datadir)//'wmean_y_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,2,l,dl,zc_g,dzf,w)
+  !call out1d(trim(datadir)//'umean_x_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,1,l,dl,zc_g,dzf,u)
+  !call out1d(trim(datadir)//'vmean_x_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,1,l,dl,zc_g,dzf,v)
+  !call out1d(trim(datadir)//'wmean_x_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,1,l,dl,zc_g,dzf,w)
+  !call out1d_chan(trim(datadir)//'velstats_fld_'//fldnum//'.out',ng,nh_v,nh_g,lo,hi,3,l,dl,zc_g,u,v,w)
   !call gen_alias(myid,trim(datadir),'umean_z_fld_'//fldnum//'.out','umean_z_now.out')

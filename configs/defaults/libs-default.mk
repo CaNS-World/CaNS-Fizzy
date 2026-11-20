@@ -1,0 +1,63 @@
+override LIBS += -L$(LIBS_DIR)/2decomp-fft -ldecomp2d
+override INCS += -I$(LIBS_DIR)/2decomp-fft/mod
+
+ifeq ($(strip $(GPU)),1)
+ifeq ($(strip $(USE_DIEZDECOMP)),1)
+override LIBS += -L$(LIBS_DIR)/diezDecomp/build/lib -ldiezdecomp
+override INCS += -I$(LIBS_DIR)/diezDecomp/build/include
+else
+ifeq ($(strip $(USE_HIP)),1)
+override LIBS += -L$(LIBS_DIR)/hipDecomp/build/lib -lhipdecomp -lhipdecomp_fort -Wl,-rpath,$(abspath $(LIBS_DIR)/hipDecomp/build/lib)
+override INCS += -I$(LIBS_DIR)/hipDecomp/build/include
+else
+override LIBS += -L$(LIBS_DIR)/cuDecomp/build/lib -lcudecomp -lcudecomp_fort -Wl,-rpath,$(abspath $(LIBS_DIR)/cuDecomp/build/lib)
+override INCS += -I$(LIBS_DIR)/cuDecomp/build/include
+endif
+endif
+ifeq ($(strip $(USE_HIP)),1)
+override LIBS += -lhipfft
+else
+override LIBS += -cudalib=cufft
+endif
+endif
+
+ifeq ($(strip $(USE_NVTX)),1)
+NVHPC_HOME ?= /opt/nvidia/hpc_sdk/Linux_x86_64/2022
+override LIBS += -L$(NVHPC_HOME)/cuda/lib64 -lnvToolsExt
+endif
+
+ifneq ($(strip $(GPU)),1)
+override LIBS += -lfftw3
+
+ifeq ($(strip $(OPENMP)),1)
+override LIBS += -lfftw3_threads
+endif
+
+ifeq ($(strip $(SINGLE_PRECISION)),1)
+override LIBS += -lfftw3f
+ifeq ($(strip $(OPENMP)),1)
+override LIBS += -lfftw3f_threads
+endif
+endif
+
+endif
+
+ifeq ($(strip $(USE_ADIOS2)),1)
+override LIBS += -ladios2_mpi_fortran -ladios2_mpi_fortran_mpi
+override INCS += -I/usr/include/adios2/fortran
+endif
+
+ifeq ($(strip $(USE_HDF5)),1)
+override LIBS += -lhdf5_openmpi_fortran
+override INCS += -I/usr/include/hdf5/openmpi
+endif
+
+#
+# CaNS-Fizzy: HYPRE for the variable-coefficient Poisson solver (CPU only)
+#
+ifneq ($(strip $(GPU)),1)
+ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),0)
+HYPRE_HOME ?= ${HOME}/software/hypre
+override LIBS += -L$(HYPRE_HOME)/lib -lHYPRE
+endif
+endif
