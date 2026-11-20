@@ -89,9 +89,7 @@ module mod_sanity
   end subroutine chk_stop_type
   !
   subroutine chk_dims(ng,dims,cbcvel,cbcpre,passed)
-#if defined(_SCALAR)
-    use mod_param, only: cbcsca
-#endif
+    use mod_param, only: nscal,cbcsca
     implicit none
     integer, intent(in), dimension(3) :: ng
     integer, intent(in), dimension(2) :: dims
@@ -107,6 +105,11 @@ module mod_sanity
     passed_loc = all(ng(:) >= 1)
     if(myid == 0.and.(.not.passed_loc)) &
       print*, 'ERROR: ng(:) must be positive in every direction.'
+    passed = passed.and.passed_loc
+    !
+    passed_loc = nscal <= 1
+    if(myid == 0.and.(.not.passed_loc)) &
+      print*, 'ERROR: at most one scalar can be transported (`nscal = 0` or `1`).'
     passed = passed.and.passed_loc
     !
     ii = pack([1,2,3],[1,2,3] /= ipencil_axis)
@@ -144,9 +147,7 @@ module mod_sanity
     if(ng(3) == 1) then
       if(cbcpre(0,3)//cbcpre(1,3) == 'PP') then
         passed_loc = all(cbcvel(:,3,:) == 'P')
-#if defined(_SCALAR)
-        passed_loc = passed_loc.and.all(cbcsca(:,3) == 'P')
-#endif
+        if(nscal > 0) passed_loc = passed_loc.and.all(cbcsca(:,3) == 'P')
       else
 #if defined(_OPENACC)
         passed_loc = .false.
@@ -162,9 +163,7 @@ module mod_sanity
   end subroutine chk_dims
   !
   subroutine chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed)
-#if defined(_SCALAR)
-    use mod_param, only: cbcsca
-#endif
+    use mod_param, only: nscal,cbcsca
     implicit none
     character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
     character(len=1), intent(in), dimension(0:1,3  ) :: cbcpre
@@ -173,7 +172,7 @@ module mod_sanity
     logical         , intent(out) :: passed
     character(len=2) :: bc01v,bc01p
     integer :: ivel,idir
-#if defined(_OPENACC) && defined(_SCALAR)
+#if defined(_OPENACC)
     character(len=2) :: bc01s
 #endif
     logical :: passed_loc
@@ -214,9 +213,7 @@ module mod_sanity
       do ivel=1,3
         passed_loc = passed_loc.and.all((cbcvel(:,idir,ivel) == 'P').eqv.(cbcpre(:,idir) == 'P'))
       end do
-#if defined(_SCALAR)
-      passed_loc = passed_loc.and.all((cbcsca(:,idir) == 'P').eqv.(cbcpre(:,idir) == 'P'))
-#endif
+      if(nscal > 0) passed_loc = passed_loc.and.all((cbcsca(:,idir) == 'P').eqv.(cbcpre(:,idir) == 'P'))
     end do
     if(myid == 0.and.(.not.passed_loc)) &
       print*, 'ERROR: velocity and scalar periodic BCs must match pressure BCs in every direction.'
@@ -254,8 +251,8 @@ module mod_sanity
         print*, 'ERROR: velocity BCs with implicit diffusion in directions x and y must be homogeneous (value = 0.).'
       passed = passed.and.passed_loc
     end if
-#if defined(_OPENACC) && defined(_SCALAR)
-    if(is_impdiff .and. .not.is_impdiff_1d) then
+#if defined(_OPENACC)
+    if(is_impdiff .and. .not.is_impdiff_1d .and. nscal > 0) then
       passed_loc = .true.
       do idir=1,2
         bc01s = cbcsca(0,idir)//cbcsca(1,idir)

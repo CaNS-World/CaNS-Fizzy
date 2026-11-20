@@ -7,6 +7,7 @@
 module mod_chkdt
   use mpi
   use mod_common_mpi, only:ierr
+  use mod_param     , only:nscal
   use mod_types
   implicit none
   private
@@ -87,11 +88,11 @@ module mod_chkdt
       dtmax = dti**(-1)
       if(is_track_interface) dtmax = min(dtmax,dtipsi**(-1))
     end if
-#if defined(_SCALAR)
-    if(present(ka12) .and. present(cp12)) &
-      dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/dlmin**2
-    if(dti == 0.) dti = 1.
-    dtmax = min(dtmax,dti**(-1))
-#endif
+    if(nscal > 0) then
+      if(present(ka12) .and. present(cp12)) &
+        dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/dlmin**2
+      if(dti == 0.) dti = 1.
+      dtmax = min(dtmax,dti**(-1))
+    end if
   end subroutine chkdt
 end module mod_chkdt

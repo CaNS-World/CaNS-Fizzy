@@ -60,7 +60,7 @@ program cans
                                  cbcvel,bcvel,cbcpre,bcpre, &
                                  cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
                                  is_forced,bforce,ssource, &
-                                 gacc, &
+                                 gacc,nscal, &
                                  rho0,rho12,mu12,sigma,ka12,cp12,beta12, &
                                  psi_thickness_factor, &
                                  acdi_gam_factor,acdi_gam_min, &
@@ -196,11 +196,8 @@ program cans
   allocate(pn,mold=pp)
 #endif
   allocate(po,mold=pp)
-  nio = 5
-#if defined(_SCALAR)
-  allocate(s(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s))
-  nio = 6
-#endif
+  if(nscal > 0) allocate(s(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s))
+  nio = 5+nscal
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
   if(is_poisson_dtdma) then
@@ -336,7 +333,7 @@ program cans
   call init_wspace_arrays()
   call set_cufft_wspace(pack(arrplanp,.true.),istream_acc_queue_1)
   if(myid == 0) print*,'*** Device memory footprint (Gb): ', &
-                  device_memory_footprint(n,nh_v,nh_p,nh_s,nh_g,n_z,nio-5)/(1._sp*1024**3), ' ***'
+                  device_memory_footprint(n,nh_v,nh_p,nh_s,nh_g,n_z,nscal)/(1._sp*1024**3), ' ***'
 #endif
   if(is_debug_poisson) then
     call test_sanity_solver(ng,lo,hi,n,nh_v,nh_p,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,n_z,l,dl,dli, &
@@ -352,10 +349,10 @@ program cans
   io_vars(3)%arr => w  ; c_io_vars(3) = 'w'
   io_vars(4)%arr => p  ; c_io_vars(4) = 'p'
   io_vars(5)%arr => psi; c_io_vars(5) = 'psi'
-#if defined(_SCALAR)
-  nh_io(:,6) = nh_s
-  io_vars(6)%arr => s  ; c_io_vars(6) = 's'
-#endif
+  if(nscal > 0) then
+    nh_io(:,6) = nh_s
+    io_vars(6)%arr => s; c_io_vars(6) = 's'
+  end if
   !
   is_dtdma_update_p = .true.
   !
@@ -368,18 +365,14 @@ program cans
 #if defined(_CONSTANT_COEFFS_POISSON)
   pn(:,:,:) = 0.
 #endif
-#if defined(_SCALAR)
-  s(:,:,:) = 0.
-#endif
+  if(nscal > 0) s(:,:,:) = 0.
   psi(:,:,:) = 0.
   if(.not.restart) then
     istep = 0
     time = 0.
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                   bforce,is_wallturb,time,u,v,w,p)
-#if defined(_SCALAR)
-    call initscal(inisca,bcsca,ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
-#endif
+    if(nscal > 0) call initscal(inisca,bcsca,ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
     call init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition successfully set ***'
   else
@@ -416,10 +409,10 @@ program cans
     end do
   end do
 #endif
-#if defined(_SCALAR)
-  !$acc enter data copyin(s) async(1)
-  call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
-#endif
+  if(nscal > 0) then
+    !$acc enter data copyin(s) async(1)
+    call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+  end if
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
 #if defined(_SDF_NORMALS)
   !$acc enter data create(phi) async(1)
@@ -454,17 +447,17 @@ program cans
   write(fldnum,'(i7.7)') istep
   !$acc wait ! not needed but to prevent possible future issues
   !$acc update self(u,v,w,p,psi,kappa)
-#if defined(_SCALAR)
-  !$acc update self(s)
-#endif
+  if(nscal > 0) then
+    !$acc update self(s)
+  end if
   if(is_output_due(istep,iout1d,tout1d,time,time,restart)) then
-#include "out1d.h90"
+    include 'out1d.h90'
   end if
   if(is_output_due(istep,iout2d,tout2d,time,time,restart)) then
-#include "out2d.h90"
+    include 'out2d.h90'
   end if
   if(is_output_due(istep,iout3d,tout3d,time,time,restart)) then
-#include "out3d.h90"
+    include 'out3d.h90'
   end if
   !
   call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
@@ -545,11 +538,11 @@ program cans
         end do
       end do
     end if
-#if defined(_SCALAR)
-    call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
-                 psio,psiflx_x,psiflx_y,psiflx_z,s)
-    call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
-#endif
+    if(nscal > 0) then
+      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
+                   psio,psiflx_x,psiflx_y,psiflx_z,s)
+      call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+    end if
     if(.not.is_solve_ns) then
       call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                     bforce,is_wallturb,time,u,v,w,p)
@@ -711,26 +704,26 @@ program cans
     if(is_output_due(istep,iout1d,tout1d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-#if defined(_SCALAR)
-      !$acc update self(s)
-#endif
-#include "out1d.h90"
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
+      include 'out1d.h90'
     end if
     if(is_output_due(istep,iout2d,tout2d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-#if defined(_SCALAR)
-      !$acc update self(s)
-#endif
-#include "out2d.h90"
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
+      include 'out2d.h90'
     end if
     if(is_output_due(istep,iout3d,tout3d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-#if defined(_SCALAR)
-      !$acc update self(s)
-#endif
-#include "out3d.h90"
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
+      include 'out3d.h90'
     end if
     if((isave > 0.or.tsave > 0.).and.(.not.kill).and.(is_output_due(istep,isave,tsave,time_start,time).or.is_done)) then
       if(is_overwrite_save.and.nsaves_max <= 0) then
@@ -746,9 +739,9 @@ program cans
       end if
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-#if defined(_SCALAR)
-      !$acc update self(s)
-#endif
+      if(nscal > 0) then
+        !$acc update self(s)
+      end if
       is_save_tmp = trim(io_ext) /= '.bp'
       do is=1,nio
         fname_save = trim(datadir)//trim(filename)//'_'//trim(c_io_vars(is))//trim(io_ext)

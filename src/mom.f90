@@ -6,6 +6,7 @@
 ! -
 module mod_mom
   use mpi
+  use mod_param, only: is_boussinesq_buoyancy
   use mod_types
   implicit none
   private
@@ -1014,7 +1015,9 @@ module mod_mom
 #endif
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     real(rp) :: surf_factor
+    logical  :: is_buoyant
     !
+    is_buoyant = is_boussinesq_buoyancy.and.present(s)
     rho     = rho12(2); drho = rho12(1)-rho12(2)
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)- rho12(2)*beta12(2)
     dxi = dli(1)
@@ -1047,12 +1050,12 @@ module mod_mom
           q_ccp = (1.+dt_r)*pn(i  ,j  ,k+1)-dt_r*po(i  ,j  ,k+1)
 #endif
           !
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-          s_ccc = s(i  ,j  ,k  )
-          s_pcc = s(i+1,j  ,k  )
-          s_cpc = s(i  ,j+1,k  )
-          s_ccp = s(i  ,j  ,k+1)
-#endif
+          if(is_buoyant) then
+            s_ccc = s(i  ,j  ,k  )
+            s_pcc = s(i+1,j  ,k  )
+            s_cpc = s(i  ,j+1,k  )
+            s_ccp = s(i  ,j  ,k+1)
+          end if
           !
           k_ccc = kappa(i  ,j  ,k  )
           k_pcc = kappa(i+1,j  ,k  )
@@ -1134,14 +1137,14 @@ module mod_mom
           !
           ! buoyancy
           !
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-          factorxp = rhobeta + drhobeta*psixp
-          factoryp = rhobeta + drhobeta*psiyp
-          factorzp = rhobeta + drhobeta*psizp
-          dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)
-          dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
-          dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
-#endif
+          if(is_buoyant) then
+            factorxp = rhobeta + drhobeta*psixp
+            factoryp = rhobeta + drhobeta*psiyp
+            factorzp = rhobeta + drhobeta*psizp
+            dudt_aux = dudt_aux - gaccx*factorxp*0.5*(s_pcc+s_ccc)
+            dvdt_aux = dvdt_aux - gaccy*factoryp*0.5*(s_cpc+s_ccc)
+            dwdt_aux = dwdt_aux - gaccz*factorzp*0.5*(s_ccp+s_ccc)
+          end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
           surfx_o(i,j,k) = surfx_n(i,j,k)
           surfy_o(i,j,k) = surfy_n(i,j,k)
@@ -1203,8 +1206,10 @@ module mod_mom
     real(rp) :: gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz
     real(rp) :: momx,momy,momz,force(3,4)
     logical :: is_cmptx,is_cmpty,is_cmptz
+    logical :: is_buoyant
     integer :: i,j,k,ierr
     !
+    is_buoyant = is_boussinesq_buoyancy.and.present(s)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     rhobeta = rho12(2)*beta12(2)
     drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
@@ -1283,39 +1288,33 @@ module mod_mom
           surfy_f = surfy
           surfz_f = surfz
 #endif
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-          s_ccc = s(i  ,j  ,k  )
-          s_pcc = s(i+1,j  ,k  )
-          s_cpc = s(i  ,j+1,k  )
-          s_ccp = s(i  ,j  ,k+1)
-          factorxp = rhobeta+drhobeta*psixp
-          factoryp = rhobeta+drhobeta*psiyp
-          factorzp = rhobeta+drhobeta*psizp
-#endif
+          if(is_buoyant) then
+            s_ccc = s(i  ,j  ,k  )
+            s_pcc = s(i+1,j  ,k  )
+            s_cpc = s(i  ,j+1,k  )
+            s_ccp = s(i  ,j  ,k+1)
+            factorxp = rhobeta+drhobeta*psixp
+            factoryp = rhobeta+drhobeta*psiyp
+            factorzp = rhobeta+drhobeta*psizp
+          end if
           !
           if(is_cmptx) then
             gravx = gravx+(rhoxp-rhox_av)*gaccx*weight_f
             surfsumx = surfsumx+surfx_f*weight_f
             momx = momx+rhox_old*u(i,j,k)*weight_f
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-            buoyx = buoyx-gaccx*factorxp*0.5_rp*(s_pcc+s_ccc)*weight_f
-#endif
+            if(is_buoyant) buoyx = buoyx-gaccx*factorxp*0.5_rp*(s_pcc+s_ccc)*weight_f
           end if
           if(is_cmpty) then
             gravy = gravy+(rhoyp-rhoy_av)*gaccy*weight_f
             surfsumy = surfsumy+surfy_f*weight_f
             momy = momy+rhoy_old*v(i,j,k)*weight_f
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-            buoyy = buoyy-gaccy*factoryp*0.5_rp*(s_cpc+s_ccc)*weight_f
-#endif
+            if(is_buoyant) buoyy = buoyy-gaccy*factoryp*0.5_rp*(s_cpc+s_ccc)*weight_f
           end if
           if(is_cmptz) then
             gravz = gravz+(rhozp-rhoz_av)*gaccz*weight_c
             surfsumz = surfsumz+surfz_f*weight_c
             momz = momz+rhoz_old*w(i,j,k)*weight_c
-#if defined(_SCALAR) && defined(_BOUSSINESQ_BUOYANCY)
-            buoyz = buoyz-gaccz*factorzp*0.5_rp*(s_ccp+s_ccc)*weight_c
-#endif
+            if(is_buoyant) buoyz = buoyz-gaccz*factorzp*0.5_rp*(s_ccp+s_ccc)*weight_c
           end if
         end do
       end do

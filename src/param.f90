@@ -64,11 +64,13 @@ real(rp), protected, dimension(3) :: dl,dli
 !
 ! scalar input parameters
 !
+integer , protected :: nscal ! number of transported scalars (0 or 1)
 real(rp), protected, dimension(3) :: gacc
 character(len=100), protected                 :: inisca
 character(len=1)  , protected, dimension(0:1,3) :: cbcsca
 real(rp)          , protected, dimension(0:1,3) ::  bcsca
 real(rp), protected :: ssource
+logical , protected :: is_boussinesq_buoyancy = .false.
 !
 ! two-fluid input parameters
 !
@@ -148,6 +150,7 @@ contains
                   bforce, &
                   is_forced, &
                   gacc, &
+                  nscal, &
                   dims,ipencil_axis
     namelist /io/  &
                   io_backend, &
@@ -160,7 +163,8 @@ contains
     namelist /scalar/ &
                      inisca, &
                      cbcsca,bcsca, &
-                     ssource
+                     ssource, &
+                     is_boussinesq_buoyancy
     namelist /two_fluid/ &
                         inipsi, &
                         cbcpsi,cbcnor,bcnor,bcpsi, &
@@ -193,6 +197,7 @@ contains
     cbcvel(:,:,:) = 'P'; cbcpre(:,:) = 'P'; bcvel(:,:,:) = 0.; bcpre(:,:) = 0.
     bforce(:) = 0.; is_forced(:) = .false.
     gacc(:) = 0.
+    nscal = 0
     dims(:) = 0
     !
     inisca = 'zer'
@@ -322,14 +327,29 @@ contains
       !
       ! reading scalar transport parameters, if these are set
       !
-      rewind(iunit)
-      read(iunit,nml=scalar,iostat=ierr,iomsg=c_iomsg)
-      if(ierr /= 0 .and. ierr /= iostat_end) then
-        if(myid == 0) print*, 'ERROR: reading `scalar` namelist: ', trim(c_iomsg)
-        if(myid == 0) print*, 'Aborting...'
-        call MPI_FINALIZE(ierr)
-        close(iunit)
-        error stop
+      if(nscal > 0) then
+        !
+        ! read `scalar` namelist
+        !
+        rewind(iunit)
+        read(iunit,nml=scalar,iostat=ierr,iomsg=c_iomsg)
+        if(ierr /= 0) then
+          if(myid == 0) print*, 'ERROR: reading `scalar` namelist: ', trim(c_iomsg)
+          if(myid == 0) print*, 'Aborting...'
+          call MPI_FINALIZE(ierr)
+          close(iunit)
+          error stop
+        end if
+      else
+        nscal = 0 ! negative values equivalent to nscal = 0
+      end if
+      if(is_boussinesq_buoyancy) then
+        if(nscal == 0) then
+          if(myid == 0) print*, 'ERROR: reading the input file: `is_boussinesq_buoyancy = T` requires `nscal > 0`.'
+          if(myid == 0) print*, 'Aborting...'
+          call MPI_FINALIZE(ierr)
+          error stop
+        end if
       end if
       !
       ! reading two-fluid parameters, if these are set
