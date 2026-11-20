@@ -1,6 +1,6 @@
-# about the input file `input.nml`
+# About the input file `input.nml`
 
-Consider the following input file as example (corresponds to a turbulent plane channel flow with bubbles and walls at different temperatures). `&dns` defines a so-called Fortran namelist containing the necessary computational parameters to set a case.
+Consider the following input file as an example (corresponding to a turbulent plane channel flow with bubbles, and walls at different temperatures). `&dns` defines a Fortran namelist containing the necessary computational parameters to set a case.
 
 
 ```fortran
@@ -8,7 +8,7 @@ Consider the following input file as example (corresponds to a turbulent plane c
 ng(1:3) = 512, 256, 144
 l(1:3) = 6., 3., 1.
 gtype = 1, gr = 0.
-cfl = 0.95, dtmax = 1.e5, dt_f = -1
+cfl = 0.95, dtmax = 1.e5, dt_f = -1.
 is_solve_ns = T, is_track_interface = T
 inivel = 'poi'
 is_wallturb = T, is_forced_hit = F
@@ -27,40 +27,41 @@ bcpre(0:1,1:3  ) =  0.,0.,   0.,0.,   0.,0.
 bforce(1:3) = 0., 0., 0.
 is_forced(1:3) = T, F, F
 gacc(1:3) = 0., 0., 0.
-dims(1:2) = 2, 2
+nscal = 1
+dims(1:2) = 2, 2, ipencil_axis = 1
 /
 ```
 
-Additionally, the `&scalar` namelist contains the computational parameters for scalar transport (e.g. temperature), while the physical and transport properties of the two phases and the numerical parameters of the two-phase solver are specified in the `&two_fluid` namelist.
+In addition, the `&two_fluid` namelist contains the physical and transport properties of the two phases and the parameters of the interface-capturing method, and the `&scalar` namelist, read when `nscal = 1`, the parameters of the transport of a scalar (e.g., temperature):
 
 ```fortran
 &scalar
-inisca          = 'dhc'
+inisca          = 'cou'
 cbcsca(0:1,1:3) = 'P','P',  'P','P',  'D','D'
 bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   1.,0.
 ssource         = 0.
+is_boussinesq_buoyancy = F
 /
 
 &two_fluid
 inipsi            = 'bub3'
-cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'P','P'
-cbcnor(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
-cbcnor(0:1,1:3,2) = 'P','P',  'P','P',  'P','P'
-cbcnor(0:1,1:3,3) = 'P','P',  'P','P',  'P','P'
+cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'N','N'
+cbcnor(0:1,1:3,1) = 'P','P',  'P','P',  'N','N'
+cbcnor(0:1,1:3,2) = 'P','P',  'P','P',  'N','N'
+cbcnor(0:1,1:3,3) = 'P','P',  'P','P',  'D','D'
 bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
 bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
 bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
 bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
 sigma             =  1.
 rho12(1:2)        =  1., 1.
-mu12(1:2)         =  100., 100.
-ka12(1:2)         =  0., 0.
-cp12(1:2)         =  0., 0.
+mu12(1:2)         =  0.01, 0.01
+ka12(1:2)         =  0.01, 0.01
+cp12(1:2)         =  1., 1.
 beta12(1:2)       =  0., 0.
-psi_thickness_factor = 1.
+psi_thickness_factor = 0.51
 /
 ```
-
 <details>
 
 <summary>Tip for vim/nvim users</summary>
@@ -88,6 +89,20 @@ These lines set the computational grid.
 
 `ng(1:3)` and `l(1:3)` are the **number of points**  and **domain length** in each direction.
 
+For 2D simulations, use one grid cell with periodic boundary conditions for all variables along the homogeneous direction. Initialize the velocity normal to that direction to zero and leave its forcing disabled. Two periodic cells are supported as well.
+
+The admissible MPI process grids depend on the homogeneous direction:
+
+| Homogeneous direction | Grid | `dims(1:2)` | Process-count limit |
+|---|---|---|---|
+| X | `1, Ny, Nz` | `1, P` | `P <= min(Ny,Nz)` |
+| Y | `Nx, 1, Nz` | `1, 1` | one MPI rank |
+| Z | `Nx, Ny, 1` | `P, 1` | `P <= min(Nx,Ny)` |
+
+With `ng(3)=1`, use `is_poisson_dtdma = F`, and use a uniform Z grid.
+
+Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `inisca` and `inipsi` below). Builds with the HYPRE pressure solver are an exception, see [`INFO_COMPILING.md`](INFO_COMPILING.md).
+
 `gtype` and `gr` are the **grid stretching type** and **grid stretching parameter** that tweak the non-uniform grid in the third direction; zero `gr` implies no stretching. See `initgrid.f90` for more details. The following options are available for `gtype`:
 
 * `1`: grid clustered towards both ends (default)
@@ -98,13 +113,12 @@ These lines set the computational grid.
 ---
 
 ```fortran
-cfl = 0.95, dtmax = 1.e5, dt_f = -1
+cfl = 0.95, dtmax = 1.e5, dt_f = -1.
 ```
 
-This line controls the simulation time step.
+This line controls the simulation time step size.
 
-The time step is set to be equal to `min(cfl*dtmax,dtmax)`, i.e. the minimum value between `dtmax` and `cfl` times the maximum allowable time step `dtmax` (computed every `ickeck` time steps; see below).
-`dtmax` is therefore used when a constant time step, smaller than `cfl*dtmax`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dtmax`. Alternatively, one can force the simulation to advance with a constant time step of arbitrary value, independent of the `dtmax` evaluation, by changing the value of `dt_f` from `-1` to the desired time step.
+The time step size is set to be equal to `min(cfl*dt_cfl,dtmax)` if `dt_f < 0`, and to `dt_f` otherwise. In the former case, the code prescribes the minimum value between `dtmax` and `cfl` times the maximum allowable time step `dt_cfl` (computed every `icheck` time steps; see below). `dtmax` is therefore used when a constant time step, smaller than `cfl*dt_cfl`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dt_cfl`. Finally, a constant time step size may be forced, irrespective of the temporal stability evaluation through `dt_f`.
 
 ---
 
@@ -113,7 +127,10 @@ is_solve_ns = T, is_track_interface = T
 ```
 
 `is_solve_ns`, if true, enables the solution of the Navier-Stokes momentum equation. It can be set to false when a prescribed velocity field is desired.
-`is_track_interface`, if true, enables the two-phase interface advection.
+
+`is_track_interface`, if true, enables the advection of the two-fluid interface.
+
+The viscosities and densities of the two fluids are set in the `&two_fluid` namelist (see below).
 
 ---
 
@@ -124,31 +141,39 @@ is_wallturb = T, is_forced_hit = F
 
 These lines set the initial velocity field.
 
-`initvel` **chooses the initial velocity field**. The following options are available:
+`inivel` **chooses the initial velocity field**. The following options are available:
 
 * `zer`: zero velocity field
-* `uni`: uniform velocity field equal to `uref`                                     ; streamwise direction in `x`
-* `cou`: plane Couette flow profile with symmetric wall velocities equal to `uref/2`; streamwise direction in `x`
-* `poi`: plane Poiseuille flow profile with mean velocity `uref`                    ; streamwise direction in `x`
-* `iop`: same as `poi`, with the reference frame moving with velocity `uref`        ; streamwise direction in `x`
-* `tbl`: temporal boundary layer profile with wall velocity `uref`                  ; streamwise direction in `x`
-* `pdc`: plane Poiseuille flow profile with constant pressure gradient              ; streamwise direction in `x`
-* `log`: logarithmic profile with mean velocity `uref`                              ; streamwise direction in `x`
-* `hcp`: half channel with plane Poiseuille profile and mean velocity `uref`        ; streamwise direction in `x`
-* `hcl`: half channel with logarithmic profile and mean velocity `uref`             ; streamwise direction in `x`
-* `hdc`: half plane Poiseuille flow profile with constant pressure gradient         ; streamwise direction in `x`
+* `uni`: uniform velocity field equal to `uref`
+* `cou`: plane Couette flow profile using the prescribed velocities at the normal walls
+* `poi`: plane/duct Poiseuille flow profile with mean velocity `uref`
+* `tbl`: temporal boundary layer profile with wall velocity `uref`
+* `pdc`: plane Poiseuille flow profile with constant pressure gradient
+* `log`: logarithmic channel/duct profile with mean velocity `uref`
+* `hcp`: half channel with plane Poiseuille profile and mean velocity `uref`
+* `hcl`: half channel with logarithmic profile and mean velocity `uref`
+* `hdc`: half plane Poiseuille flow profile with constant pressure gradient
 * `tgv`: three-dimensional Taylor-Green vortex
-* `tgw`: two-dimensional   Taylor-Green vortex
-* `rox`: solid body rotation with angular velocity $2 \pi$                          ; around the `x` axis
-* `roy`: solid body rotation with angular velocity $2 \pi$                          ; around the `y` axis
-* `roz`: solid body rotation with angular velocity $2 \pi$                          ; around the `z` axis
-* `vox`: two-dimensional, time dependent serpentine vortex                          ; around the `x` axis
-* `voy`: two-dimensional, time dependent serpentine vortex                          ; around the `y` axis
-* `voz`: two-dimensional, time dependent serpentine vortex                          ; around the `z` axis
+* `tgv-2d-x`: two-dimensional Taylor-Green vortex in the Y–Z plane, with zero X velocity
+* `tgv-2d-y`: two-dimensional Taylor-Green vortex in the Z–X plane, with zero Y velocity
+* `tgv-2d-z`: two-dimensional Taylor-Green vortex in the X–Y plane, with zero Z velocity
+* `ant`: three-dimensional Antuono vortex
+* `rot-x`, `rot-y`, `rot-z`: solid-body rotation with angular velocity $2 \pi$ around the axis X, Y or Z
+* `vor-x`, `vor-y`, `vor-z`: two-dimensional, time-dependent serpentine vortex in the plane normal to X, Y or Z
+
+The profile initializers (`zer`, `uni`, `cou`, `poi`, `tbl`, `iop`, `log`, `hcl`, `hcp`, `pdc`, `hdc`) accept `-x`, `-y`, or `-z` suffixes, for example `poi-y`. A bare name always means `-x`.
+
+| Suffix | Flow direction | Main profile variation | Other transverse direction |
+|---|---|---|---|
+| `-x` | X | Z | Y |
+| `-y` | Y | Z | X |
+| `-z` | Z | X | Y |
+
+Wall velocities and forcing are read from the corresponding physical entries of `bcvel`, `bforce` and `is_forced`; these inputs and the grid are not reordered. The reference velocity `uref` is equal to one.
 
 `is_wallturb`, if true, **superimposes a high amplitude disturbance on the initial velocity field** that effectively triggers transition to turbulence in a wall-bounded shear flow.
 
-See `initflow.f90` for more details.
+See `initflow.f90` for more details. The subroutines in this file may be easily extended to accommodate other initial conditions.
 
 `is_forced_hit`, if true, introduces a homogeneous and isotropic forcing in the domain. See `forcing.f90` for more details.
 
@@ -174,13 +199,13 @@ These lines set the simulation termination criteria and whether the simulation s
 * `stop_type(2)`, if true (`T`), the simulation will terminate after `time_max` physical time units have been reached
 * `stop_type(3)`, if true (`T`), the simulation will terminate after `tw_max` simulation wall-clock time (in hours) has been reached
 
-a checkpoint file `fld.bin` will be saved before the simulation is terminated.
+`restart`, if true, **restarts the simulation** from a previously saved checkpoint, made of one file per field, `fld_<var>.bin` (e.g., `fld_u.bin`, `fld_psi.bin`; `.h5` / `.bp` for the other supported backends), all from the same save.
 
-`restart`, if true, **restarts the simulation** from a previously saved checkpoint file, named `fld.bin`.
+`is_overwrite_save`, if true, overwrites the checkpoint files `fld_<var>.bin` at every save; if false, each checkpoint is saved to files `fld_???????_<var>.bin` (with `???????` denoting the time step number), and symbolic links `fld_<var>.bin` point to the last ones; to restart from another checkpoint, point the links to its files (e.g., `ln -sf fld_0000100_u.bin fld_u.bin`).
 
-`is_overwrite_save`, if true, overwrites the checkpoint file `fld.bin` at every save; if false, a symbolic link is created which makes `fld.bin` point to the last checkpoint file with name `fld_???????.bin` (with `???????` denoting the corresponding time step number). In the latter case, to restart a run from a different checkpoint one just has to point the file `fld.bin` to the right file, e.g.: ` ln -sf fld_0000100.bin fld.bin`.
+`nsaves_max`, if positive and `is_overwrite_save` is true, keeps instead the last `nsaves_max` checkpoints in rotating slots, `fld_????_<var>.bin` (with `????` denoting the slot number), with links `fld_<var>.bin` to the last one, and a log of the saves in `log_checkpoints.out`; a restarted run continues the rotation.
 
-`nsaves_max` limits the number of saved checkpoint files, if `is_over_write_save` is false; a value of `0` or any negative integer corresponds to no limit, and the code uses the file format described above; otherwise, only `nsaves_max` checkpoint files are saved, with the oldest save being overwritten when the number of saved checkpoints exceeds this threshold; in this case, files with a format `fld_????.bin` are saved (with `????` denoting the saved file number), with `fld.bin` pointing to the last checkpoint file as described above; moreover, a file `log_checkpoints.out` records information about the time step number and physical time corresponding to each saved file number.
+Finally, note that a checkpoint file will be saved before the simulation ends. Checkpoints are written to temporary files (e.g., `fld_u.tmp.bin`), renamed once complete, so that an interrupted save leaves the previous checkpoint intact (except with the ADIOS2 backend). See `is_full_restart` under `&io` for restarting the time integration exactly.
 
 ---
 
@@ -190,14 +215,20 @@ icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 10000, isave = 50
 
 These lines set the frequency of time step checking and output:
 
-* every `icheck` time steps **the new time step size** is computed according to the new stability criterion and cfl (above)
-* every `iout0d` time steps **history files with global scalar variables** are appended
+* every `icheck` time steps **the new time step size** is computed according to the stability criterion and `cfl` (above), and the **velocity divergence is checked**: if it is too large or NaN, the simulation is aborted without saving a checkpoint (see also `is_mask_divergence_check` under `&other_options`)
+* every `iout0d` time steps **history files with global scalar variables** are appended; e.g., the forcing and its balance, and the time step history
 * every `iout1d` time steps **1d profiles** are written (e.g. velocity and its moments) to a file
 * every `iout2d` time steps **2d slices of a 3d scalar field** are written to a file
 * every `iout3d` time steps **3d scalar fields** are written to a file
 * every `isave`  time steps a **checkpoint file** is written (`fld_???????.bin`), and a symbolic link for the restart file, `fld.bin`, will point to this last save so that, by default, the last saved checkpoint file is used to restart the simulation
 
-1d, 2d and 3d outputs can be tweaked modifying files `out?d.h90`, and re-compiling the source. See also `output.f90` for more details. _Set any of these variables to `0` to skip the corresponding operation._
+1d, 2d, and 3d outputs can be tweaked by modifying files `out?d.h90` and recompiling the source. See also `output.f90` for more details. _Set any of these variables to `0` to skip the corresponding operation._
+
+```fortran
+tout0d = 0., tout1d = 0., tout2d = 0., tout3d = 0., tsave = 0.
+```
+
+These optional entries of `&dns` set the same outputs in **physical time**: a positive period (default `0`) takes priority over the corresponding time-step interval above. An output is written at the end of the first time step that reaches a multiple of the period, at the actual time of that step (the time step is not adjusted).
 
 ---
 
@@ -212,15 +243,15 @@ bcvel(0:1,1:3,3) =  0.,0.,   0.,0.,   0.,0.
 bcpre(0:1,1:3  ) =  0.,0.,   0.,0.,   0.,0.
 ```
 
-These lines set the boundary conditions (BC) for velocity and pressure.
+These lines set the boundary conditions (BC).
 
-The **type** (BC) for each field variable is set by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
+The **type** (BC) for each field variable is set by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1`, where:
 
-* `X0` `X1` set the type of BC for the field variable on the **lower** and **upper** boundaries in `x`
-* `Y0` `Y1` set the type of BC for the field variable on the **lower** and **upper** boundaries in `y`
-* `Z0` `Z1` set the type of BC for the field variable on the **lower** and **upper** boundaries in `z`
+* `X0` `X1` set the type of BC for the field variable at the **lower** and **upper** boundaries in `x`
+* `Y0` `Y1` set the type of BC for the field variable at the **lower** and **upper** boundaries in `y`
+* `Z0` `Z1` set the type of BC for the field variable at the **lower** and **upper** boundaries in `z`
 
-The four rows correspond to the three velocity components, and pressure, i.e. `u`, `v`, `w`, and `p`.
+The four rows correspond to the three velocity components, and pressure, i.e. `u`, `v`, `w`, and `p`. The boundary conditions of the scalar and of the interface fields are set in the `&scalar` and `&two_fluid` namelists.
 
 The following options are available:
 
@@ -240,13 +271,13 @@ gacc(1:3) = 0., 0., 0.
 
 These lines set the flow forcing.
 
-`bforce`, is a constant **body force density term** in the direction in question (e.g., the negative of a constant pressure gradient) that can be added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
+`bforce` is a constant **body force density term** in the direction in question (e.g., the negative of a constant pressure gradient) that can be added to the right-hand side of the momentum equation. The three values correspond to the three domain directions.
 
 `is_forced`, when true in a direction, adds a dynamically computed uniform correction to `bforce`. The controller balances the prescribed force, the AB2-extrapolated viscous wall traction, and the discrete integrals of gravity, surface tension, and Boussinesq buoyancy. It preserves the initial domain-averaged mixture momentum, equivalently the streamwise-averaged mass-flux density, when the remaining pressure and conservative terms have zero global integral. It does not prescribe a target velocity or necessarily preserve volume flux or the instantaneous mass flux through every cross-section.
 
 A dynamically forced direction must be periodic. Its transverse boundaries must be periodic or impermeable, since momentum flux through an open boundary is not included in the balance.
 
-`gacc`, is a constant **acceleration** in the direction in question (e.g., gravity) added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
+`gacc` is a constant **acceleration** in the direction in question (e.g., gravity) added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
 
 When fixed or dynamic forcing is active, `forcing.out` contains time, `bforce`, the three equivalent pressure gradients from the dynamic correction, and the three volume-averaged velocities. With dynamic forcing, `forcing_balance.out` additionally contains time followed by six three-component vectors: wall compensation, gravity, surface tension, Boussinesq buoyancy, total applied force density, and the measured change in total mixture momentum per unit time. The last vector is therefore a final residual that also exposes contributions from terms assumed to have zero global integral, such as pressure and conservative advection.
 
@@ -255,50 +286,102 @@ At unequal density, the constant-coefficient pressure split does not in general 
 ---
 
 ```fortran
-dims(1:2) = 2, 2
+dims(1:2) = 2, 2, ipencil_axis = 1
 ```
 
-This line sets the grid of computational subdomains.
+This line sets the domain decomposition and orientation of the computational subdomains.
 
 `dims` is the **processor grid**, the number of domain partitions along the first and second decomposed directions (which depend on the selected default pencil orientation). `dims(1)*dims(2)` corresponds therefore to the total number of computational subdomains. Setting `dims(:) = [0,0]` will trigger a runtime autotuning step to find the processor grid that minimizes transpose times. Note, however, that other components of the algorithm (e.g., collective I/O) may also be affected by the choice of processor grid.
+
+`ipencil_axis` sets the **orientation of the computational subdomains** (or pencils), being one of `[1,2,3]` for `[X,Y,Z]`-aligned pencils. X-aligned is the default if this option is not set, and should be optimal for all cases except for Z-implicit diffusion, where Z-pencils are recommended if `dims(2) > 1` in the input file; see the description of the `&numerics` namelist below.
+
+# About the `&cudecomp` namelist under `input.nml`
+
+In addition to the `&dns` namelist in the input file, there is an **optional** namelist to set some runtime configurations for the *cuDecomp* library. Consider the following `&cudecomp` namelist, which corresponds to the default options in case the file is not provided:
+
+```fortran
+&cudecomp
+cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
+cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
+```
+
+The first line sets the configuration for the transpose communication backend autotuning. Here `cudecomp_t_comm_backend` can be one of:
+
+* `1` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P`
+* `2` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL`
+* `3` -> `CUDECOMP_TRANSPOSE_COMM_MPI_A2A`
+* `4` -> `CUDECOMP_TRANSPOSE_COMM_NCCL`
+* `5` -> `CUDECOMP_TRANSPOSE_COMM_NCCL_PL`
+* `6` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM`
+* `7` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL`
+* `8` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM_SM`
+* any other value -> enable runtime transpose backend autotuning
+
+The other two boolean values, enable/disable the NCCL (`cudecomp_is_t_enable_nccl`) and NVSHMEM (`cudecomp_is_t_enable_nvshmem`) options for *transpose* communication backend autotuning.
+
+The second line is analogous to the first one, but for halo communication backend autotuning. Here `cudecomp_h_comm_backend` can be one of:
+
+* `1` -> `CUDECOMP_HALO_COMM_MPI`
+* `2` -> `CUDECOMP_HALO_COMM_MPI_BLOCKING`
+* `3` -> `CUDECOMP_HALO_COMM_NCCL`
+* `4` -> `CUDECOMP_HALO_COMM_NVSHMEM`
+* `5` -> `CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING`
+* any other value -> enable runtime halo backend autotuning
+
+The other two boolean values, enable/disable the NCCL (`cudecomp_is_h_enable_nccl`) and NVSHMEM (`cudecomp_is_h_enable_nvshmem`) options for *halo* communication backend autotuning.
+
+Finally, it is worth recalling that passing `dims(1:2) = [0,0]` under `&dns` will trigger the *processor grid* autotuning, so there is no need to provide that option in the `&cudecomp` namelist.
+
+# About the `&scalar` namelist under `input.nml`
+
+This namelist is **optional** and defines the parameters needed to solve the transport equation of a scalar (e.g., temperature). It is read when the scalar is enabled in the `&dns` namelist:
+
+```fortran
+&dns
+! (...)
+nscal = 1
+/
+```
+
+The default value of `nscal` is zero, and at most one scalar is supported.
+
+---
+
+The following example namelist defines the parameters needed for the differentially heated cavity case that may be found under `examples/`.
+
+```fortran
+&scalar
+inisca          = 'dhc-x'
+cbcsca(0:1,1:3) = 'P','P',  'D','D',  'N','N'
+bcsca(0:1,1:3)  =  0.,0.,   -0.5,0.5,   0.,0.
+ssource         = 0.
+is_boussinesq_buoyancy = T
+/
+```
 
 ---
 
 ```fortran
-inisca          = 'dhc'
+inisca          = 'dhc-x'
 ```
 
-`inisca` **chooses the initial scalar field** (e.g. temperature). The following options are available:
+This line sets the **initial scalar field**. The following options are available:
 
-* `zer`: zero scalar field
-* `uni`: uniform scalar field equal to `sref`
-* `cou`: plane scalar profile, linear between the wall boundary values
-* `dhc`: differentially heated cavity, in the x direction
+* `zer`: uniform scalar field equal to zero
+* `uni`: uniform scalar field equal to `sref`, the mean of the boundary values along Z
+* `cou`: linearly varying scalar field from bottom (`z = 0`) to top   (`z = l(3)`)
+* `dhc`: linearly varying scalar field from left   (`x = 0`) to right (`x = l(1)`); with the suffix `-x`, i.e., `dhc-x`, the field varies along Y instead, for a cavity in the Y-Z plane
 
 See `initflow.f90` for more details.
 
 ---
 
 ```fortran
-cbcsca(0:1,1:3) = 'P','P',  'P','P',  'P','P'
-bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   0.,0.
+cbcsca(0:1,1:3) = 'P','P',  'D','D',  'N','N'
+bcsca(0:1,1:3)  =  0.,0.,   -0.5,0.5,   0.,0.
 ```
 
-These lines set the boundary conditions (BC) for the scalar.
-
-The **type** (BC) is set in `cbcsca` by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
-
-* `X0` `X1` set the type of BC for the scalar on the **lower** and **upper** boundaries in `x`
-* `Y0` `Y1` set the type of BC for the scalar on the **lower** and **upper** boundaries in `y`
-* `Z0` `Z1` set the type of BC for the scalar on the **lower** and **upper** boundaries in `z`
-
-The following options are available:
-
-* `P` periodic
-* `D` Dirichlet
-* `N` Neumann
-
-The corresponding BC **values** are set in `bcsca` (dummy for a periodic direction).
+These lines set the **boundary conditions** for the scalar, just like for the pressure.
 
 ---
 
@@ -306,12 +389,34 @@ The corresponding BC **values** are set in `bcsca` (dummy for a periodic directi
 ssource         = 0.
 ```
 
-This line sets the value of a scalar source, that can be added to the right-hand-side of the scalar transport equation.
+`ssource` is a **uniform volumetric source term** added to the right-hand side of the scalar equation.
 
 ---
 
+**Buoyancy effects**
+
 ```fortran
-inipsi          = 'bub3'
+is_boussinesq_buoyancy = T
+```
+
+`is_boussinesq_buoyancy`, if true, **activates the buoyancy term** of the so-called _Boussinesq approximation_ in the momentum equation, with the scalar as the temperature difference. The thermal expansion coefficient of each fluid is set by `beta12` in the `&two_fluid` namelist, and the gravitational acceleration by `gacc` in the `&dns` namelist, e.g.:
+
+```fortran
+&dns
+! (...)
+gacc(1:3) = 0., 0., -1.
+nscal = 1
+/
+```
+
+which, in this example, defines a negative gravitational acceleration along `z` with unit magnitude. Its default value is `[0., 0., 0.]`.
+
+# About the `&two_fluid` namelist under `input.nml`
+
+This namelist defines the initial condition and the boundary conditions of the interface, the physical and transport properties of the two fluids, and the interface thickness.
+
+```fortran
+inipsi            = 'bub3'
 ```
 
 `inipsi` **chooses the initial volume fraction field for phase 1** of the two-fluid system. The following options are available:
@@ -329,6 +434,8 @@ inipsi          = 'bub3'
 * `dis3`: three-dimensional dispersed spheres (same as `drp3`)
 * `cap-wav-1d`: planar small-amplitude capillary wave
 * `zalesak-disk`: two-dimensional (lighter phase) slotted disk
+
+The two-dimensional fields (`bub2`, `drp2`, `dis2`, `cap-wav-1d` and `zalesak-disk`) accept the suffixes `-x`, `-y` or `-z`, the direction normal to their plane; e.g., `bub2-x` are bubbles in the Y-Z plane. A bare name means `-y`, the X-Z plane.
 
 See `two_fluid.f90` for more details. For the `bub[1-3]`, `drp[1-3]`, and `dis[1-3]` initial fields, the position and size of the films/bubbles/droplets can be specified by a `spheres.in` file, where each line corresponds to an individual spherical/circular/planar bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius. **Note:** _The recommended way to initialize a dispersed multiphase flow is to use `dis?`, with phase 1 being the dispersed phase, and phase 2 the continuous one. This is important because `inivel` above considers phase 2 as the continuous one._
 For example, the following file introduces in the computational domain two bubbles/droplets, the first centered at `[x,y,z] = [0.3,1.,0.5]` with a radius of `0.25`, and the second centered at `[1.5,0.6,1.]` with radius `0.5`.
@@ -406,38 +513,60 @@ This value sets the interface thickness (the higher, the thicker). It correspond
 
 Note: see the compile-time option `INTERFACE_CAPTURING_VOF` in [`docs/INFO_COMPILING.md`](INFO_COMPILING.md) for how to switch to VoF for interface capturing.
 
-# about the `&cudecomp` namelist under `input.nml`
+# About the `&numerics` namelist under `input.nml`
 
-In addition to the `&dns` namelist in the input file, there is an **optional** namelist to set some runtime configurations for the *cuDecomp* library. Consider the following `&cudecomp` namelist, which corresponds to the default options in case the file is not provided:
+This namelist defines parameters related to the numerical discretization and computational method. The values below are the default ones, in case the namelist is not specified in the input file.
 
 ```fortran
-&cudecomp
-cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
-cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
+&numerics
+is_impdiff = F, is_impdiff_1d = F
+is_poisson_dtdma = F
+/
 ```
 
-The first line sets the configuration for the transpose communication backend autotuning. Here `cudecomp_t_comm_backend` can be one of:
+`is_impdiff` and `is_impdiff_1d` enable the (semi-) **implicit temporal integration of diffusion terms** in *CaNS*. It is not available yet in *CaNS-Fizzy*, and both must be false.
 
-* `1` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P`
-* `2` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL`
-* `3` -> `CUDECOMP_TRANSPOSE_COMM_MPI_A2A`
-* `4` -> `CUDECOMP_TRANSPOSE_COMM_NCCL`
-* `5` -> `CUDECOMP_TRANSPOSE_COMM_NCCL_PL`
-* `6` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM`
-* `7` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL`
-* any other value -> enable runtime transpose backend autotuning
+Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
 
-The other two boolean values, enable/disable the NCCL (`cudecomp_is_t_enable_nccl`) and NVSHMEM (`cudecomp_is_t_enable_nvshmem`) options for *transpose* communication backend autotuning.
+# About the `&other_options` namelist under `input.nml`
 
-The second line is analogous to the first one, but for halo communication backend autotuning. Here `cudecomp_h_comm_backend` can be one of:
+This namelist defines other parameters related to the monitoring, debugging, or benchmarking of a computation. The values below are the default ones, in case the namelist is not specified in the input file.
 
-* `1` -> `CUDECOMP_HALO_COMM_MPI`
-* `2` -> `CUDECOMP_HALO_COMM_MPI_BLOCKING`
-* `3` -> `CUDECOMP_HALO_COMM_NCCL`
-* `4` -> `CUDECOMP_HALO_COMM_NVSHMEM`
-* `5` -> `CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING`
-* any other value -> enable runtime halo backend autotuning
+```fortran
+&other_options
+is_debug = T, is_timing = T
+is_mask_divergence_check = F
+/
+```
 
-The other two boolean values, enable/disable the NCCL (`cudecomp_is_h_enable_nccl`) and NVSHMEM (`cudecomp_is_h_enable_nvshmem`) options for *halo* communication backend autotuning.
+In these lines, `is_debug` performs some **sanity checks for debugging purposes** that do not introduce computational overhead, and `is_timing` reports the wall-clock time per step.
 
-Finally, it is worth recalling that passing `dims(1:2) = [0,0]` under `&dns` will trigger the *processor grid* autotuning, so there is no need to provide that option in the `&cudecomp` namelist.
+Finally, `is_mask_divergence_check`, if true, skips the threshold test of the **velocity divergence check** performed every `icheck` time steps: by default, the simulation is aborted when the maximum divergence exceeds a small, precision-dependent threshold, which may be smaller than the round-off divergence of very large grids in single precision. A NaN in the velocity field always aborts the simulation, regardless of this option.
+
+Note: other parameters for `&numerics` and `&other_options` are not exposed here, as they are meant for very specific, advanced use or developers. They can be found in `param.f90`.
+
+This optional namelist selects the **I/O backend** used for checkpointing and field output.
+
+# About the `&io` namelist under `input.nml`
+
+```fortran
+&io
+io_backend = 'mpiio'
+/
+```
+
+The following options are currently available for `io_backend`:
+
+* `mpiio`: raw binary output based on MPI-I/O (default)
+* `hdf5`: HDF5 output for checkpoint and visualization files (requires building with `USE_HDF5=1`)
+* `adios2`: ADIOS2 output for checkpoint and visualization files (requires building with `USE_ADIOS2=1`)
+
+The `hdf5` and `adios2` backends come from *CaNS*, and have not been tested yet with the two-fluid fields.
+
+```fortran
+is_full_restart = F
+```
+
+`is_full_restart`, if true, saves in each checkpoint what is needed to **restart the time integration exactly**: the pressure and the right-hand sides of the previous time step (e.g., `fld_po.bin`, `fld_dudtrko.bin`), as one file per field, and the last two time step sizes in `fld_dt.out`. A run restarted from such a checkpoint reproduces an uninterrupted run. By default, or if these files are not found, a restarted run begins with a first-order time step.
+
+If `&io` is not provided, *CaNS-Fizzy* defaults to `io_backend = 'mpiio'`. Note also that selecting `hdf5` or `adios2` requires compiling the code with support for the corresponding library; otherwise, *CaNS-Fizzy* falls back to `mpiio` with a warning at runtime.
