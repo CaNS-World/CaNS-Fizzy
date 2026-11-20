@@ -103,7 +103,7 @@ The admissible MPI process grids depend on the homogeneous direction:
 
 With `ng(3)=1`, use `is_poisson_dtdma = F`, and use a uniform Z grid.
 
-Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `inisca` and `inipsi` below). Builds with the HYPRE pressure solver are an exception, see [`INFO_COMPILING.md`](INFO_COMPILING.md).
+Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `inisca` and `inipsi` below).
 
 `gtype` and `gr` are the **grid stretching type** and **grid stretching parameter** that tweak the non-uniform grid in the third direction; zero `gr` implies no stretching. See `initgrid.f90` for more details. The following options are available for `gtype`:
 
@@ -530,6 +530,44 @@ is_poisson_dtdma = F
 
 Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
 
+# About the `&hypre` namelist under `input.nml`
+
+This namelist is **optional**, and tunes the iterative solver of the [HYPRE](https://github.com/hypre-space/hypre) library that is used for the variable-coefficient pressure Poisson equation, in builds with `CONSTANT_COEFFS_POISSON=0` (see [`INFO_COMPILING.md`](INFO_COMPILING.md)). Each input has two entries: the first for the pressure, and the second reserved for the implicit diffusion. The values below are the default ones.
+
+```fortran
+&hypre
+hypre_solver_i(1:2)  = 5, 5
+hypre_tol(1:2)       = 1.e-6, 1.e-6
+hypre_maxiter(1:2)   = 50, 50
+hypre_precond_i(1:2) = 1, 1
+hypre_precond_maxiter(1:2) = 1, 1
+/
+```
+
+`hypre_solver_i` selects the **solver**:
+
+* `1`: SMG, a geometric multigrid solver
+* `2`: PFMG, a geometric multigrid solver with semicoarsening
+* `3`: GMRES
+* `4`: BiCGSTAB
+* `5`: Flexible GMRES (default)
+
+`hypre_tol` is the **relative tolerance** on the residual, and `hypre_maxiter` the **maximum number of iterations**; a warning is printed whenever the solver does not converge within it.
+
+`hypre_precond_i` selects the **preconditioner** of the Krylov solvers (`3`, `4` and `5`), which is applied `hypre_precond_maxiter` times per iteration:
+
+* `0`: SMG
+* `1`: PFMG (default)
+* `9`: none
+
+The defaults were chosen from tests with three- and two-dimensional rising bubbles at density ratios up to 1000, with walls, periodic directions, stretched grids and an outflow. For a problem without a Dirichlet pressure boundary, the pressure is defined up to a constant, and the mean of the solution is set to zero; for such a problem, PFMG stops coarsening one level short of a single grid cell, where the operator would vanish and spoil the convergence.
+
+With an iterative solver, the **velocity divergence** follows the tolerance rather than the machine precision: with the default tolerance its maximum is typically `1.e-7` or smaller, and each factor of ten in `hypre_tol` lowers it by about as much, at a moderate cost (the solver gains roughly one digit per iteration). For this reason, the threshold test of the divergence check is skipped by default in these builds (`is_mask_divergence_check = T` under `&other_options`); it can be enforced again by setting it to false together with a tighter tolerance.
+
+Note: a periodic direction must have an even number of grid cells (or a single one, for a two-dimensional case), a requirement of the multigrid solvers of HYPRE.
+
+Note: other parameters (`hypre_gmres_k_dim`, `hypre_pfmg_relax_type`, `hypre_pfmg_num_pre_relax`, `hypre_pfmg_num_post_relax`, `hypre_pfmg_max_levels`) are meant for advanced use, and can be found in `param.f90`.
+
 # About the `&other_options` namelist under `input.nml`
 
 This namelist defines other parameters related to the monitoring, debugging, or benchmarking of a computation. The values below are the default ones, in case the namelist is not specified in the input file.
@@ -543,7 +581,7 @@ is_mask_divergence_check = F
 
 In these lines, `is_debug` performs some **sanity checks for debugging purposes** that do not introduce computational overhead, and `is_timing` reports the wall-clock time per step.
 
-Finally, `is_mask_divergence_check`, if true, skips the threshold test of the **velocity divergence check** performed every `icheck` time steps: by default, the simulation is aborted when the maximum divergence exceeds a small, precision-dependent threshold, which may be smaller than the round-off divergence of very large grids in single precision. A NaN in the velocity field always aborts the simulation, regardless of this option.
+Finally, `is_mask_divergence_check`, if true, skips the threshold test of the **velocity divergence check** performed every `icheck` time steps: by default, the simulation is aborted when the maximum divergence exceeds a small, precision-dependent threshold, which may be smaller than the round-off divergence of very large grids in single precision. A NaN in the velocity field always aborts the simulation, regardless of this option. In builds with the iterative pressure solver (`CONSTANT_COEFFS_POISSON=0`) the default is true (see the `&hypre` namelist).
 
 Note: other parameters for `&numerics` and `&other_options` are not exposed here, as they are meant for very specific, advanced use or developers. They can be found in `param.f90`.
 
