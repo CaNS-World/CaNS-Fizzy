@@ -147,7 +147,7 @@ module mod_two_fluid
     real(rp) :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
                 my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
                 mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8
-    real(rp) :: norm,norm_x,norm_y,norm_z
+    real(rp) :: normi,norm_x,norm_y,norm_z
     integer  :: i,j,k
     !
     !$acc parallel loop collapse(3) default(present) async(1)
@@ -209,32 +209,35 @@ module mod_two_fluid
           mz_7 = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
           mz_8 = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
           !
-          norm = sqrt(mx_1**2+my_1**2+mz_1**2)+eps
-          mx_1 = mx_1/norm; my_1 = my_1/norm; mz_1 = mz_1/norm
-          norm = sqrt(mx_2**2+my_2**2+mz_2**2)+eps
-          mx_2 = mx_2/norm; my_2 = my_2/norm; mz_2 = mz_2/norm
-          norm = sqrt(mx_3**2+my_3**2+mz_3**2)+eps
-          mx_3 = mx_3/norm; my_3 = my_3/norm; mz_3 = mz_3/norm
-          norm = sqrt(mx_4**2+my_4**2+mz_4**2)+eps
-          mx_4 = mx_4/norm; my_4 = my_4/norm; mz_4 = mz_4/norm
-          norm = sqrt(mx_5**2+my_5**2+mz_5**2)+eps
-          mx_5 = mx_5/norm; my_5 = my_5/norm; mz_5 = mz_5/norm
-          norm = sqrt(mx_6**2+my_6**2+mz_6**2)+eps
-          mx_6 = mx_6/norm; my_6 = my_6/norm; mz_6 = mz_6/norm
-          norm = sqrt(mx_7**2+my_7**2+mz_7**2)+eps
-          mx_7 = mx_7/norm; my_7 = my_7/norm; mz_7 = mz_7/norm
-          norm = sqrt(mx_8**2+my_8**2+mz_8**2)+eps
-          mx_8 = mx_8/norm; my_8 = my_8/norm; mz_8 = mz_8/norm
+          ! the vectors are normalized with the reciprocal of their magnitude: away from the interface they vanish,
+          ! and a division with a zero numerator is slow on GPUs
+          !
+          normi = 1._rp/(sqrt(mx_1**2+my_1**2+mz_1**2)+eps)
+          mx_1 = mx_1*normi; my_1 = my_1*normi; mz_1 = mz_1*normi
+          normi = 1._rp/(sqrt(mx_2**2+my_2**2+mz_2**2)+eps)
+          mx_2 = mx_2*normi; my_2 = my_2*normi; mz_2 = mz_2*normi
+          normi = 1._rp/(sqrt(mx_3**2+my_3**2+mz_3**2)+eps)
+          mx_3 = mx_3*normi; my_3 = my_3*normi; mz_3 = mz_3*normi
+          normi = 1._rp/(sqrt(mx_4**2+my_4**2+mz_4**2)+eps)
+          mx_4 = mx_4*normi; my_4 = my_4*normi; mz_4 = mz_4*normi
+          normi = 1._rp/(sqrt(mx_5**2+my_5**2+mz_5**2)+eps)
+          mx_5 = mx_5*normi; my_5 = my_5*normi; mz_5 = mz_5*normi
+          normi = 1._rp/(sqrt(mx_6**2+my_6**2+mz_6**2)+eps)
+          mx_6 = mx_6*normi; my_6 = my_6*normi; mz_6 = mz_6*normi
+          normi = 1._rp/(sqrt(mx_7**2+my_7**2+mz_7**2)+eps)
+          mx_7 = mx_7*normi; my_7 = my_7*normi; mz_7 = mz_7*normi
+          normi = 1._rp/(sqrt(mx_8**2+my_8**2+mz_8**2)+eps)
+          mx_8 = mx_8*normi; my_8 = my_8*normi; mz_8 = mz_8*normi
           !
           ! compute the normal vector
           !
           norm_x = .125*(mx_1+mx_2+mx_3+mx_4+mx_5+mx_6+mx_7+mx_8)
           norm_y = .125*(my_1+my_2+my_3+my_4+my_5+my_6+my_7+my_8)
           norm_z = .125*(mz_1+mz_2+mz_3+mz_4+mz_5+mz_6+mz_7+mz_8)
-          norm = sqrt(norm_x**2+norm_y**2+norm_z**2)+eps
-          normx(i,j,k) = norm_x/norm
-          normy(i,j,k) = norm_y/norm
-          normz(i,j,k) = norm_z/norm
+          normi = 1._rp/(sqrt(norm_x**2+norm_y**2+norm_z**2)+eps)
+          normx(i,j,k) = norm_x*normi
+          normy(i,j,k) = norm_y*normi
+          normz(i,j,k) = norm_z*normi
           !
           ! compute the curvature
           !

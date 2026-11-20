@@ -177,14 +177,15 @@ module mod_acdi
           dpsidzm = gam*seps*(psi_ccc-psi_ccm)*dzci_m
           dpsidzp = gam*seps*(psi_ccp-psi_ccc)*dzci_c
           !
-          ! sharpening term
+          ! sharpening term; the normals are multiplied by the reciprocal of their magnitude:
+          ! away from the interface they vanish, and a division with a zero numerator is slow on GPUs
           !
-          rn_01 = normx_xm/(sqrt(normx_xm**2+normy_xm**2+normz_xm**2)+eps)
-          rn_11 = normx_xp/(sqrt(normx_xp**2+normy_xp**2+normz_xp**2)+eps)
-          rn_02 = normy_ym/(sqrt(normx_ym**2+normy_ym**2+normz_ym**2)+eps)
-          rn_12 = normy_yp/(sqrt(normx_yp**2+normy_yp**2+normz_yp**2)+eps)
-          rn_03 = normz_zm/(sqrt(normx_zm**2+normy_zm**2+normz_zm**2)+eps)
-          rn_13 = normz_zp/(sqrt(normx_zp**2+normy_zp**2+normz_zp**2)+eps)
+          rn_01 = normx_xm*(1._rp/(sqrt(normx_xm**2+normy_xm**2+normz_xm**2)+eps))
+          rn_11 = normx_xp*(1._rp/(sqrt(normx_xp**2+normy_xp**2+normz_xp**2)+eps))
+          rn_02 = normy_ym*(1._rp/(sqrt(normx_ym**2+normy_ym**2+normz_ym**2)+eps))
+          rn_12 = normy_yp*(1._rp/(sqrt(normx_yp**2+normy_yp**2+normz_yp**2)+eps))
+          rn_03 = normz_zm*(1._rp/(sqrt(normx_zm**2+normy_zm**2+normz_zm**2)+eps))
+          rn_13 = normz_zp*(1._rp/(sqrt(normx_zp**2+normy_zp**2+normz_zp**2)+eps))
           !
 #if !defined(_SDF_NORMALS)
           psi_xm = 0.5*(psi_ccc+psi_mcc)
