@@ -122,6 +122,7 @@ integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_psi = 1, nh_g = max(nh_v,
 character(len=16), protected :: io_backend = 'mpiio'
 character(len=6) , protected :: io_ext = '.bin'
 logical          , protected :: is_use_compression = .false.
+logical          , protected :: is_full_restart = .false.
 
 contains
   subroutine read_input(myid)
@@ -154,7 +155,8 @@ contains
                   dims,ipencil_axis
     namelist /io/  &
                   io_backend, &
-                  is_use_compression
+                  is_use_compression, &
+                  is_full_restart
 #if defined(_OPENACC) && !defined(_USE_DIEZDECOMP)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &

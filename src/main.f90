@@ -68,7 +68,7 @@ program cans
                                  dims, &
                                  nb,is_bound, &
                                  small, &
-                                 datadir,io_ext, &
+                                 datadir,io_ext,is_full_restart, &
                                  read_input, &
                                  is_debug,is_debug_poisson, &
                                  is_timing, &
@@ -106,7 +106,11 @@ program cans
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
   real(rp), target, allocatable, dimension(:,:,:) :: u,v,w,p,pp
-  real(rp), allocatable, dimension(:,:,:) :: pn,po
+  real(rp), allocatable, dimension(:,:,:) :: pn
+  real(rp), target, allocatable, dimension(:,:,:) :: po
+  real(rp), target, allocatable, dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko,dpsidtrko,dsdtrko
+  real(rp), dimension(3) :: wall_force_old
+  logical :: is_first
   real(rp), dimension(3) :: rho_av
   logical , dimension(3) :: is_cmpt_rho_av
 #if !defined(_OPENACC) || defined(_USE_HIP)
@@ -124,6 +128,7 @@ program cans
   real(rp) :: alpha
   !
   real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
+  real(rp), dimension(2) :: dt_restart
   real(rp) :: gam,seps
   integer :: istep,iunit
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
@@ -137,7 +142,7 @@ program cans
   ! scalar field
   !
   real(rp), target, allocatable, dimension(:,:,:) :: s
-  integer :: is,nio
+  integer :: is,nio,nio_s
   !
   ! two-fluid solver specific
   !
@@ -145,8 +150,8 @@ program cans
   real(rp), allocatable, dimension(:,:,:) :: psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
-  real(rp), allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
-                                             surfx_o,surfy_o,surfz_o
+  real(rp), target, allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
+                                                     surfx_o,surfy_o,surfz_o
 #endif
   !
   !real(rp), allocatable, dimension(:) :: var
@@ -196,7 +201,11 @@ program cans
   allocate(pn,mold=pp)
 #endif
   allocate(po,mold=pp)
-  if(nscal > 0) allocate(s(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s))
+  allocate(dudtrko(n(1),n(2),n(3)), &
+           dvdtrko(n(1),n(2),n(3)), &
+           dwdtrko(n(1),n(2),n(3)), &
+           dpsidtrko(n(1),n(2),n(3)))
+  if(nscal > 0) allocate(s(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s),dsdtrko(n(1),n(2),n(3)))
   nio = 5+nscal
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
@@ -342,7 +351,17 @@ program cans
   !
   call acdi_set_epsilon(dl,nh_g,dzfi,psi_thickness_factor,seps) ! interface width, used by the initial conditions of all methods
   !
-  allocate(io_vars(nio),c_io_vars(nio),nh_io(3,nio)) ! u,v,w,p,psi,s
+  ! checkpoint variables: the fields, followed by the terms of the previous time step needed to
+  ! restart the time integration exactly, saved and loaded with `is_full_restart = T`
+  !
+  nio_s = nio
+  if(is_full_restart) then
+    nio_s = nio + 5 + nscal
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    nio_s = nio_s + 6
+#endif
+  end if
+  allocate(io_vars(nio_s),c_io_vars(nio_s),nh_io(3,nio_s)) ! u,v,w,p,psi,s
   nh_io(:,1:3) = nh_v; nh_io(:,4) = nh_p; nh_io(:,5) = nh_psi
   io_vars(1)%arr => u  ; c_io_vars(1) = 'u'
   io_vars(2)%arr => v  ; c_io_vars(2) = 'v'
@@ -353,6 +372,28 @@ program cans
     nh_io(:,6) = nh_s
     io_vars(6)%arr => s; c_io_vars(6) = 's'
   end if
+  if(is_full_restart) then
+    is = nio
+    nh_io(:,nio+1:) = 0; nh_io(:,nio+1) = nh_p
+    io_vars(is+1)%arr => po       ; c_io_vars(is+1) = 'po'
+    io_vars(is+2)%arr => dudtrko  ; c_io_vars(is+2) = 'dudtrko'
+    io_vars(is+3)%arr => dvdtrko  ; c_io_vars(is+3) = 'dvdtrko'
+    io_vars(is+4)%arr => dwdtrko  ; c_io_vars(is+4) = 'dwdtrko'
+    io_vars(is+5)%arr => dpsidtrko; c_io_vars(is+5) = 'dpsidtrko'
+    is = is + 5
+    if(nscal > 0) then
+      io_vars(is+1)%arr => dsdtrko; c_io_vars(is+1) = 'dsdtrko'
+      is = is + 1
+    end if
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+    io_vars(is+1)%arr => surfx_n; c_io_vars(is+1) = 'surfx_n'
+    io_vars(is+2)%arr => surfy_n; c_io_vars(is+2) = 'surfy_n'
+    io_vars(is+3)%arr => surfz_n; c_io_vars(is+3) = 'surfz_n'
+    io_vars(is+4)%arr => surfx_o; c_io_vars(is+4) = 'surfx_o'
+    io_vars(is+5)%arr => surfy_o; c_io_vars(is+5) = 'surfy_o'
+    io_vars(is+6)%arr => surfz_o; c_io_vars(is+6) = 'surfz_o'
+#endif
+  end if
   !
   is_dtdma_update_p = .true.
   !
@@ -362,6 +403,13 @@ program cans
   p(:,:,:)  = 0.
   pp(:,:,:) = 0.
   po(:,:,:) = 0.
+  dudtrko(:,:,:) = 0.
+  dvdtrko(:,:,:) = 0.
+  dwdtrko(:,:,:) = 0.
+  dpsidtrko(:,:,:) = 0.
+  if(nscal > 0) dsdtrko(:,:,:) = 0.
+  wall_force_old(:) = 0.
+  is_first = .true.
 #if defined(_CONSTANT_COEFFS_POISSON)
   pn(:,:,:) = 0.
 #endif
@@ -382,6 +430,36 @@ program cans
                     is_check_time=is > 1)
     end do
     if(myid == 0) print*, '*** Checkpoint loaded at time = ', time, 'time step = ', istep, '. ***'
+    if(is_full_restart) then
+      !
+      ! terms of the previous time step, if they were all saved; otherwise the time integration restarts
+      ! as in a new run, with a first-order step
+      !
+      is_first = .false.
+      if(myid == 0) then
+        do is=nio+1,nio_s
+          inquire(file=trim(datadir)//'fld_'//trim(c_io_vars(is))//trim(io_ext),exist=is_done)
+          is_first = is_first.or..not.is_done
+        end do
+        open(newunit=iunit,file=trim(datadir)//'fld_dt.out',status='old',action='read',iostat=istat)
+        if(istat == 0) read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3)
+        if(istat == 0) close(iunit)
+        is_first = is_first.or.istat /= 0
+      end if
+      call MPI_BCAST(is_first      ,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
+      call MPI_BCAST(dt_restart    ,2,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
+      call MPI_BCAST(wall_force_old,3,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
+      if(.not.is_first) then
+        do is=nio+1,nio_s
+          call load_one('r',trim(datadir)//'fld_'//trim(c_io_vars(is))//trim(io_ext), &
+                        MPI_COMM_WORLD,ng,nh_io(:,is),nh_g,lo,hi,io_vars(is)%arr,trim(c_io_vars(is)),time,istep, &
+                        is_check_time=.true.)
+        end do
+        if(myid == 0) print*, '*** Terms of the previous time step loaded. ***'
+      else
+        if(myid == 0) print*, 'WARNING: terms of the previous time step not found; restarting with a first-order step.'
+      end if
+    end if
     if(is_overwrite_save.and.nsaves_max > 0) then
       if(myid == 0) then
         istat = read_link(trim(datadir)//'fld_'//trim(c_io_vars(1))//trim(io_ext),fname_save)
@@ -392,6 +470,7 @@ program cans
     end if
   end if
   !$acc enter data copyin(u,v,w,p,pp,pn,po)
+  !$acc enter data copyin(dudtrko,dvdtrko,dwdtrko,dpsidtrko)
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
@@ -404,13 +483,14 @@ program cans
     do j=1-nh_p,n(2)+nh_p
       do i=1-nh_p,n(1)+nh_p
         pn(i,j,k) = p(i,j,k)
-        po(i,j,k) = p(i,j,k)
+        if(is_first) po(i,j,k) = p(i,j,k)
       end do
     end do
   end do
+  if(.not.is_first) call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,po)
 #endif
   if(nscal > 0) then
-    !$acc enter data copyin(s) async(1)
+    !$acc enter data copyin(s,dsdtrko) async(1)
     call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
   end if
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
@@ -469,8 +549,15 @@ program cans
     end if
     dt = dt_f
   end if
-  if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
   dto = dt
+  if(restart.and..not.is_first) then
+    !
+    ! time steps of the run that is restarted
+    !
+    if(dt_f <= 0.) dt = dt_restart(1)
+    dto = dt_restart(2)
+  end if
+  if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
   dti = 1./dt
   kill = .false.
   force_balance(:,:) = 0._rp
@@ -508,7 +595,7 @@ program cans
     end do
     if(is_track_interface) then
       call tm_2fl(tm_coeff,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
-                  psiflx_x,psiflx_y,psiflx_z)
+                  psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
       call bounduvw(cbcvel,n,nh_psi,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
       call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
 #if defined(_SDF_NORMALS)
@@ -540,7 +627,7 @@ program cans
     end if
     if(nscal > 0) then
       call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
-                   psio,psiflx_x,psiflx_y,psiflx_z,s)
+                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
       call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
     end if
     if(.not.is_solve_ns) then
@@ -563,7 +650,7 @@ program cans
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-              psio,psiflx_x,psiflx_y,psiflx_z,u,v,w,force_balance)
+              psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
       end if
@@ -611,6 +698,7 @@ program cans
       end do
     end do
 #endif
+    is_first = .false.
     !
     ! check simulation stopping criteria
     !
@@ -746,8 +834,17 @@ program cans
       if(nscal > 0) then
         !$acc update self(s)
       end if
+      if(is_full_restart) then
+        !$acc update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+        if(nscal > 0) then
+          !$acc update self(dsdtrko)
+        end if
+#if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
+        !$acc update self(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
+#endif
+      end if
       is_save_tmp = trim(io_ext) /= '.bp'
-      do is=1,nio
+      do is=1,nio_s
         fname_save = trim(datadir)//trim(filename)//'_'//trim(c_io_vars(is))//trim(io_ext)
         if(is_save_tmp) fname_save = trim(datadir)//'fld_'//trim(c_io_vars(is))//'.tmp'//trim(io_ext)
         select case(trim(c_io_vars(is)))
@@ -772,7 +869,7 @@ program cans
       if(is_save_tmp) then
         call MPI_BARRIER(MPI_COMM_WORLD,ierr)
         if(myid == 0) then
-          do is=1,nio
+          do is=1,nio_s
             istat = rename_file(trim(datadir)//'fld_'//trim(c_io_vars(is))//'.tmp'//trim(io_ext), &
                                 trim(datadir)//trim(filename)//'_'//trim(c_io_vars(is))//trim(io_ext))
             if(istat /= 0) print*, 'WARNING: could not rename the temporary checkpoint file of ', trim(c_io_vars(is)), '.'
@@ -783,10 +880,23 @@ program cans
         !
         ! fld_*.<ext> -> last checkpoint file (symbolic link)
         !
-        do is=1,nio
+        do is=1,nio_s
           call gen_alias(myid,trim(datadir),trim(filename)//'_'//trim(c_io_vars(is))//trim(io_ext), &
                          'fld_'//trim(c_io_vars(is))//trim(io_ext))
         end do
+      end if
+      if(is_full_restart) then
+        !
+        ! time steps and wall force of the previous time step
+        !
+        if(myid == 0) then
+          open(newunit=iunit,file=trim(datadir)//trim(filename)//'_dt.out',status='replace')
+          write(iunit,'(*(es24.16e3,1x))') dt,dto,wall_force_old(1:3)
+          close(iunit)
+        end if
+        if(.not.is_overwrite_save.or.nsaves_max > 0) then
+          call gen_alias(myid,trim(datadir),trim(filename)//'_dt.out','fld_dt.out')
+        end if
       end if
       if(is_overwrite_save.and.nsaves_max > 0) then
         var(1) = 1.*istep
