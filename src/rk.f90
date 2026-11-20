@@ -159,9 +159,9 @@ module mod_rk
           rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
           rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
           rhoz_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j,k+1))
-          u(i,j,k) = u(i,j,k)*rhox_n/rhox_p + (factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
-          v(i,j,k) = v(i,j,k)*rhoy_n/rhoy_p + (factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
-          w(i,j,k) = w(i,j,k)*rhoz_n/rhoz_p + (factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
+          u(i,j,k) = (u(i,j,k)*rhox_n + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
+          v(i,j,k) = (v(i,j,k)*rhoy_n + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
+          w(i,j,k) = (w(i,j,k)*rhoz_n + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
           dudtrko(i,j,k) = dudtrk(i,j,k)
           dvdtrko(i,j,k) = dvdtrk(i,j,k)
           dwdtrko(i,j,k) = dwdtrk(i,j,k)
