@@ -539,7 +539,7 @@ This namelist is **optional**, and tunes the iterative solver of the [HYPRE](htt
 hypre_solver_i(1:2)  = 5, 5
 hypre_tol(1:2)       = 1.e-6, 1.e-6
 hypre_maxiter(1:2)   = 50, 50
-hypre_precond_i(1:2) = -1, -1
+hypre_precond_i(1:2) = 1, 1
 hypre_precond_maxiter(1:2) = 1, 1
 /
 ```
@@ -557,13 +557,16 @@ hypre_precond_maxiter(1:2) = 1, 1
 `hypre_precond_i` selects the **preconditioner** of the Krylov solvers (`3`, `4` and `5`), which is applied `hypre_precond_maxiter` times per iteration:
 
 * `0`: SMG
-* `1`: PFMG
+* `1`: PFMG (default)
 * `9`: none
-* a negative value (default): PFMG, or SMG for a two-dimensional problem, where PFMG proved unreliable
 
-The defaults were chosen from tests with three- and two-dimensional rising bubbles at density ratios up to 1000: Flexible GMRES with these preconditioners was the only combination that converged in all of them, at a cost per time step similar to the fastest ones. For a problem without a Dirichlet pressure boundary, the pressure is defined up to a constant, and the mean of the solution is set to zero.
+The defaults were chosen from tests with three- and two-dimensional rising bubbles at density ratios up to 1000, with walls, periodic directions, stretched grids and an outflow. For a problem without a Dirichlet pressure boundary, the pressure is defined up to a constant, and the mean of the solution is set to zero; for such a problem, PFMG stops coarsening one level short of a single grid cell, where the operator would vanish and spoil the convergence.
 
-Note: other parameters (`hypre_gmres_k_dim`, `hypre_pfmg_relax_type`, `hypre_pfmg_num_pre_relax`, `hypre_pfmg_num_post_relax`) are meant for advanced use, and can be found in `param.f90`.
+With an iterative solver, the **velocity divergence** follows the tolerance rather than the machine precision: with the default tolerance its maximum is typically `1.e-7` or smaller, and each factor of ten in `hypre_tol` lowers it by about as much, at a moderate cost (the solver gains roughly one digit per iteration). For this reason, the threshold test of the divergence check is skipped by default in these builds (`is_mask_divergence_check = T` under `&other_options`); it can be enforced again by setting it to false together with a tighter tolerance.
+
+Note: a periodic direction must have an even number of grid cells (or a single one, for a two-dimensional case), a requirement of the multigrid solvers of HYPRE.
+
+Note: other parameters (`hypre_gmres_k_dim`, `hypre_pfmg_relax_type`, `hypre_pfmg_num_pre_relax`, `hypre_pfmg_num_post_relax`, `hypre_pfmg_max_levels`) are meant for advanced use, and can be found in `param.f90`.
 
 # About the `&other_options` namelist under `input.nml`
 
@@ -578,7 +581,7 @@ is_mask_divergence_check = F
 
 In these lines, `is_debug` performs some **sanity checks for debugging purposes** that do not introduce computational overhead, and `is_timing` reports the wall-clock time per step.
 
-Finally, `is_mask_divergence_check`, if true, skips the threshold test of the **velocity divergence check** performed every `icheck` time steps: by default, the simulation is aborted when the maximum divergence exceeds a small, precision-dependent threshold, which may be smaller than the round-off divergence of very large grids in single precision. A NaN in the velocity field always aborts the simulation, regardless of this option.
+Finally, `is_mask_divergence_check`, if true, skips the threshold test of the **velocity divergence check** performed every `icheck` time steps: by default, the simulation is aborted when the maximum divergence exceeds a small, precision-dependent threshold, which may be smaller than the round-off divergence of very large grids in single precision. A NaN in the velocity field always aborts the simulation, regardless of this option. In builds with the iterative pressure solver (`CONSTANT_COEFFS_POISSON=0`) the default is true (see the `&hypre` namelist).
 
 Note: other parameters for `&numerics` and `&other_options` are not exposed here, as they are meant for very specific, advanced use or developers. They can be found in `param.f90`.
 

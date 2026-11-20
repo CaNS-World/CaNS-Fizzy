@@ -10,7 +10,8 @@ module mod_solver_vc
   use mod_common_mpi, only: myid
   use mod_param     , only: hypre_solver_i,hypre_tol,hypre_maxiter, &
                             hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
-                            hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax
+                            hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
+                            hypre_pfmg_max_levels
   use mod_types
   use, intrinsic :: iso_c_binding, only: C_PTR,C_NULL_PTR
   implicit none
@@ -32,6 +33,7 @@ module mod_solver_vc
     integer     :: ndim       ! number of directions of the problem (those with more than one grid cell)
     integer     :: idirs(3)   ! and which ones
     integer     :: nstencil
+    integer     :: nlevels    ! number of multigrid levels down to a single grid cell
     logical     :: is_singular
   end type hypre_solver
   type(hypre_solver), save :: asolver_p
@@ -92,7 +94,7 @@ module mod_solver_vc
     integer, dimension(3,7) :: offsets
     integer, dimension(3) :: periods
     type(C_PTR) :: grid,stencil,mat,rhs,sol
-    integer :: q,idir,ndim,nstencil,idirs(3)
+    integer :: q,idir,ndim,nstencil,idirs(3),m
     integer :: comm_hypre
     !
     comm_hypre = MPI_COMM_WORLD
@@ -156,6 +158,17 @@ module mod_solver_vc
     ! without a Dirichlet boundary the solution is defined up to a constant
     !
     asolver%is_singular = all(cbc(:,:) /= 'D')
+    !
+    ! number of levels of a multigrid hierarchy that halves the grid down to a single cell
+    !
+    asolver%nlevels = 1
+    do q=1,ndim
+      m = ng(idirs(q))
+      do while(m > 1)
+        m = (m+1)/2
+        asolver%nlevels = asolver%nlevels + 1
+      end do
+    end do
   end subroutine init_matrix
   !
   subroutine fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
@@ -271,13 +284,14 @@ module mod_solver_vc
     call HYPRE_StructMatrixAssemble(asolver%mat,ierr)
   end subroutine fill_matrix
   !
-  subroutine configure_pfmg(iq,solver,maxiter,maxerror)
+  subroutine configure_pfmg(iq,asolver,solver,maxiter,maxerror)
     implicit none
-    integer    , intent(in) :: iq
-    type(C_PTR), intent(in) :: solver
-    integer    , intent(in) :: maxiter
-    real(rp)   , intent(in) :: maxerror
-    integer :: relax_type
+    integer           , intent(in) :: iq
+    type(hypre_solver), intent(in) :: asolver
+    type(C_PTR)       , intent(in) :: solver
+    integer           , intent(in) :: maxiter
+    real(rp)          , intent(in) :: maxerror
+    integer :: relax_type,max_levels
     call HYPRE_StructPFMGSetMaxIter(solver,maxiter,ierr)
     call HYPRE_StructPFMGSetTol(solver,maxerror,ierr)
     call HYPRE_StructPFMGSetRelChange(solver,1,ierr)
@@ -293,6 +307,13 @@ module mod_solver_vc
     call HYPRE_StructPFMGSetRelaxType(solver,relax_type,ierr)
     call HYPRE_StructPFMGSetNumPreRelax(solver,hypre_pfmg_num_pre_relax(iq),ierr)
     call HYPRE_StructPFMGSetNumPostRelax(solver,hypre_pfmg_num_post_relax(iq),ierr)
+    !
+    ! number of levels: the operator of a singular problem vanishes on a level with a single grid cell,
+    ! which spoils the convergence; by default, such a problem stops one level short of it
+    !
+    max_levels = hypre_pfmg_max_levels(iq)
+    if(max_levels < 0) max_levels = merge(asolver%nlevels-1,0,asolver%is_singular)
+    if(max_levels > 0) call HYPRE_StructPFMGSetMaxLevels(solver,max_levels,ierr)
   end subroutine configure_pfmg
   !
   subroutine create_solver(iq,asolver)
@@ -323,7 +344,7 @@ module mod_solver_vc
       call HYPRE_StructSMGSetTol(solver,maxerror,ierr)
     else if ( stype == HYPRESolverPFMG ) then
       call HYPRE_StructPFMGCreate(asolver%comm_hypre,solver,ierr)
-      call configure_pfmg(iq,solver,maxiter,maxerror)
+      call configure_pfmg(iq,asolver,solver,maxiter,maxerror)
     else if ( stype == HYPRESolverGMRES .or. &
               stype == HYPRESolverBiCGSTAB .or. &
               stype == HYPRESolverFlexGMRES ) then
@@ -343,10 +364,9 @@ module mod_solver_vc
         if(hypre_gmres_k_dim(iq) > 0) call HYPRE_StructFGMRESSetKDim(solver,hypre_gmres_k_dim(iq),ierr)
       end if
       !
-      ! preconditioner: by default PFMG, and SMG for a two-dimensional problem, where PFMG proved unreliable
+      ! preconditioner
       !
       precond_id = hypre_precond_i(iq)
-      if(precond_id < 0) precond_id = merge(HYPREPrecondPFMG,HYPREPrecondSMG,asolver%ndim == 3)
       if(precond_id == HYPREPrecondSMG) then
         call HYPRE_StructSMGCreate(asolver%comm_hypre,precond,ierr)
         call HYPRE_StructSMGSetMaxIter(precond,hypre_precond_maxiter(iq),ierr)
@@ -354,7 +374,7 @@ module mod_solver_vc
         call HYPRE_StructSMGSetZeroGuess(precond,ierr)
       else if(precond_id == HYPREPrecondPFMG) then
         call HYPRE_StructPFMGCreate(asolver%comm_hypre,precond,ierr)
-        call configure_pfmg(iq,precond,hypre_precond_maxiter(iq),0._rp)
+        call configure_pfmg(iq,asolver,precond,hypre_precond_maxiter(iq),0._rp)
         call HYPRE_StructPFMGSetZeroGuess(precond,ierr)
       else
         precond_id = HYPREPrecondNone

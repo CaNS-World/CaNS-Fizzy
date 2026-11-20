@@ -104,7 +104,11 @@ logical, protected :: is_use_diezdecomp = .false.,is_diezdecomp_x2z_z2x_transpos
 !
 logical, protected :: is_debug = .true., is_debug_poisson = .false., &
                       is_timing = .true., &
+#if defined(_CONSTANT_COEFFS_POISSON)
                       is_mask_divergence_check = .false.
+#else
+                      is_mask_divergence_check = .true. ! the divergence follows the tolerance of the iterative solver
+#endif
 !
 ! other options: numerics
 !
@@ -117,12 +121,13 @@ logical, protected :: is_impdiff = .false., is_impdiff_1d = .false., &
 !
 integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES
                                      hypre_maxiter   = 50, &
-                                     hypre_precond_i = -1, &     ! 0: SMG, 1: PFMG, 9: none, < 0: PFMG in 3D, SMG in 2D
+                                     hypre_precond_i = 1, &      ! 0: SMG, 1: PFMG, 9: none
                                      hypre_precond_maxiter = 1, &
                                      hypre_gmres_k_dim     = 0, & ! 0: HYPRE's default
                                      hypre_pfmg_relax_type = -1, & ! < 0: red/black Gauss-Seidel
                                      hypre_pfmg_num_pre_relax  = 1, &
-                                     hypre_pfmg_num_post_relax = 1
+                                     hypre_pfmg_num_post_relax = 1, &
+                                     hypre_pfmg_max_levels = -1    ! 0: HYPRE's default, < 0: see `configure_pfmg`
 real(rp), protected, dimension(2) :: hypre_tol = 1.e-6
 !
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
@@ -193,7 +198,8 @@ contains
     namelist /hypre/ &
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
                     hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
-                    hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax
+                    hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
+                    hypre_pfmg_max_levels
     namelist /other_options/ &
                             is_debug,is_debug_poisson, &
                             is_timing, &
