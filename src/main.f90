@@ -69,8 +69,9 @@ program cans
 #if 1
   use mod_sanity         , only: test_sanity_input
 #endif
+  use mod_acdi           , only: acdi_set_epsilon
 #if !defined(_INTERFACE_CAPTURING_VOF)
-  use mod_acdi           , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
+  use mod_acdi           , only: acdi_set_gamma,acdi_cmpt_phi
 #elif defined(_SDF_NORMALS)
   use mod_vof_thinc_qq   , only: vof_thinc_cmpt_phi
 #endif
@@ -299,9 +300,7 @@ program cans
                           nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
 #endif
   !
-#if !defined(_INTERFACE_CAPTURING_VOF)
-  call acdi_set_epsilon(dl,dzfi,psi_thickness_factor,seps)
-#endif
+  call acdi_set_epsilon(dl,dzfi,psi_thickness_factor,seps) ! interface width, used by the initial conditions of all methods
   !
   fexts(1) = 'u'
   fexts(2) = 'v'
