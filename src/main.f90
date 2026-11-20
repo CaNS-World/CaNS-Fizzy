@@ -415,6 +415,17 @@ program cans
 #endif
   if(nscal > 0) s(:,:,:) = 0.
   psi(:,:,:) = 0.
+  psio(:,:,:) = 0.
+  kappa(:,:,:) = 0.
+  normx(:,:,:) = 0.
+  normy(:,:,:) = 0.
+  normz(:,:,:) = 0.
+#if defined(_SDF_NORMALS)
+  phi(:,:,:) = 0.
+#endif
+  psiflx_x(:,:,:) = 0.
+  psiflx_y(:,:,:) = 0.
+  psiflx_z(:,:,:) = 0.
   if(.not.restart) then
     istep = 0
     time = 0.
