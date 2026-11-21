@@ -96,7 +96,7 @@ module mod_interface_capturing
     real(rp), intent(inout) :: gam
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     real(rp) :: clip,fmin,fmax,cfl(3),kstats(3)
-    integer  :: nsub
+    integer  :: nsub,i,j,k
 #endif
     !
     call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
@@ -105,6 +105,17 @@ module mod_interface_capturing
     call vof_split_init(ng,n,nh_psi)
     call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub,kstats)
     if(myid == 0) print*, 'Geometric VoF. Initial volume of phase 1: ', vol0
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1-nh_ifc,n(3)+nh_ifc
+      do j=1-nh_ifc,n(2)+nh_ifc
+        do i=1-nh_ifc,n(1)+nh_ifc
+          normx(i,j,k) = 0.
+          normy(i,j,k) = 0.
+          normz(i,j,k) = 0.
+          kappa(i,j,k) = 0.
+        end do
+      end do
+    end do
 #endif
     call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
 #if !defined(_INTERFACE_CAPTURING_VOF) && !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
@@ -190,16 +201,16 @@ module mod_interface_capturing
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     !
     ! height-function curvature, in stages separated by halo exchanges; the intermediate exchanges mirror
-    ! (instead of imposing Dirichlet conditions), such that undefined values are only copied; the normals
-    ! are not used outside the curvature computation, so their halos are not updated
+    ! (instead of imposing Dirichlet conditions), such that undefined values are only copied; the interface
+    ! normals are not needed with this method, and are left at zero
     !
     cbc_tmp(:,:) = cbccur(:,:)
     where(cbc_tmp(:,:) == 'D') cbc_tmp(:,:) = 'N'
-    call vof_split_curvature(1,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call vof_split_curvature(1,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     call boundp(cbc_tmp,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-    call vof_split_curvature(2,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call vof_split_curvature(2,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     call boundp(cbc_tmp,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-    call vof_split_curvature(3,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call vof_split_curvature(3,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
 #else
 #if defined(_SDF_NORMALS)
