@@ -115,7 +115,8 @@ logical, protected :: is_debug = .true., is_debug_poisson = .false., &
 !
 logical, protected :: is_impdiff = .false., is_impdiff_1d = .false., &
                       is_poisson_dtdma = .false., &
-                      is_gridpoint_natural_channel = .false.
+                      is_gridpoint_natural_channel = .false., &
+                      is_vof_sweep_transport = .false.
 !
 ! HYPRE solver options for the variable-coefficient problems; each input has two entries:
 ! the first for the pressure, the second for the (implicit) diffusion
@@ -200,7 +201,8 @@ contains
     namelist /numerics/ &
                        is_impdiff,is_impdiff_1d, &
                        is_poisson_dtdma, &
-                       is_gridpoint_natural_channel
+                       is_gridpoint_natural_channel, &
+                       is_vof_sweep_transport
     namelist /hypre/ &
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
                     hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
