@@ -819,11 +819,7 @@ program cans
       call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzfi,wzc,is_bound,rho12,psi,pp,po)
 #endif
       call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,pp)
-#if defined(_CONSTANT_COEFFS_POISSON)
       call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,wzc,rho12,dtrk/rho0,pp,psi,u,v,w)
-#else
-      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,wzc,rho12,dtrk,pp,psi,u,v,w)
-#endif
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
       if(any(is_forced(:))) then
         call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)

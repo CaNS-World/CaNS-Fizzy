@@ -396,7 +396,7 @@ contains
       end if
       cbccur(:,:) = cbcpsi(:,:)
       bccur(:,:) = bcpre(:,:)
-      rho0 = 1.
+      rho0 = 1. ! reference density of the pressure splitting; one with the variable-coefficient solver, where it has no role
 #if defined(_CONSTANT_COEFFS_POISSON)
       rho0 = minval(rho12(:))
 #endif
