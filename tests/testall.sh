@@ -19,15 +19,19 @@ TESTSDIR=$(cd "$(dirname "$0")" && pwd)
 CANSDIR=$TESTSDIR/..
 LOGDIR=$CANSDIR/run/testall
 #
-# build flags and tests of each variant
+# build flags, interface method and tests of each variant; the interface method is an input (a line for the
+# `two_fluid` namelist, which the tests shared by several methods add to their input files), so the variants
+# that differ only in it share a build
 #
-VARIANTS="acdi thinc balanced hypre plic"
-declare -A FLAGS TESTS_OF
-FLAGS[acdi]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_VOF=0 BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
-FLAGS[thinc]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_VOF=1 BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
-FLAGS[balanced]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_VOF=0 BALANCED_CAPILLARY_PRESSURE_SPLIT=1"
-FLAGS[hypre]="CONSTANT_COEFFS_POISSON=0 INTERFACE_CAPTURING_VOF=0"
-FLAGS[plic]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_SPLIT_VOF=1"
+VARIANTS="acdi thinc plic balanced hypre"
+declare -A FLAGS METHOD TESTS_OF
+FLAGS[acdi]="CONSTANT_COEFFS_POISSON=1 BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
+FLAGS[thinc]=${FLAGS[acdi]}
+FLAGS[plic]=${FLAGS[acdi]}
+FLAGS[balanced]="CONSTANT_COEFFS_POISSON=1 BALANCED_CAPILLARY_PRESSURE_SPLIT=1"
+FLAGS[hypre]="CONSTANT_COEFFS_POISSON=0"
+METHOD[thinc]="ifc_reconstruction = 'thinc'"
+METHOD[plic]="ifc_reconstruction = 'plic'"
 TESTS_OF[acdi]="lid_driven_cavity differentially_heated_cavity deforming_circle rising_bubble \
                 start_stop restart_two_fluid implicit_diffusion poisson taylor_green_vortex_2d"
 TESTS_OF[thinc]="deforming_circle rising_bubble restart_two_fluid implicit_diffusion"
@@ -46,15 +50,23 @@ echo "INFO: Building the dependencies, if needed"
 make libs > $LOGDIR/build-libs.log 2>&1 || { echo "ERROR: 'make libs' failed, see $LOGDIR/build-libs.log"; exit 1; }
 nfail=0
 summary=""
+flags_built="none"
 for variant in $VARIANTS; do
-  echo "INFO: Building variant $variant"
-  make clean > /dev/null 2>&1
-  if ! make -j ${NJOBS:-4} ${FLAGS[$variant]} $BUILD_FLAGS > $LOGDIR/build-$variant.log 2>&1; then
-    echo "ERROR: the build of variant $variant failed, see $LOGDIR/build-$variant.log"
-    summary+=$(printf '%-10s %-30s %s' $variant '(build)' FAILED)$'\n'
-    nfail=$((nfail+1))
-    continue
+  if [ "${FLAGS[$variant]}" != "$flags_built" ]; then
+    echo "INFO: Building variant $variant"
+    make clean > /dev/null 2>&1
+    if ! make -j ${NJOBS:-4} ${FLAGS[$variant]} $BUILD_FLAGS > $LOGDIR/build-$variant.log 2>&1; then
+      echo "ERROR: the build of variant $variant failed, see $LOGDIR/build-$variant.log"
+      summary+=$(printf '%-10s %-30s %s' $variant '(build)' FAILED)$'\n'
+      nfail=$((nfail+1))
+      flags_built="none"
+      continue
+    fi
+    flags_built=${FLAGS[$variant]}
+  else
+    echo "INFO: Variant $variant uses the same build"
   fi
+  export TEST_TWO_FLUID_INPUT=${METHOD[$variant]}
   for test in ${TESTS_OF[$variant]}; do
     if [ -n "$TESTS" ] && [[ " $TESTS " != *" $test "* ]]; then continue; fi
     echo "INFO: Running test $test ($variant)"

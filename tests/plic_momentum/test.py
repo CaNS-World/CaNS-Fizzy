@@ -3,7 +3,7 @@ def test_plic_momentum_drop():
     import numpy as np
     #
     # geometric volume-of-fluid method with the momentum and the scalar transported along with the sweeps
-    # of the volume fraction (`is_vof_sweep_transport = T`): inviscid drop in a uniform diagonal flow, with
+    # of the volume fraction (`ifc_transport = 'sweeps'`): inviscid drop in a uniform diagonal flow, with
     # density and heat capacity ratios of 1e6, on 64^2 cells at a CFL number of 0.25; the velocity and the
     # uniform scalar must stay uniform to round-off (mass, momentum and energy are transported consistently),
     # and the volume fraction conserved and bounded
