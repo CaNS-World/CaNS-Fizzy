@@ -23,10 +23,10 @@ USE_ADIOS2=0       # ADIOS2 I/O support
 #
 # two-fluid options
 #
-CONSTANT_COEFFS_POISSON=1  # constant-coefficient (FFT-based) pressure solver with pressure splitting
-INTERFACE_CAPTURING_VOF=0  # uses THINC/QQ volume-of-fluid instead of the ACDI pathway
+CONSTANT_COEFFS_POISSON=1       # constant-coefficient (FFT-based) pressure solver with pressure splitting
+INTERFACE_CAPTURING_VOF=0       # uses THINC/QQ volume-of-fluid instead of the ACDI pathway
 INTERFACE_CAPTURING_SPLIT_VOF=0 # uses the geometric (PLIC) direction-split volume-of-fluid instead of the ACDI pathway
-SDF_NORMALS=1              # default: ACDI or SDF-based THINC reconstruction and normals
+SDF_NORMALS=1                   # default: ACDI or SDF-based THINC reconstruction and normals
 ```
 
 In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA` (`nvfortran`), or `CRAY` (`ftn`); the predefined profiles for compiler options can be selected by choosing one of the `FFLAGS_*` options; finer control of the compiler flags may be achieved by building with, e.g., `make FFLAGS+=[OTHER_FLAGS]`, or by tweaking the profiles directly under `configs/flags.mk`. Similarly, the library paths (e.g., for *FFTW*) may need to be adapted in the `Makefile` (`LIBS` variable) or by building with `make LIBS+='-L[PATH_TO_LIB] -l[NAME_OF_LIB]'`. Finally, the following pre-processing options are available:
