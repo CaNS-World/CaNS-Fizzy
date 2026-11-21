@@ -21,12 +21,21 @@ module mod_vof_split
   ! the face fluxes summed over the sweeps (and sub-steps), divided by the time step, are returned
   ! for a mass-consistent transport of momentum and other conserved quantities
   !
+  ! alternatively (`is_sweep_transport`), the momentum (and the scalar, with its heat capacity) is transported
+  ! here, along with the sweeps of the volume fraction: with the same mass fluxes and dilatation term in each
+  ! sweep (T.-Y. Huang, N. Valle, A.K. Lidtke, K. Hendrickson & G.D. Weymouth, arXiv:2606.02467, 2026;
+  ! T. Arrufat et al., Comput. Fluids 215, 2021), and a transported velocity averaged over the mass-flux donor
+  ! region of a linear reconstruction, limited near the interface (bounded) and unlimited elsewhere (low
+  ! dissipation); mass and momentum then stay consistent after each sweep, which keeps the transport robust
+  ! at large density ratios
+  !
   ! the volume fraction needs two halo layers for the advection (the interface is also reconstructed in the
   ! first one, whose cells are the donors of the fluxes entering the subdomain), and four for the interface
   ! curvature, computed from height functions in nine-cell columns
   !
   use mpi
   use mod_types
+  use, intrinsic :: iso_fortran_env, only: int8
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
   use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature
@@ -39,6 +48,9 @@ module mod_vof_split
   integer , parameter :: nq_hf   = 4         ! half-length of the height-function columns (nine cells)
   real(rp), parameter :: eps_hf  = 1.e-6_rp  ! tolerance for pure cells at the ends of the height-function columns
   real(rp), parameter :: kappa_undef = huge(1._rp) ! marks cells without a curvature estimate (intermediate stages)
+  integer , parameter :: nh_mom     = 2      ! halo width of the fields transported with the sweeps (donor-region slopes)
+  integer , parameter :: lim_band   = 3      ! slope limiter in the interface band: van Leer (1), MC (2), superbee (3)
+  integer , parameter :: slope_bulk = 2      ! slope elsewhere: Fromm (1), Lax-Wendroff (2)
   !
   real(rp), allocatable, dimension(:,:,:) :: cc       ! dilatation indicator c_c
   real(rp), allocatable, dimension(:,:,:) :: fl       ! face fluxes of a sweep
@@ -46,6 +58,18 @@ module mod_vof_split
   integer , allocatable, dimension(:)     :: ilist    ! compacted list of interfacial donor cells (packed indices)
   integer , dimension(1) :: nlist                     ! number of entries of ilist
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
+  !
+  ! transport of momentum (and scalar) along with the sweeps
+  !
+  logical :: is_sweep = .false.                       ! momentum (and scalar) transported along with the sweeps
+  logical :: is_scal  = .false.                       ! scalar transported too
+  integer :: ncc = 0                                  ! layers beyond the interior with dilatation indicator and fluxes
+  real(rp)     , allocatable, dimension(:,:,:)   :: f_prev      ! volume fraction before a sweep
+  integer(int8), allocatable, dimension(:,:,:)   :: band        ! interface band (limited transported value), 0 or 1
+  integer(int8), allocatable, dimension(:,:,:)   :: bflag       ! presence of the phases in a cell (bits 0 and 1)
+  real(rp)     , allocatable, dimension(:,:,:)   :: ub,vb,wb,sb ! velocity and scalar during the sweeps
+  real(rp)     , allocatable, dimension(:,:,:,:) :: qflx        ! fluxes of the transported quantities
+  real(rp)     , allocatable, dimension(:,:,:)   :: au,av,aw,as ! non-advective rates of change of the previous time step
   !
   ! diagnostics (local to the task, accumulated on the device; reduced by `vof_split_diagnostics`)
   !
@@ -59,13 +83,15 @@ module mod_vof_split
                                                 ! from neighbouring height functions, and without estimate
   !$acc declare create(kappa_stats)
   contains
-  subroutine vof_split_init(ng,n,nh_psi)
+  subroutine vof_split_init(ng,n,nh_psi,is_sweep_transport,is_scalar)
     !
-    ! allocates the work arrays
+    ! allocates the work arrays; `is_sweep_transport` selects the transport of momentum (and of the scalar,
+    ! if `is_scalar`) along with the sweeps
     !
     implicit none
     integer , intent(in), dimension(3) :: ng,n
     integer , intent(in)               :: nh_psi
+    logical , intent(in)               :: is_sweep_transport,is_scalar
     integer :: i,j,k
     !
     if(nh_psi < nq_hf) error stop 'ERROR: the halo width of the volume fraction is smaller than the height-function columns.'
@@ -76,9 +102,44 @@ module mod_vof_split
     is_active(:) = ng(:) > 2
     allocate(cc(0:n(1)+1,0:n(2)+1,0:n(3)+1))
     allocate(fl,kap,mold=cc)
-    allocate(ilist((n(1)+2)*(n(2)+2)*(n(3)+2)))
+    is_sweep = is_sweep_transport
+    is_scal  = is_sweep.and.is_scalar
+    ncc = merge(1,0,is_sweep)
+    allocate(ilist((n(1)+2+ncc)*(n(2)+2+ncc)*(n(3)+2+ncc)))
     nlist(:) = 0
     !$acc enter data create(cc,fl,kap,ilist) copyin(nlist)
+    if(is_sweep) then
+      allocate(f_prev(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
+      allocate(bflag( 1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
+      allocate(band,mold=bflag)
+      allocate(ub(1-nh_mom:n(1)+nh_mom,1-nh_mom:n(2)+nh_mom,1-nh_mom:n(3)+nh_mom))
+      allocate(vb,wb,mold=ub)
+      allocate(qflx(0:n(1)+1,0:n(2)+1,0:n(3)+1,merge(0,1,is_scal):3))
+      allocate(au,av,aw,mold=cc)
+      if(is_scal) then
+        allocate(sb,mold=ub)
+        allocate(as,mold=cc)
+      else
+        allocate(sb(1,1,1),as(1,1,1)) ! (not used)
+      end if
+      !$acc enter data create(f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
+      !
+      ! (the outer halo layers are not updated at physical boundaries, and must be finite)
+      !
+      call set_zero(ub)
+      call set_zero(vb)
+      call set_zero(wb)
+      call set_zero(sb)
+      call set_zero(f_prev)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=1-nh_psi,n(3)+nh_psi
+        do j=1-nh_psi,n(2)+nh_psi
+          do i=1-nh_psi,n(1)+nh_psi
+            band(i,j,k) = 0_int8
+          end do
+        end do
+      end do
+    end if
     !$acc update device(clip_vol,fmin_raw,fmax_raw)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)+1
@@ -90,34 +151,111 @@ module mod_vof_split
     end do
   end subroutine vof_split_init
   !
-  subroutine vof_split_advance(tm_coeff,is_first,istep,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound, &
-                               u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,ua,va,wa)
+  subroutine vof_split_advance(tm_coeff,is_first,is_track,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
+                               cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
+                               uo,vo,wo,ua,va,wa,s,sa)
     !
     ! advances the volume fraction over one time step, with the face velocity extrapolated to the
     ! middle of the time step from the current and previous velocity fields (both divergence free);
     ! the volume fraction is returned with its halo layers updated, and the advecting velocity in ua, va, wa;
     ! the order of the sweeps is reversed at each (sub-)step, starting from the parity of the time step number
     !
+    ! with the transport along with the sweeps (`is_sweep_transport`), the velocity (and the scalar s) is
+    ! transported too, and ua, va, wa (sa) return the transported velocity (scalar) instead; on entry they
+    ! hold that of the previous time step (unless `is_first`), whose time step is dto; the phase fluxes are
+    ! then not used; if `is_track` is false, the volume fraction is not updated (transport without interface
+    ! tracking)
+    !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
-    logical , intent(in   )               :: is_first
+    logical , intent(in   )               :: is_first,is_track
     integer , intent(in   )               :: istep
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   )               :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzfi
-    real(rp), intent(in   ) :: dt
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
+    real(rp), intent(in   ) :: dt,dto
     character(len=1), intent(in), dimension(0:1,3) :: cbcpsi
     real(rp), intent(in   ), dimension(0:1,3) :: bcpsi
     integer , intent(in   ), dimension(0:1,3) :: nb
     logical , intent(in   ), dimension(0:1,3) :: is_bound
+    real(rp), intent(in   ), dimension(2) :: rho12,rhocp12
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: uo,vo,wo,ua,va,wa
-    real(rp) :: dts
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
+    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: sa
+    character(len=1), dimension(0:1,3) :: cbc_tr
+    logical , dimension(0:1,3) :: is_bound_tr,is_bound_phys
+    logical , save :: is_psiflx_set = .false.
+    real(rp) :: dts,dtpi,tc
     integer  :: i,j,k,isub,nsub,q,idir
     logical  :: is_forward
+    !
+    if(is_sweep) then
+      !
+      ! non-advective rates of change of the previous time step (pressure, viscous and body forces), from the
+      ! transported velocity (scalar) of the previous step, still in ua, va, wa (sa), used to centre the
+      ! transported values in time (see `transport_sweep`); the velocity (scalar) is also copied into the
+      ! work arrays of the transport, whose outer halo layers are then updated
+      !
+      dtpi = 0._rp
+      if(.not.is_first) dtpi = 1._rp/dto
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=0,n(3)+1
+        do j=0,n(2)+1
+          do i=0,n(1)+1
+            au(i,j,k) = 0._rp
+            av(i,j,k) = 0._rp
+            aw(i,j,k) = 0._rp
+            if(dtpi > 0._rp) then
+              au(i,j,k) = (u(i,j,k)-ua(i,j,k))*dtpi
+              av(i,j,k) = (v(i,j,k)-va(i,j,k))*dtpi
+              aw(i,j,k) = (w(i,j,k)-wa(i,j,k))*dtpi
+            end if
+            ub(i,j,k) = u(i,j,k)
+            vb(i,j,k) = v(i,j,k)
+            wb(i,j,k) = w(i,j,k)
+          end do
+        end do
+      end do
+      if(is_scal) then
+        !$acc parallel loop collapse(3) default(present) async(1)
+        do k=0,n(3)+1
+          do j=0,n(2)+1
+            do i=0,n(1)+1
+              as(i,j,k) = 0._rp
+              if(dtpi > 0._rp) as(i,j,k) = (s(i,j,k)-sa(i,j,k))*dtpi
+              sb(i,j,k) = s(i,j,k)
+            end do
+          end do
+        end do
+      end if
+      !
+      ! the halos of the transported fields are only needed across periodic and inter-task boundaries: at
+      ! physical boundaries, the transported value uses zero slopes, and the values of the beginning of the
+      ! time step are kept
+      !
+      cbc_tr(:,:) = 'N'
+      where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP')
+        cbc_tr(0,:) = 'P'
+        cbc_tr(1,:) = 'P'
+      end where
+      is_bound_tr(  :,:) = is_bound(:,:).and.cbc_tr(:,:) == 'P'
+      is_bound_phys(:,:) = is_bound(:,:).and.cbc_tr(:,:) /= 'P'
+      call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
+      !
+      ! the phase fluxes are not used: they are set to zero once
+      !
+      if(.not.is_psiflx_set) then
+        call set_zero(psiflx_x)
+        call set_zero(psiflx_y)
+        call set_zero(psiflx_z)
+        is_psiflx_set = .true.
+      end if
+      if(.not.is_track) call set_zero(fl)
+    end if
     !
     ! advecting velocity, and CFL numbers along each direction
     !
@@ -134,38 +272,85 @@ module mod_vof_split
     ! the face fluxes are set by the first sweep of each direction (and accumulated over the sub-steps),
     ! except along the directions without sweeps
     !
-    if(.not.is_active(1)) call set_zero(psiflx_x)
-    if(.not.is_active(2)) call set_zero(psiflx_y)
-    if(.not.is_active(3)) call set_zero(psiflx_z)
+    if(.not.is_sweep) then
+      if(.not.is_active(1)) call set_zero(psiflx_x)
+      if(.not.is_active(2)) call set_zero(psiflx_y)
+      if(.not.is_active(3)) call set_zero(psiflx_z)
+    end if
     !
-    !$acc serial async(1)
-    fmin_raw =  huge(1._rp)
-    fmax_raw = -huge(1._rp)
-    !$acc end serial
+    if(is_track) then
+      !$acc serial async(1)
+      fmin_raw =  huge(1._rp)
+      fmax_raw = -huge(1._rp)
+      !$acc end serial
+    end if
     do isub=1,nsub
       !$acc parallel loop collapse(3) default(present) async(1)
-      do k=1,n(3)
-        do j=1,n(2)
-          do i=1,n(1)
+      do k=1-ncc,n(3)+ncc
+        do j=1-ncc,n(2)+ncc
+          do i=1-ncc,n(1)+ncc
             cc(i,j,k) = merge(1._rp,0._rp,psi(i,j,k) > 0.5_rp)
           end do
         end do
       end do
       is_forward = mod(istep+isub,2) == 0
+      tc = (isub-0.5_rp)*dts ! time from the beginning of the step to the middle of the sub-step
       do q=1,3
         idir = merge(q,4-q,is_forward)
         if(.not.is_active(idir)) cycle
-        select case(idir)
-        case(1)
-          call sweep(1,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi)
-        case(2)
-          call sweep(2,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi)
-        case(3)
-          call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
-        end select
-        call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
+        if(is_sweep) call transport_prepare(n,nh_psi,psi)
+        if(is_track) then
+          select case(idir)
+          case(1)
+            call sweep(1,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi)
+          case(2)
+            call sweep(2,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi)
+          case(3)
+            call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
+          end select
+          call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
+        end if
+        if(is_sweep) then
+          select case(idir)
+          case(1)
+            call transport_sweep(1,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12,is_bound_phys, &
+                                 ua,u,v,w,psi,s)
+          case(2)
+            call transport_sweep(2,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12,is_bound_phys, &
+                                 va,u,v,w,psi,s)
+          case(3)
+            call transport_sweep(3,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12,is_bound_phys, &
+                                 wa,u,v,w,psi,s)
+          end select
+          call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
+        end if
       end do
     end do
+    if(is_sweep) then
+      !
+      ! transported velocity (and scalar)
+      !
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=0,n(3)+1
+        do j=0,n(2)+1
+          do i=0,n(1)+1
+            ua(i,j,k) = ub(i,j,k)
+            va(i,j,k) = vb(i,j,k)
+            wa(i,j,k) = wb(i,j,k)
+          end do
+        end do
+      end do
+      if(is_scal) then
+        !$acc parallel loop collapse(3) default(present) async(1)
+        do k=0,n(3)+1
+          do j=0,n(2)+1
+            do i=0,n(1)+1
+              sa(i,j,k) = sb(i,j,k)
+            end do
+          end do
+        end do
+      end if
+    end if
   end subroutine vof_split_advance
   !
   subroutine vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,ua,va,wa,cfl)
@@ -248,9 +433,9 @@ module mod_vof_split
     real(rp), dimension(-1:1,-1:1,-1:1) :: c
     real(rp), dimension(-1:1) :: dz3
     logical , dimension(3) :: act
-    logical  :: is_own_p,is_own_m,is_act1,is_act2,is_act3
+    logical  :: is_own_p,is_own_m,is_act1,is_act2,is_act3,is_flx
     real(rp) :: dx,dy,dxi,dyi,h,rh,fc,vp,vm,cfl_p,cfl_m,frac_p,frac_m,fnew,fcl,mx,my,mz
-    integer  :: i,j,k,di,dj,dk,ii,nd,ilo,jlo,klo,ihi,jhi,khi,ni,nj,il,lin
+    integer  :: i,j,k,di,dj,dk,ii,nd,ndf,ilo,jlo,klo,ihi,jhi,khi,ni,nj,il,lin
     !
     di = merge(1,0,idir == 1)
     dj = merge(1,0,idir == 2)
@@ -263,13 +448,17 @@ module mod_vof_split
     is_act1 = is_active(1)
     is_act2 = is_active(2)
     is_act3 = is_active(3)
-    ilo = 1-di; ihi = n(1)+di
-    jlo = 1-dj; jhi = n(2)+dj
-    klo = 1-dk; khi = n(3)+dk
+    ndf = nd+ncc
+    is_flx = .not.is_sweep
+    ilo = 1-di; ihi = n(1)+di+ncc
+    jlo = 1-dj; jhi = n(2)+dj+ncc
+    klo = 1-dk; khi = n(3)+dk+ncc
     !
     ! fluxes: each face is computed by its donor (upwind) cell; the fluxes of the (few) interfacial donor
     ! cells, which reconstruct the interface, are computed by a second kernel over a compacted list of
-    ! these cells, such that the work of the reconstruction is not spread over all the GPU threads
+    ! these cells, such that the work of the reconstruction is not spread over all the GPU threads; with the
+    ! transport along with the sweeps, also the fluxes through the faces 0:n+1 along idir and 1:n+1 along the
+    ! other directions are computed
     !
     ni = ihi-ilo+1
     nj = jhi-jlo+1
@@ -281,10 +470,10 @@ module mod_vof_split
         do i=ilo,ihi
           ii = i*di+j*dj+k*dk
           vp = 0._rp
-          if(ii <= nd) vp = vel(i,j,k)
+          if(ii <= ndf) vp = vel(i,j,k)
           vm = 0._rp
           if(ii >= 1) vm = vel(i-di,j-dj,k-dk)
-          is_own_p = ii <= nd .and. vp >= 0._rp
+          is_own_p = ii <= ndf .and. vp >= 0._rp
           is_own_m = ii >= 1  .and. vm <  0._rp
           if(is_own_p .or. is_own_m) then
             fc = min(max(psi(i,j,k),0._rp),1._rp)
@@ -313,10 +502,10 @@ module mod_vof_split
       ii = i*di+j*dj+k*dk
       h  = merge(dx,merge(dy,dzf(k),idir == 2),idir == 1)
       vp = 0._rp
-      if(ii <= nd) vp = vel(i,j,k)
+      if(ii <= ndf) vp = vel(i,j,k)
       vm = 0._rp
       if(ii >= 1) vm = vel(i-di,j-dj,k-dk)
-      is_own_p = ii <= nd .and. vp >= 0._rp
+      is_own_p = ii <= ndf .and. vp >= 0._rp
       is_own_m = ii >= 1  .and. vm <  0._rp
       fc = min(max(psi(i,j,k),0._rp),1._rp)
       cfl_p = 0._rp
@@ -360,12 +549,14 @@ module mod_vof_split
             clip_s = clip_s+(fcl-fnew)*dx*dy*dzf(k)
           end if
           psi(i,j,k) = fcl
-          if(is_init) then
-            psiflx(i,j,k) = fl(i,j,k)*scl
-            if(ii == 1) psiflx(i-di,j-dj,k-dk) = fl(i-di,j-dj,k-dk)*scl
-          else
-            psiflx(i,j,k) = psiflx(i,j,k)+fl(i,j,k)*scl
-            if(ii == 1) psiflx(i-di,j-dj,k-dk) = psiflx(i-di,j-dj,k-dk)+fl(i-di,j-dj,k-dk)*scl
+          if(is_flx) then
+            if(is_init) then
+              psiflx(i,j,k) = fl(i,j,k)*scl
+              if(ii == 1) psiflx(i-di,j-dj,k-dk) = fl(i-di,j-dj,k-dk)*scl
+            else
+              psiflx(i,j,k) = psiflx(i,j,k)+fl(i,j,k)*scl
+              if(ii == 1) psiflx(i-di,j-dj,k-dk) = psiflx(i-di,j-dj,k-dk)+fl(i-di,j-dj,k-dk)*scl
+            end if
           end if
         end do
       end do
@@ -376,6 +567,309 @@ module mod_vof_split
     clip_vol = clip_vol+clip_s
     !$acc end serial
   end subroutine sweep
+  !
+  subroutine transport_halo(cbc,n,nh_g,nb,is_bound,dl,dzc)
+    !
+    ! halo update of the fields transported with the sweeps, across periodic and inter-task boundaries
+    ! only: at physical boundaries, the halo values of the beginning of the time step are kept
+    !
+    implicit none
+    character(len=1), intent(in), dimension(0:1,3) :: cbc
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: nh_g
+    integer , intent(in), dimension(0:1,3) :: nb
+    logical , intent(in), dimension(0:1,3) :: is_bound
+    real(rp), intent(in), dimension(3) :: dl
+    real(rp), intent(in), dimension(1-nh_g:) :: dzc
+    real(rp), dimension(0:1,3) :: bc
+    !
+    bc(:,:) = 0._rp
+    call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,ub)
+    call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,vb)
+    call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,wb)
+    if(is_scal) call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,sb)
+  end subroutine transport_halo
+  !
+  subroutine transport_prepare(n,nh_psi,psi)
+    !
+    ! volume fraction before a sweep, and interface band: cells whose 3x3x3 neighbourhood contains
+    ! interfacial cells, or both full and empty cells, i.e., cells with phase 1 (f > f_eps) and cells with
+    ! phase 2 (f < 1-f_eps); the presence of the two phases is first stored as one-byte flags (bits 0 and 1)
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: nh_psi
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    integer  :: i,j,k,ii,jj,kk
+    integer(int8) :: ib
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=-1,n(3)+3
+      do j=-1,n(2)+3
+        do i=-1,n(1)+3
+          bflag(i,j,k) = merge(1_int8,0_int8,psi(i,j,k) > f_eps)+merge(2_int8,0_int8,psi(i,j,k) < 1._rp-f_eps)
+          f_prev(i,j,k) = psi(i,j,k)
+        end do
+      end do
+    end do
+    !$acc parallel loop collapse(3) default(present) private(ib) async(1)
+    do k=0,n(3)+2
+      do j=0,n(2)+2
+        do i=0,n(1)+2
+          ib = 0_int8
+          !$acc loop seq
+          do kk=-1,1
+            !$acc loop seq
+            do jj=-1,1
+              !$acc loop seq
+              do ii=-1,1
+                ib = ior(ib,bflag(i+ii,j+jj,k+kk))
+              end do
+            end do
+          end do
+          band(i,j,k) = merge(1_int8,0_int8,ib == 3_int8)
+        end do
+      end do
+    end do
+  end subroutine transport_prepare
+  !
+  subroutine transport_sweep(idir,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dt,tc,rho12,rhocp12,is_bound_phys, &
+                             vel,u,v,w,psi,s)
+    !
+    ! conservative transport along direction idir, after the volume-fraction update of the sweep, of the
+    ! quantities per unit mass iq = iq0,...,3: the three velocity components (iq = 1,2,3) on their staggered
+    ! control volumes and, if present, the cell-centred scalar (iq = 0), with the masses per unit volume of
+    ! the two phases rho12 (densities) and rhocp12 (heat capacities), respectively; the transport is
+    ! synchronized with the volume-fraction sweep (Huang et al., arXiv:2606.02467):
+    !  - the mass fluxes through the control-volume faces are those of the volume fraction, averaged as the
+    !    masses of the control volumes (which are averages of the cell masses, see `rk`);
+    !  - the dilatation term is that of the volume fraction (averaged likewise) times the value of q at the
+    !    beginning of the time step (u, v, w and s), such that it cancels over the sweeps;
+    !  - the transported value is the average over the donor region (the mass that crosses the face) of a
+    !    linear reconstruction in the upwind control volume, with limited slopes in the interface band
+    !    (bounded) and unlimited ones elsewhere (low dissipation), see `donor_value`; the slopes vanish next
+    !    to physical boundaries;
+    !  - the transported value is centred in time with the non-advective rate of change of q of the previous
+    !    time step (pressure, viscous and body forces; au, av, aw, as), over the time tc from the beginning of
+    !    the step to the middle of the sub-step; without it, the transport of q^n followed by the other terms
+    !    is a first-order (Lie) splitting, with a significant dissipation of kinetic energy;
+    ! the new value is the new momentum divided by the new mass, computed from the updated volume fraction; it
+    ! is stored in ub, vb, wb, sb (the update of a control volume only reads its own value, the fluxes being
+    ! computed beforehand); the normal velocity at the last face of a physical boundary (a boundary value)
+    ! is kept
+    !
+    implicit none
+    integer , intent(in ) :: idir
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_v,nh_s,nh_psi,nh_g
+    real(rp), intent(in ), dimension(3) :: dl
+    real(rp), intent(in ), dimension(1-nh_g:) :: dzf,dzci,dzfi,wzc
+    real(rp), intent(in ) :: dt,tc
+    real(rp), intent(in ), dimension(2) :: rho12,rhocp12
+    logical , intent(in ), dimension(0:1,3) :: is_bound_phys
+    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel,u,v,w
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
+    real(rp) :: c2,dc,c2m,dcm,c2s,dcs,dl_d,dli_d,w1,w2,w1d,rext,ext_d,mf,mass,dil1,dil1m,dil1s,dil2,rh1,rh2, &
+                rho_o,rho_n,qm,q0,qp,qa,qn
+    integer  :: i,j,k,iq,iq0,di,dj,dk,qi,qj,qk,off,id,jd,kd,dd,nd,n1,n2,n3
+    logical  :: is_stag,is_lo,is_hi,is_zero,is_lim,is_keep,is_keep_x,is_keep_y,is_keep_z
+    !
+    iq0 = merge(0,1,is_scal)
+    di = merge(1,0,idir == 1)
+    dj = merge(1,0,idir == 2)
+    dk = merge(1,0,idir == 3)
+    n1 = n(1); n2 = n(2); n3 = n(3)
+    nd = n(idir)
+    is_keep_x = is_bound_phys(1,1)
+    is_keep_y = is_bound_phys(1,2)
+    is_keep_z = is_bound_phys(1,3)
+    is_lo = is_bound_phys(0,idir)
+    is_hi = is_bound_phys(1,idir)
+    dl_d = dl(idir)
+    dli_d = 1._rp/dl_d
+    c2m = rho12(2)
+    dcm = rho12(1)-rho12(2)
+    c2s = rhocp12(2)
+    dcs = rhocp12(1)-rhocp12(2)
+    !
+    ! fluxes of q (per unit area, over the sweep) through the lower faces of the control volumes 1:n+1 along
+    ! idir: mass flux times transported value, from the upwind control volume; each face is computed once
+    !
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(iq,qi,qj,qk,is_stag,c2,dc,w1,w2,w1d,ext_d,mf,mass,qm,q0,qp,qa,off,id,jd,kd,dd,is_zero,is_lim) &
+    !$acc async(1)
+    do k=1,n(3)+dk
+      do j=1,n(2)+dj
+        do i=1,n(1)+di
+          !$acc loop seq
+          do iq=iq0,3
+            qi = merge(1,0,iq == 1)
+            qj = merge(1,0,iq == 2)
+            qk = merge(1,0,iq == 3)
+            is_stag = iq == idir
+            c2 = c2m
+            dc = dcm
+            if(iq == 0) then
+              c2 = c2s
+              dc = dcs
+            end if
+            w1 = 0.5_rp
+            if(iq == 0) w1 = 1._rp
+            if(iq == 3) w1 = wzc(k)
+            w2 = 1._rp-w1
+            if(is_stag) then
+              mf = 0.5_rp*((c2*vel(i-di,j-dj,k-dk)*dt+dc*fl(i-di,j-dj,k-dk)) + &
+                           (c2*vel(i   ,j   ,k   )*dt+dc*fl(i   ,j   ,k   )))
+            else
+              mf = w1*(c2*vel(i-di   ,j-dj   ,k-dk   )*dt+dc*fl(i-di   ,j-dj   ,k-dk   )) + &
+                   w2*(c2*vel(i-di+qi,j-dj+qj,k-dk+qk)*dt+dc*fl(i-di+qi,j-dj+qj,k-dk+qk))
+            end if
+            off = -merge(1,0,mf >= 0._rp)
+            id = i+off*di
+            jd = j+off*dj
+            kd = k+off*dk
+            dd = id*di+jd*dj+kd*dk
+            is_zero = (is_lo .and. dd <= 1) .or. (is_hi .and. dd >= nd)
+            is_lim  = band(id,jd,kd) > 0_int8 .or. band(id+qi,jd+qj,kd+qk) > 0_int8
+            w1d = 0.5_rp
+            if(iq == 0) w1d = 1._rp
+            if(iq == 3) w1d = wzc(kd)
+            ext_d = dl_d
+            if(idir == 3) then
+              ext_d = dzf(kd)
+              if(is_stag) ext_d = 0.5_rp*(dzf(kd)+dzf(kd+1))
+            end if
+            mass = (c2+dc*(w1d*f_prev(id,jd,kd)+(1._rp-w1d)*f_prev(id+qi,jd+qj,kd+qk)))*ext_d
+            select case(iq)
+            case(1)
+              qm = ub(id-di,jd-dj,kd-dk); q0 = ub(id,jd,kd); qp = ub(id+di,jd+dj,kd+dk); qa = au(id,jd,kd)
+            case(2)
+              qm = vb(id-di,jd-dj,kd-dk); q0 = vb(id,jd,kd); qp = vb(id+di,jd+dj,kd+dk); qa = av(id,jd,kd)
+            case(3)
+              qm = wb(id-di,jd-dj,kd-dk); q0 = wb(id,jd,kd); qp = wb(id+di,jd+dj,kd+dk); qa = aw(id,jd,kd)
+            case default
+              qm = sb(id-di,jd-dj,kd-dk); q0 = sb(id,jd,kd); qp = sb(id+di,jd+dj,kd+dk); qa = as(id,jd,kd)
+            end select
+            qflx(i,j,k,iq) = mf*donor_value(qm,q0,qp,mf,mass,tc*qa,is_zero,is_lim)
+          end do
+        end do
+      end do
+    end do
+    !
+    ! update of the control volumes: new momentum (with the dilatation terms of the two cells), and new mass
+    !
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(iq,qi,qj,qk,is_stag,is_keep,c2,dc,w1,w2,rext,dil1,dil1m,dil1s,dil2,rh1,rh2,rho_o,rho_n,qn) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          rh1 = dli_d
+          if(idir == 3) rh1 = dzfi(k)
+          dil1m = (c2m+dcm*cc(i,j,k))*(vel(i,j,k)-vel(i-di,j-dj,k-dk))*(dt*rh1)
+          dil1s = 0._rp
+          if(iq0 == 0) dil1s = (c2s+dcs*cc(i,j,k))*(vel(i,j,k)-vel(i-di,j-dj,k-dk))*(dt*rh1)
+          !$acc loop seq
+          do iq=iq0,3
+            qi = merge(1,0,iq == 1)
+            qj = merge(1,0,iq == 2)
+            qk = merge(1,0,iq == 3)
+            is_stag = iq == idir
+            c2 = c2m
+            dc = dcm
+            dil1 = dil1m
+            if(iq == 0) then
+              c2 = c2s
+              dc = dcs
+              dil1 = dil1s
+            end if
+            w1 = 0.5_rp
+            if(iq == 0) w1 = 1._rp
+            if(iq == 3) w1 = wzc(k)
+            w2 = 1._rp-w1
+            rext = dli_d
+            rh2  = dli_d
+            if(idir == 3) then
+              rext = dzfi(k)
+              if(is_stag) rext = dzci(k)
+              rh2 = dzfi(k+qk)
+            end if
+            dil2 = (c2+dc*cc(i+qi,j+qj,k+qk))*(vel(i+qi,j+qj,k+qk)-vel(i-di+qi,j-dj+qj,k-dk+qk))*(dt*rh2)
+            rho_o = c2+dc*(w1*f_prev(i,j,k)+w2*f_prev(i+qi,j+qj,k+qk))
+            rho_n = c2+dc*(w1*psi(   i,j,k)+w2*psi(   i+qi,j+qj,k+qk))
+            is_keep = (iq == 1 .and. is_keep_x .and. i == n1) .or. &
+                      (iq == 2 .and. is_keep_y .and. j == n2) .or. &
+                      (iq == 3 .and. is_keep_z .and. k == n3)
+            if(.not.is_keep) then
+              select case(iq)
+              case(1)
+                ub(i,j,k) = (rho_o*ub(i,j,k)-(qflx(i+di,j+dj,k+dk,iq)-qflx(i,j,k,iq))*rext+u(i,j,k)*(w1*dil1+w2*dil2))/rho_n
+              case(2)
+                vb(i,j,k) = (rho_o*vb(i,j,k)-(qflx(i+di,j+dj,k+dk,iq)-qflx(i,j,k,iq))*rext+v(i,j,k)*(w1*dil1+w2*dil2))/rho_n
+              case(3)
+                wb(i,j,k) = (rho_o*wb(i,j,k)-(qflx(i+di,j+dj,k+dk,iq)-qflx(i,j,k,iq))*rext+w(i,j,k)*(w1*dil1+w2*dil2))/rho_n
+              case default
+                qn = s(i,j,k)
+                sb(i,j,k) = (rho_o*sb(i,j,k)-(qflx(i+di,j+dj,k+dk,iq)-qflx(i,j,k,iq))*rext+qn*(w1*dil1+w2*dil2))/rho_n
+              end select
+            end if
+          end do
+        end do
+      end do
+    end do
+  end subroutine transport_sweep
+  !
+  pure real(rp) function donor_value(qm,q0,qp,mf,mass,dq,is_zero,is_lim) result(qtr)
+    !
+    ! transported value of q through a face: average over the donor region (the part of the upwind control
+    ! volume, with value q0 and neighbours qm and qp along the sweep direction, holding the mass mf that
+    ! crosses the face; mf is positive if the face is the upper face of the control volume, and mass is
+    ! the mass of the control volume) of a linear reconstruction, centred in time with the non-advective
+    ! change dq of q over the first half of the (sub-)step; the slope is limited (lim_band) if is_lim,
+    ! unlimited (slope_bulk) otherwise, and zero if is_zero
+    !
+    ! in the interface band (is_lim), the time correction is scaled by 1-sig**2, such that the value that
+    ! remains in the control volume, q0-sig*(slope correction)-sig*(1+sig)*dq, stays bounded also when (almost)
+    ! all the mass leaves, e.g., when a heavy phase leaves a control volume that is left with a light phase;
+    ! the scaling deviates from one by O(sig**2) only, which preserves the second-order accuracy in time
+    !
+    implicit none
+    real(rp), intent(in) :: qm,q0,qp,mf,mass,dq
+    logical , intent(in) :: is_zero,is_lim
+    real(rp) :: a,b,sl,sig
+    !$acc routine seq
+    sl = 0._rp
+    if(.not.is_zero) then
+      a = q0-qm
+      b = qp-q0
+      if(is_lim) then
+        if(a*b > 0._rp) then
+          select case(lim_band)
+          case(1) ! van Leer
+            sl = 2._rp*a*b/(a+b)
+          case(2) ! monotonized central
+            sl = sign(min(2._rp*abs(a),2._rp*abs(b),0.5_rp*abs(a+b)),a)
+          case default ! superbee
+            sl = sign(max(min(2._rp*abs(a),abs(b)),min(abs(a),2._rp*abs(b))),a)
+          end select
+        end if
+      else
+        select case(slope_bulk)
+        case(1) ! Fromm
+          sl = 0.5_rp*(a+b)
+        case default ! Lax-Wendroff (downwind slope)
+          sl = merge(b,a,mf >= 0._rp)
+        end select
+      end if
+    end if
+    sig = min(abs(mf)/max(mass,tiny(1._rp)),1._rp)
+    qtr = q0+merge(0.5_rp,-0.5_rp,mf >= 0._rp)*sl*(1._rp-sig)
+    if(is_lim) then
+      qtr = qtr+dq*(1._rp-sig**2)
+    else
+      qtr = qtr+dq
+    end if
+  end function donor_value
   !
   pure subroutine donor_fractions(mx,my,mz,vol,idir,cfl_p,cfl_m,frac_p,frac_m)
     !

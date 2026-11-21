@@ -77,7 +77,7 @@ program cans
                                      read_input, &
                                      is_debug,is_debug_poisson, &
                                      is_timing, &
-                                     is_impdiff,is_impdiff_1d, &
+                                     is_impdiff,is_impdiff_1d,is_vof_sweep_transport, &
                                      is_poisson_dtdma, &
                                      is_mask_divergence_check, &
                                      nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
@@ -159,7 +159,9 @@ program cans
   real(rp), target, allocatable, dimension(:,:,:) :: psi
   real(rp), allocatable, dimension(:,:,:) :: psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z
-  real(rp), allocatable, dimension(:,:,:) :: uadv,vadv,wadv ! advecting velocity of the geometric VoF method
+  real(rp), target, allocatable, dimension(:,:,:) :: uadv,vadv,wadv ! advecting (or transported) velocity of the geometric
+                                                                    ! VoF method
+  real(rp), target, allocatable, dimension(:,:,:) :: sadv           ! transported scalar of the geometric VoF method
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   real(rp), target, allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                      surfx_o,surfy_o,surfz_o
@@ -292,7 +294,7 @@ program cans
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=kappa)
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
   allocate(uadv,vadv,wadv,uo,vo,wo,mold=u)
-  if(nscal > 0) allocate(so,mold=s)
+  if(nscal > 0) allocate(so,sadv,mold=s)
 #endif
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   allocate(surfx_n(n(1),n(2),n(3)),surfy_n(n(1),n(2),n(3)),surfz_n(n(1),n(2),n(3)), &
@@ -446,6 +448,7 @@ program cans
 #endif
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     nio_s = nio_s + 3 + nscal
+    if(is_vof_sweep_transport) nio_s = nio_s + 3
 #endif
   end if
   allocate(io_vars(nio_s),c_io_vars(nio_s),nh_io(3,nio_s)) ! u,v,w,p,psi,s
@@ -487,7 +490,20 @@ program cans
     io_vars(is+2)%arr => vo; c_io_vars(is+2) = 'vo'
     io_vars(is+3)%arr => wo; c_io_vars(is+3) = 'wo'
     is = is + 3
-    if(nscal > 0) then
+    if(is_vof_sweep_transport) then
+      !
+      ! (the transported velocity and scalar of the previous time step replace the previous scalar)
+      !
+      nh_io(:,is+1:is+3) = nh_v
+      io_vars(is+1)%arr => uadv; c_io_vars(is+1) = 'uadv'
+      io_vars(is+2)%arr => vadv; c_io_vars(is+2) = 'vadv'
+      io_vars(is+3)%arr => wadv; c_io_vars(is+3) = 'wadv'
+      is = is + 3
+      if(nscal > 0) then
+        nh_io(:,is+1) = nh_s
+        io_vars(is+1)%arr => sadv; c_io_vars(is+1) = 'sadv'
+      end if
+    else if(nscal > 0) then
       nh_io(:,is+1) = nh_s
       io_vars(is+1)%arr => so; c_io_vars(is+1) = 'so'
     end if
@@ -511,7 +527,13 @@ program cans
   uo(:,:,:) = 0.
   vo(:,:,:) = 0.
   wo(:,:,:) = 0.
-  if(nscal > 0) so(:,:,:) = 0.
+  uadv(:,:,:) = 0.
+  vadv(:,:,:) = 0.
+  wadv(:,:,:) = 0.
+  if(nscal > 0) then
+    so(:,:,:) = 0.
+    sadv(:,:,:) = 0.
+  end if
 #endif
   wall_force_old(:) = 0.
   is_first = .true.
@@ -593,8 +615,11 @@ program cans
   call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
   call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-  !$acc enter data copyin(uo,vo,wo)
-  if(.not.is_first) call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,uo,vo,wo,restart)
+  !$acc enter data copyin(uo,vo,wo,uadv,vadv,wadv)
+  if(.not.is_first) then
+    call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,uo,vo,wo,restart)
+    if(is_vof_sweep_transport) call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv,.false.)
+  end if
 #endif
 #if defined(_CONSTANT_COEFFS_POISSON)
   !$acc parallel loop collapse(3) default(present) async(1)
@@ -613,8 +638,14 @@ program cans
     !$acc enter data copyin(s,dsdtrko) async(1)
     call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    !$acc enter data copyin(so) async(1)
-    if(.not.is_first) call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,so)
+    !$acc enter data copyin(so,sadv) async(1)
+    if(.not.is_first) then
+      if(is_vof_sweep_transport) then
+        call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,sadv)
+      else
+        call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,so)
+      end if
+    end if
 #endif
   end if
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
@@ -622,9 +653,6 @@ program cans
   !$acc enter data create(phi) async(1)
 #endif
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-  !$acc enter data create(uadv,vadv,wadv) async(1)
-#endif
   call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   !
   ! post-process and write initial condition
@@ -701,9 +729,9 @@ program cans
       end do
     end do
     if(is_track_interface) then
-      call ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
+      call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
-                       istep,uo,vo,wo,uadv,vadv,wadv)
+                       istep,uo,vo,wo,uadv,vadv,wadv,s,sadv)
     else
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)
@@ -716,11 +744,12 @@ program cans
           end do
         end do
       end do
-      call ifc_advecting_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,uadv,vadv,wadv)
+      call ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
+                                  u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,s,sadv)
     end if
     if(nscal > 0) then
       call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
-                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,uadv,vadv,wadv)
+                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,sadv,uadv,vadv,wadv)
       if(is_impdiff) then
         if(is_impdiff_1d) then
           call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
@@ -977,8 +1006,11 @@ program cans
 #endif
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
         !$acc update self(uo,vo,wo)
+        if(is_vof_sweep_transport) then
+          !$acc update self(uadv,vadv,wadv)
+        end if
         if(nscal > 0) then
-          !$acc update self(so)
+          !$acc update self(so,sadv)
         end if
 #endif
       end if

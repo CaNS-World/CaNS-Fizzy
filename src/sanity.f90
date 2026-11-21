@@ -18,7 +18,7 @@ module mod_sanity
   use mod_initflow  , only: add_noise
   use mod_initmpi   , only: initmpi
   use mod_initsolver, only: initsolver
-  use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small
+  use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,is_vof_sweep_transport,small
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -87,6 +87,11 @@ module mod_sanity
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     if(is_impdiff) then
       if(myid == 0)  print*, 'ERROR: implicit diffusion is not available yet with the geometric volume-of-fluid method &
+                                     &(`INTERFACE_CAPTURING_SPLIT_VOF=1`).'; call abortit
+    end if
+#else
+    if(is_vof_sweep_transport) then
+      if(myid == 0)  print*, 'ERROR: `is_vof_sweep_transport = T` requires the geometric volume-of-fluid method &
                                      &(`INTERFACE_CAPTURING_SPLIT_VOF=1`).'; call abortit
     end if
 #endif
