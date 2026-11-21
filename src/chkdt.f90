@@ -30,9 +30,9 @@ module mod_chkdt
     real(rp), intent(in ), optional :: ka12(2),cp12(2)
     real(rp) :: dxi,dyi,dzi
     real(rp) :: ux,uy,uz,vx,vy,vz,wx,wy,wz
-    real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dtipsi,dti
+    real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dtipsi,dti,dl2i
     integer :: i,j,k
-    real(rp), save :: dlmin
+    real(rp), save :: dlmin,dzmin
     logical , save :: is_first = .true.
     !
     dxi = 1./dl(1)
@@ -40,10 +40,18 @@ module mod_chkdt
     dzi = 1./dl(3)
     if(is_first) then ! calculate dlmin only once
       is_first = .false.
-      dlmin = minval(dl(1:2))
-      dlmin = min(dlmin,minval(1./dzfi))
-      call MPI_ALLREDUCE(MPI_IN_PLACE,dlmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
+      dzmin = minval(1./dzfi)
+      call MPI_ALLREDUCE(MPI_IN_PLACE,dzmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
+      dlmin = min(minval(dl(1:2)),dzmin)
     end if
+    !
+    !
+    ! largest eigenvalue of the discrete Laplacian, times the inverse of the stability interval of the
+    ! AB2 scheme along the negative real axis (one): the diffusion terms limit the time step to
+    ! 1/(diffusivity*dl2i); without the direction integrated implicitly, if any
+    !
+    dl2i = 4.*(dxi**2+dyi**2+dzmin**(-2))
+    if(is_impdiff_1d) dl2i = 4.*(dxi**2+dyi**2)
     !
     dti = 0.
     !$acc data copy(dti) async(1)
@@ -80,8 +88,7 @@ module mod_chkdt
     if(.not.is_solve_ns) then
       dtmax = min(dti**(-1),dtipsi**(-1))
     else
-      dtiv = maxval(mu12(:)/rho12(:))*2.*(3./dlmin**2)
-      if(is_impdiff_1d) dtiv = maxval(mu12(:)/rho12(:))*2.*(2./minval(dl(1:2))**2) ! diffusion along z is implicit
+      dtiv = maxval(mu12(:)/rho12(:))*dl2i
       if(is_impdiff.and..not.is_impdiff_1d) dtiv = 0.
       dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
       dtig = maxval(abs(gacc))/dlmin
@@ -92,7 +99,7 @@ module mod_chkdt
     end if
     if(nscal > 0) then
       if(present(ka12) .and. present(cp12)) &
-        dti = maxval(ka12(:)/(rho12(:)*cp12(:)))/merge(minval(dl(1:2)),dlmin,is_impdiff_1d)**2
+        dti = maxval(ka12(:)/(rho12(:)*cp12(:)))*dl2i
       if(is_impdiff.and..not.is_impdiff_1d) dti = 0.
       if(dti == 0.) dti = 1.
       dtmax = min(dtmax,dti**(-1))
