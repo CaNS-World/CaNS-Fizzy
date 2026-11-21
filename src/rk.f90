@@ -17,7 +17,8 @@ module mod_rk
   private
   public rk,rk_scal,rk_2fl
   contains
-  subroutine rk(rkpar,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
+  subroutine rk(rkpar,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc,grid_vol_ratio_c,grid_vol_ratio_f, &
+                dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -37,7 +38,7 @@ module mod_rk
     logical , intent(in), dimension(3) :: is_forced
     real(rp), intent(in), dimension(3) :: l,dli
     real(rp), intent(in) :: dt,dt_r
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc,grid_vol_ratio_c,grid_vol_ratio_f
     real(rp), intent(in   ), dimension(3)  :: bforce,gacc
     real(rp), intent(in   )                :: sigma,rho_av(3)
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
@@ -86,7 +87,7 @@ module mod_rk
       wall_force(3) = sum(tauz(:)/l(:))
       if(is_first) wall_force_old(:) = wall_force(:)
       force_balance(:,1) = rkpar(1)*wall_force(:)+rkpar(2)*wall_force_old(:)
-      call cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_forced,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+      call cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_forced,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                           rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                           surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -102,7 +103,8 @@ module mod_rk
     !
     ! advection, diffusion and regularization terms
     !
-    call mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudtrk,dvdtrk,dwdtrk)
+    call mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi, &
+                    dudtrk,dvdtrk,dwdtrk)
     if(is_impdiff) then
       !
       ! the diffusion along z that is integrated implicitly leaves the explicit terms (see `mod_impdiff`)
@@ -111,7 +113,7 @@ module mod_rk
         call impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudtrk,dvdtrk,dwdtrk)
       else
 #if defined(_CONSTANT_COEFFS_POISSON)
-        call impdiff_cc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,visc0,rho12,psi,psio,u,v,w,dudtrk,dvdtrk,dwdtrk, &
+        call impdiff_cc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,visc0,rho12,psi,psio,u,v,w,dudtrk,dvdtrk,dwdtrk, &
                                 dudtrko,dvdtrko,dwdtrko)
 #else
         call impdiff_vc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,mu12,psi,u,v,w,dudtrk,dvdtrk,dwdtrk)
@@ -122,7 +124,7 @@ module mod_rk
         ! the forcing leaves out the wall shear of the terms integrated implicitly, which is balanced
         ! together with the implicit solve (see the main program)
         !
-        call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+        call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &
                                 wall_force_imp,dwall_force_old)
         wall_force_old(:)  = wall_force_old(:) - wall_force_imp(:)
         wall_force_imp(:)  = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force_imp(:)
@@ -155,10 +157,10 @@ module mod_rk
         do i=1,n(1)
           rhox_n = rho + drho*0.5*(psio(i,j,k)+psio(i+1,j,k))
           rhoy_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j+1,k))
-          rhoz_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j,k+1))
+          rhoz_n = rho + drho*(wzc(k)*psio(i,j,k)+(1.-wzc(k))*psio(i,j,k+1)) ! volume average
           rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
           rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
-          rhoz_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j,k+1))
+          rhoz_p = rho + drho*(wzc(k)*psi( i,j,k)+(1.-wzc(k))*psi( i,j,k+1))
           u(i,j,k) = (u(i,j,k)*rhox_n + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
           v(i,j,k) = (v(i,j,k)*rhoy_n + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
           w(i,j,k) = (w(i,j,k)*rhoz_n + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
@@ -171,7 +173,7 @@ module mod_rk
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
+    call mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
                      p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &

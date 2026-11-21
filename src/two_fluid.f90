@@ -57,7 +57,7 @@ module mod_two_fluid
     end do
   end subroutine clip_field
   !
-  subroutine bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio,psi,p12,mean)
+  subroutine bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio,wzc,psi,p12,mean)
     !
     ! compute the mean value of an observable over the entire domain
     !
@@ -67,7 +67,7 @@ module mod_two_fluid
     integer , intent(in), dimension(3) :: n
     integer , intent(in) :: nh_psi,nh_g
     integer , intent(in)               :: idir
-    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio
+    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio,wzc
     real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in), dimension(2)        :: p12
     real(rp), intent(out) :: mean
@@ -106,7 +106,7 @@ module mod_two_fluid
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
-            psi_loc = 0.5*(psi(i,j,k+1)+psi(i,j,k))
+            psi_loc = wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1)
             mean = mean + (psi_loc*p12(1)+(1.-psi_loc)*p12(2))*grid_vol_ratio(k)
           end do
         end do
