@@ -25,6 +25,7 @@ USE_ADIOS2=0       # ADIOS2 I/O support
 #
 CONSTANT_COEFFS_POISSON=1  # constant-coefficient (FFT-based) pressure solver with pressure splitting
 INTERFACE_CAPTURING_VOF=0  # uses THINC/QQ volume-of-fluid instead of the ACDI pathway
+INTERFACE_CAPTURING_SPLIT_VOF=0 # uses the geometric (PLIC) direction-split volume-of-fluid instead of the ACDI pathway
 SDF_NORMALS=1              # default: ACDI or SDF-based THINC reconstruction and normals
 ```
 
@@ -40,6 +41,7 @@ and the following ones select the two-fluid method:
 
  * `CONSTANT_COEFFS_POISSON`          : uses the direct FFT-based solver for the pressure Poisson equation, with a pressure-splitting method (default); if set to `0`, the variable-coefficient Poisson equation is solved with an iterative multigrid solver of the HYPRE library (CPU builds only; see below)
  * `INTERFACE_CAPTURING_VOF`          : uses the THINC/QQ volume-of-fluid method instead of the ACDI diffuse-interface pathway
+ * `INTERFACE_CAPTURING_SPLIT_VOF`    : uses the geometric volume-of-fluid method instead of the ACDI diffuse-interface pathway: a piecewise-linear (PLIC) reconstruction of the interface, and a conservative direction-split advection that conserves the volume and keeps the volume fraction bounded to round-off, with sub-steps when the CFL number along a direction exceeds 1/2. For now, this method only transports the interface in a prescribed velocity field (`is_solve_ns = F`, without a scalar); it cannot be combined with `INTERFACE_CAPTURING_VOF`, and it does not use `SDF_NORMALS`
  * `SDF_NORMALS`                      : enables approximate signed-distance fields for interface transport, normals, and curvature (default); setting it to `0` uses CDI or standard THINC directly from the phase indicator without allocating a distance field
  * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method
  * `CAPILLARY_BRACKBILL_NORMALIZATION`: enables density-based Brackbill scaling of the surface-tension force (default); setting it to `0` disables the scaling

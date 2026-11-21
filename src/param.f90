@@ -134,7 +134,12 @@ real(rp), protected, dimension(2) :: hypre_tol = 1.e-6
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
 ! (one layer suffices for CaNS; extensions with wider stencils may increase them here)
 !
-integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_psi = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi)
+#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+integer, parameter :: nh_psi = 1
+#else
+integer, parameter :: nh_psi = 2 ! the geometric VoF method also reconstructs the interface in the first halo layer
+#endif
+integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi)
 !
 ! i/o backend parameters
 !

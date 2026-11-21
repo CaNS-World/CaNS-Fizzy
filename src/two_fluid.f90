@@ -10,7 +10,7 @@ module mod_two_fluid
   use mod_types
   implicit none
   private
-  public init2fl,clip_field,cmpt_norm_curv_youngs,bulk_mean_12_stag
+  public init2fl,init2fl_sharp,clip_field,cmpt_norm_curv_youngs,bulk_mean_12_stag
   type sphere
     real(rp) :: xyz(3),r
   end type sphere
@@ -511,6 +511,192 @@ module mod_two_fluid
     end if
     if(is_swap_pf) psi(:,:,:) = 1.-psi(:,:,:)
   end subroutine init2fl
+  !
+  subroutine init2fl_sharp(inipsi,cbcpsi,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
+    use mod_common_mpi, only: myid
+    use mod_plic      , only: plic_volume
+    !
+    ! computes a sharp initial condition for the volume fraction field psi, i.e., the exact volume
+    ! fraction of phase 1 in each cell, for the same initial geometries as in `init2fl`; the interface
+    ! is described by a signed-distance(-like) function (positive in phase 1), and cells cut by the
+    ! interface are refined recursively, with a tangent plane approximation of the interface at the
+    ! finest level (cell size/2**maxlevel)
+    !
+    implicit none
+    integer, parameter :: maxlevel = 5
+    character(len=*), intent(in) :: inipsi
+    character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
+    integer , intent(in), dimension(3)  :: lo,hi
+    integer , intent(in) :: nh_psi,nh_g
+    real(rp), intent(in), dimension(3)  :: l,dl
+    real(rp), intent(in), dimension(1-nh_g:) :: zc_g,dzf_g
+    real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
+    type(sphere), allocatable, dimension(:) :: spheres
+    integer , dimension(3) :: iperiod,idir
+    logical , dimension(3) :: is_dim
+    logical  :: is_sphere,is_swap_pf
+    integer  :: nspheres,i,j,k,ierr
+    character(len=len(inipsi)) :: ini
+    integer :: isuffix,ih,ia,ib
+    !
+    ! two-dimensional initial conditions take a suffix `-x`, `-y` or `-z` with the direction
+    ! normal to their plane; without a suffix, they lie in the x-z plane (`-y`)
+    !
+    ini = inipsi
+    ih = 2
+    isuffix = len_trim(ini)
+    if(isuffix > 2) then
+      if(ini(isuffix-1:isuffix-1) == '-'.and.index('xyz',ini(isuffix:isuffix)) > 0) then
+        ih = index('xyz',ini(isuffix:isuffix))
+        ini = ini(:isuffix-2)
+      end if
+    end if
+    ia = minval(pack([1,2,3],[1,2,3] /= ih)) ! in-plane directions
+    ib = maxval(pack([1,2,3],[1,2,3] /= ih))
+    !
+    is_sphere  = .false.
+    is_swap_pf = .false.
+    select case(trim(ini))
+    case('uni','zer','flm','cap-wav-1d','zalesak-disk')
+    case('bub3','drp3','dis3')
+      is_dim(:) = [.true. ,.true. ,.true.] ! sphere
+      is_sphere = .true.
+    case('bub2','drp2','dis2')
+      is_dim(:) = .true.; is_dim(ih) = .false. ! cylinder along the direction normal to the plane
+      is_sphere = .true.
+    case('bub1','drp1','dis1')
+      is_dim(:) = [.false.,.false.,.true.] ! planar film
+      is_sphere = .true.
+    case default
+      if(myid == 0) print*, 'ERROR: invalid name for initial psi field'
+      if(myid == 0) print*, ''
+      if(myid == 0) print*, '*** Simulation aborted due to errors in the case file ***'
+      if(myid == 0) print*, '    check INFO_INPUT.md'
+      call MPI_FINALIZE(ierr)
+      error stop
+    end select
+    if(is_sphere) then
+      is_swap_pf = ini(1:3) == 'drp'.or.ini(1:3) == 'dis'
+      call read_sphere_file('spheres.in',spheres,nspheres)
+      if(nspheres == 0) then
+        if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
+        if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
+        nspheres = 1
+        allocate(spheres(nspheres))
+        spheres(1)%xyz(:) = l(:)/2
+        spheres(1)%r = 0.25*minval(l(:),mask=is_dim)
+      end if
+      iperiod(:) = 0
+      where(cbcpsi(0,:)//cbcpsi(1,:) == 'PP') iperiod(:) = 1
+      idir(:) = 1
+      where(.not.is_dim(:)) idir(:) = 0
+    end if
+    !
+    do k=lo(3),hi(3)
+      do j=lo(2),hi(2)
+        do i=lo(1),hi(1)
+          psi(i,j,k) = frac_box((i-1)*dl(1),(j-1)*dl(2),zc_g(k)-0.5_rp*dzf_g(k),dl(1),dl(2),dzf_g(k),0)
+        end do
+      end do
+    end do
+  contains
+    recursive real(rp) function frac_box(x0,y0,z0,hx,hy,hz,level) result(fr)
+      !
+      ! volume fraction of phase 1 in the box [x0,x0+hx]x[y0,y0+hy]x[z0,z0+hz]
+      !
+      real(rp), intent(in) :: x0,y0,z0,hx,hy,hz
+      integer , intent(in) :: level
+      real(rp) :: xc,yc,zc,d,diag,eg,gx,gy,gz,gn,nx,ny,nz
+      integer  :: q1,q2,q3
+      xc = x0+0.5_rp*hx
+      yc = y0+0.5_rp*hy
+      zc = z0+0.5_rp*hz
+      d = sdf(xc,yc,zc)
+      diag = 0.5_rp*sqrt(hx**2+hy**2+hz**2)
+      if(d >= diag) then
+        fr = 1._rp
+      else if(d <= -diag) then
+        fr = 0._rp
+      else if(level >= maxlevel) then
+        eg = 1.e-3_rp*min(hx,hy,hz)
+        gx = (sdf(xc+eg,yc,zc)-sdf(xc-eg,yc,zc))/(2._rp*eg)
+        gy = (sdf(xc,yc+eg,zc)-sdf(xc,yc-eg,zc))/(2._rp*eg)
+        gz = (sdf(xc,yc,zc+eg)-sdf(xc,yc,zc-eg))/(2._rp*eg)
+        gn = sqrt(gx**2+gy**2+gz**2)
+        if(gn > 0._rp) then
+          nx = -gx/gn; ny = -gy/gn; nz = -gz/gn ! pointing out of phase 1
+          fr = plic_volume(nx*hx,ny*hy,nz*hz,d/gn+0.5_rp*(nx*hx+ny*hy+nz*hz))
+        else
+          fr = merge(1._rp,0._rp,d > 0._rp)
+        end if
+      else
+        fr = 0._rp
+        do q3=0,1
+          do q2=0,1
+            do q1=0,1
+              fr = fr+frac_box(x0+q1*0.5_rp*hx,y0+q2*0.5_rp*hy,z0+q3*0.5_rp*hz, &
+                               0.5_rp*hx,0.5_rp*hy,0.5_rp*hz,level+1)
+            end do
+          end do
+        end do
+        fr = 0.125_rp*fr
+      end if
+    end function frac_box
+    !
+    real(rp) function sdf(x,y,z)
+      !
+      ! signed-distance(-like) function of the initial interface, positive in phase 1
+      !
+      real(rp), intent(in) :: x,y,z
+      real(rp), dimension(3) :: xyz
+      real(rp) :: xx,zz,d1,d2,dmin,dist,sw,sl,shift,xxc,zzc,r,eta,deta,zfilm_max
+      integer  :: q,ii,jj,kk
+      xyz(:) = [x,y,z]
+      select case(trim(ini))
+      case('uni')
+        sdf = huge(1._rp)
+      case('zer')
+        sdf = -huge(1._rp)
+      case('flm')
+        sdf = z-l(3)/2
+      case('cap-wav-1d')
+        zfilm_max = 0.01*l(ia)
+        eta  =  zfilm_max*cos(2*pi*xyz(ia)/l(ia))
+        deta = -zfilm_max*2*pi/l(ia)*sin(2*pi*xyz(ia)/l(ia))
+        sdf  = (xyz(ib)-l(ib)/2-eta)/sqrt(1._rp+deta**2)
+      case('zalesak-disk')
+        r   = 0.15 ! (same constants as in `init2fl`)
+        xxc = 0.5
+        zzc = 0.75
+        sw  = 0.05/2
+        sl  = 0.25/2
+        shift = r/2
+        xx = xyz(ia)/l(ia)
+        zz = xyz(ib)/l(ib)
+        d1 = sqrt((xx-xxc)**2+(zz-zzc)**2) - r
+        xx = abs(xx-xxc)
+        zz = abs(zz-(zzc-r+sl-shift))
+        sl = sl + shift
+        d2 = sqrt(max(xx-sw,0._rp)**2 + max(zz-sl,0._rp)**2) + min(max(xx-sw,zz-sl),0._rp)
+        sdf = -max(d1,-d2)
+      case default ! spheres, cylinders and films from `spheres.in`
+        dmin = huge(1._rp)
+        do q=1,nspheres
+          do kk=-1,1
+            do jj=-1,1
+              do ii=-1,1
+                dist = sqrt( (x+ii*iperiod(1)*l(1)-spheres(q)%xyz(1))**2*idir(1) + &
+                             (y+jj*iperiod(2)*l(2)-spheres(q)%xyz(2))**2*idir(2) + &
+                             (z+kk*iperiod(3)*l(3)-spheres(q)%xyz(3))**2*idir(3) ) - spheres(q)%r
+                dmin = min(dmin,dist)
+              end do
+            end do
+          end do
+        end do
+        sdf = merge(-dmin,dmin,is_swap_pf)
+      end select
+    end function sdf
+  end subroutine init2fl_sharp
   !
   subroutine read_sphere_file(fname,spheres,nspheres)
     implicit none

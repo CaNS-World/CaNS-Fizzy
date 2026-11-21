@@ -18,7 +18,8 @@ module mod_sanity
   use mod_initflow  , only: add_noise
   use mod_initmpi   , only: initmpi
   use mod_initsolver, only: initsolver
-  use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small
+  use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
+                            is_solve_ns,nscal
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -84,6 +85,12 @@ module mod_sanity
     if(is_poisson_dtdma.and.(ipencil_axis == 3)) then
       if(myid == 0)  print*, 'ERROR: `is_poisson_dtdma = T` requires X/Y-aligned pencils.'; call abortit
     end if
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    if(is_solve_ns.or.nscal > 0) then
+      if(myid == 0)  print*, 'ERROR: the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF=1`) only &
+                                     &transports the interface for now (`is_solve_ns = F` and `nscal = 0`).'; call abortit
+    end if
+#endif
   end subroutine test_sanity_input
   !
 #if !defined(_CONSTANT_COEFFS_POISSON)

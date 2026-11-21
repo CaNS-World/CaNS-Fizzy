@@ -69,3 +69,15 @@ jobs:
       variant: "hypre"
       variant_flags: "CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=/usr"
       tests: '["rising_bubble", "restart_two_fluid", "implicit_diffusion"]'
+
+  plic:
+    if: ${{ contains(fromJSON(inputs.variants), 'plic') }}
+    uses: ./.github/workflows/run-one.yml
+    with:
+      compiler: ${{ inputs.compiler }}
+      cpu_target: ${{ inputs.cpu_target }}
+      test_modes: ${{ inputs.test_modes }}
+      build_modes: '["opt", "dbg"]'
+      variant: "plic"
+      variant_flags: "INTERFACE_CAPTURING_SPLIT_VOF=1"
+      tests: '["plic_unit", "plic_advection"]'

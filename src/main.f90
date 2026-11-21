@@ -508,7 +508,7 @@ program cans
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                   bforce,is_wallturb,time,u,v,w,p)
     if(nscal > 0) call initscal(inisca,bcsca,ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
-    call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
+    call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
     if(myid == 0) print*, '*** Initial condition successfully set ***'
   else
     do is=1,nio
@@ -585,7 +585,7 @@ program cans
   !$acc enter data create(phi) async(1)
 #endif
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
-  call ifc_init(n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
+  call ifc_init(n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   !
   ! post-process and write initial condition
   !
@@ -883,7 +883,7 @@ program cans
         call out0d(trim(datadir)//'forcing_balance.out',19,var)
       end if
       !
-      call ifc_write_log(istep,time,gam,seps)
+      call ifc_write_log(istep,time,n,nh_psi,nh_g,dl,dzf,gam,seps,psi)
     end if
     write(fldnum,'(i7.7)') istep
     if(is_output_due(istep,iout1d,tout1d,time_start,time)) then

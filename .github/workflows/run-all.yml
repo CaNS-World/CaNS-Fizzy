@@ -20,7 +20,7 @@ jobs:
     with:
       compiler: "GNU"
       cpu_target: "x86-64"
-      variants: '["acdi", "thinc", "balanced", "hypre"]'
+      variants: '["acdi", "thinc", "balanced", "hypre", "plic"]'
 
   INTEL:
     uses: ./.github/workflows/run-compiler.yml
