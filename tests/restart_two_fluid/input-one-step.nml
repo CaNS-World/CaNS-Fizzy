@@ -21,7 +21,7 @@ bcpre(0:1,1:3)   =  0.,0.,   0.,0.,   0.,0.
 bforce(1:3) = 0., 0., 0.
 gacc(1:3) = 0., 0., -0.98
 nscal = 1
-dims(1:2) = 2, 2
+dims(1:2) = 2, 2, ipencil_axis = 2
 /
 
 &scalar

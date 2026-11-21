@@ -42,13 +42,10 @@ module mod_vof_split
   !
   real(rp), allocatable, dimension(:,:,:) :: cc       ! dilatation indicator c_c
   real(rp), allocatable, dimension(:,:,:) :: fl       ! face fluxes of a sweep
-  real(rp), allocatable, dimension(:,:,:) :: uo,vo,wo ! velocity at the previous time step
   real(rp), allocatable, dimension(:,:,:) :: kap      ! work array for the curvature
   integer , allocatable, dimension(:)     :: ilist    ! compacted list of interfacial donor cells (packed indices)
   integer , dimension(1) :: nlist                     ! number of entries of ilist
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
-  logical :: is_first   = .true.
-  logical :: is_forward = .true.                      ! sweep order, reversed at each (sub-)step
   !
   ! diagnostics (local to the task, accumulated on the device; reduced by `vof_split_diagnostics`)
   !
@@ -78,10 +75,10 @@ module mod_vof_split
     !
     is_active(:) = ng(:) > 2
     allocate(cc(0:n(1)+1,0:n(2)+1,0:n(3)+1))
-    allocate(fl,uo,vo,wo,kap,mold=cc)
+    allocate(fl,kap,mold=cc)
     allocate(ilist((n(1)+2)*(n(2)+2)*(n(3)+2)))
     nlist(:) = 0
-    !$acc enter data create(cc,fl,uo,vo,wo,kap,ilist) copyin(nlist)
+    !$acc enter data create(cc,fl,kap,ilist) copyin(nlist)
     !$acc update device(clip_vol,fmin_raw,fmax_raw)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)+1
@@ -93,15 +90,18 @@ module mod_vof_split
     end do
   end subroutine vof_split_init
   !
-  subroutine vof_split_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound,u,v,w, &
-                               psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa)
+  subroutine vof_split_advance(tm_coeff,is_first,istep,n,nh_v,nh_psi,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound,u,v,w, &
+                               psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,ua,va,wa)
     !
     ! advances the volume fraction over one time step, with the face velocity extrapolated to the
     ! middle of the time step from the current and previous velocity fields (both divergence free);
-    ! the volume fraction is returned with its halo layers updated, and the advecting velocity in ua, va, wa
+    ! the volume fraction is returned with its halo layers updated, and the advecting velocity in ua, va, wa;
+    ! the order of the sweeps is reversed at each (sub-)step, starting from the parity of the time step number
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
+    logical , intent(in   )               :: is_first
+    integer , intent(in   )               :: istep
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_v,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
@@ -114,13 +114,14 @@ module mod_vof_split
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx_x,psiflx_y,psiflx_z
-    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: ua,va,wa
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: uo,vo,wo,ua,va,wa
     real(rp) :: dts
     integer  :: i,j,k,isub,nsub,q,idir
+    logical  :: is_forward
     !
     ! advecting velocity, and CFL numbers along each direction
     !
-    call vof_split_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,ua,va,wa,cfl_last)
+    call vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,ua,va,wa,cfl_last)
     call MPI_ALLREDUCE(MPI_IN_PLACE,cfl_last,3,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
     !
     ! number of sub-steps
@@ -150,6 +151,7 @@ module mod_vof_split
           end do
         end do
       end do
+      is_forward = mod(istep+isub,2) == 0
       do q=1,3
         idir = merge(q,4-q,is_forward)
         if(.not.is_active(idir)) cycle
@@ -163,26 +165,27 @@ module mod_vof_split
         end select
         call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
       end do
-      is_forward = .not.is_forward
     end do
   end subroutine vof_split_advance
   !
-  subroutine vof_split_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,ua,va,wa,cfl)
+  subroutine vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,ua,va,wa,cfl)
     !
     ! advecting velocity, extrapolated to the middle of the time step from the current and previous
     ! (divergence-free) velocity fields, and its (local) maximum CFL numbers along each direction;
-    ! the current velocity is stored for the next time step
+    ! the current velocity is stored in uo, vo, wo for the next time step; if `is_first`, the previous
+    ! velocity is not available, and the advecting velocity is the current one
     !
     implicit none
-    real(rp), intent(in ), dimension(2) :: tm_coeff
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in )               :: nh_v,nh_g
-    real(rp), intent(in ), dimension(3) :: dl
-    real(rp), intent(in ), dimension(1-nh_g:) :: dzfi
-    real(rp), intent(in ) :: dt
-    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
-    real(rp), intent(out), dimension(3) :: cfl
+    real(rp), intent(in   ), dimension(2) :: tm_coeff
+    logical , intent(in   )               :: is_first
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzfi
+    real(rp), intent(in   ) :: dt
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: uo,vo,wo,ua,va,wa
+    real(rp), intent(out  ), dimension(3) :: cfl
     real(rp) :: c1,c2,dtx,dty,cflx,cfly,cflz,uaux,vaux,waux
     integer  :: i,j,k,n1,n2,n3
     !
@@ -191,7 +194,6 @@ module mod_vof_split
     if(is_first) then
       c1 = 1._rp
       c2 = 0._rp
-      is_first = .false.
     end if
     dtx = dt/dl(1)
     dty = dt/dl(2)
