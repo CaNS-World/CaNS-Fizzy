@@ -31,7 +31,7 @@ module mod_interface_capturing
   use mod_rk        , only: rk_2fl
   use mod_acdi      , only: acdi_set_epsilon
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-  use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_diagnostics
+  use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_curvature,vof_split_diagnostics
 #elif !defined(_INTERFACE_CAPTURING_VOF)
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
 #elif defined(_SDF_NORMALS)
@@ -91,33 +91,18 @@ module mod_interface_capturing
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,phi,normx,normy,normz,kappa
     real(rp), intent(inout) :: gam
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    real(rp) :: clip,fmin,fmax,cfl(3)
-    integer  :: nsub,i,j,k
+    real(rp) :: clip,fmin,fmax,cfl(3),kstats(3)
+    integer  :: nsub
 #endif
     !
     call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
     !$acc wait
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     call vof_split_init(ng,n,nh_psi)
-    call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub)
+    call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub,kstats)
     if(myid == 0) print*, 'Geometric VoF. Initial volume of phase 1: ', vol0
-    !
-    ! the interface normals and curvature are not computed yet with this method, which for now only
-    ! transports the interface (see `ifc_geometry`)
-    !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1-nh_psi,n(3)+nh_psi
-      do j=1-nh_psi,n(2)+nh_psi
-        do i=1-nh_psi,n(1)+nh_psi
-          normx(i,j,k) = 0.
-          normy(i,j,k) = 0.
-          normz(i,j,k) = 0.
-          kappa(i,j,k) = 0.
-        end do
-      end do
-    end do
 #endif
-    call ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
+    call ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
 #if !defined(_INTERFACE_CAPTURING_VOF) && !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     call acdi_set_gamma(n,nh_v,acdi_gam_factor,u,v,w,gam)
     gam = max(gam,acdi_gam_min)
@@ -154,10 +139,10 @@ module mod_interface_capturing
                            psi,psiflx_x,psiflx_y,psiflx_z)
     call bounduvw(cbcvel,n,nh_psi,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
 #endif
-    call ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
+    call ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
   end subroutine ifc_advance
   !
-  subroutine ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
+  subroutine ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
     !
     ! interface normals and curvature, with their boundary conditions
     !
@@ -165,12 +150,29 @@ module mod_interface_capturing
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dl,dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: seps
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: phi,normx,normy,normz,kappa
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    character(len=1), dimension(0:1,3) :: cbc_tmp
+#endif
     !
-#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    !
+    ! height-function curvature, in stages separated by halo exchanges; the intermediate exchanges mirror
+    ! (instead of imposing Dirichlet conditions), such that undefined values are only copied; the normals
+    ! are not used outside the curvature computation, so their halos are not updated
+    !
+    cbc_tmp(:,:) = cbccur(:,:)
+    where(cbc_tmp(:,:) == 'D') cbc_tmp(:,:) = 'N'
+    call vof_split_curvature(1,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call boundp(cbc_tmp,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+    call vof_split_curvature(2,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call boundp(cbc_tmp,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+    call vof_split_curvature(3,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call boundp(cbccur,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+#else
 #if defined(_SDF_NORMALS)
 #if !defined(_INTERFACE_CAPTURING_VOF)
     call acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
@@ -217,14 +219,15 @@ module mod_interface_capturing
     real(rp), intent(in) :: gam,seps
     real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    real(rp), dimension(11) :: var
-    real(rp) :: vol,clip,fmin,fmax,cfl(3)
+    real(rp), dimension(14) :: var
+    real(rp) :: vol,clip,fmin,fmax,cfl(3),kstats(3)
     integer  :: nsub
     !
     ! volume of phase 1 and its relative change, accumulated volume added by clipping, extrema of the
-    ! volume fraction before clipping, CFL numbers and number of sub-steps of the last time step
+    ! volume fraction before clipping, CFL numbers and number of sub-steps of the last time step, and
+    ! numbers of interfacial cells with height-function curvature, neighbour average, and no estimate
     !
-    call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol,clip,fmin,fmax,cfl,nsub)
+    call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol,clip,fmin,fmax,cfl,nsub,kstats)
     var(1)    = 1.*istep
     var(2)    = time
     var(3)    = vol
@@ -234,7 +237,8 @@ module mod_interface_capturing
     var(7)    = fmax
     var(8:10) = cfl(:)
     var(11)   = 1.*nsub
-    call out0d(trim(datadir)//'log_vof.out',11,var)
+    var(12:14) = kstats(:)
+    call out0d(trim(datadir)//'log_vof.out',14,var)
 #elif !defined(_INTERFACE_CAPTURING_VOF)
     real(rp), dimension(4) :: var
     var(1) = 1.*istep

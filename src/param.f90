@@ -137,7 +137,7 @@ real(rp), protected, dimension(2) :: hypre_tol = 1.e-6
 #if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
 integer, parameter :: nh_psi = 1
 #else
-integer, parameter :: nh_psi = 2 ! the geometric VoF method also reconstructs the interface in the first halo layer
+integer, parameter :: nh_psi = 4 ! the height functions of the geometric VoF method use nine-cell columns
 #endif
 integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi)
 !

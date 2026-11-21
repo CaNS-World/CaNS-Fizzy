@@ -12,7 +12,8 @@ program test_plic
   !   3. additivity of sub-boxes and complement symmetry
   !   4. MYC, Youngs and centred-columns normals for exact planes (cubic, anisotropic, and stretched cells)
   !   5. normals for spheres and circles under grid refinement
-  !   6. (GPU builds) device results vs host results
+  !   6. height-function curvature and normals for spheres and circles under grid refinement
+  !   7. (GPU builds) device results vs host results
   !
   use mod_types
   use mod_plic
@@ -28,6 +29,7 @@ program test_plic
   call test_additivity(passed)
   call test_normals_planes(passed)
   call test_normals_spheres(passed)
+  call test_hf_spheres(passed)
 #if defined(_OPENACC)
   call test_device(passed)
 #endif
@@ -501,6 +503,130 @@ contains
       end if
     end do
   end subroutine test_normals_spheres
+  subroutine hf_cell(nq,f,i,j,k,h,act,kappa,nrm,is_valid)
+    !
+    ! height-function curvature and normal of cell (i,j,k) on a uniform grid of spacing h, trying the
+    ! directions in decreasing order of the MYC normal components (as in the code)
+    !
+    integer , intent(in ) :: nq
+    real(rp), intent(in ), dimension(0:,0:,0:) :: f
+    integer , intent(in ) :: i,j,k
+    real(rp), intent(in ) :: h
+    logical , intent(in ) :: act(3)
+    real(rp), intent(out) :: kappa,nrm(3)
+    logical , intent(out) :: is_valid
+    real(rp) :: c(-1:1,-1:1,-nq:nq),c3(-1:1,-1:1,-1:1),dq(-nq:nq),hgt(-1:1,-1:1),sgn,m(3),na,nb,nn3,dz3(-1:1)
+    integer :: idir(3),d,a,b,q,o(3),ea(3),eb(3),ed(3),r,ia,ib
+    dz3(:) = h
+    c3(:,:,:) = f(i-1:i+1,j-1:j+1,k-1:k+1)
+    call plic_normal_myc(c3,h,h,dz3,act,m(1),m(2),m(3))
+    idir = [1,2,3]
+    ! order by decreasing |m|
+    do r=1,2
+      do q=1,3-r
+        if(abs(m(idir(q))) < abs(m(idir(q+1)))) idir([q,q+1]) = idir([q+1,q])
+      end do
+    end do
+    is_valid = .false.
+    kappa = 0._rp
+    nrm(:) = 0._rp
+    dq(:) = h
+    do r=1,3
+      d = idir(r)
+      if(.not.act(d)) cycle
+      ia = merge(2,1,d == 1); ib = merge(2,3,d == 3)
+      ed = 0; ed(d) = 1; ea = 0; ea(ia) = 1; eb = 0; eb(ib) = 1
+      do q=-nq,nq
+        do b=-1,1
+          do a=-1,1
+            o = [i,j,k]+q*ed+a*ea+b*eb
+            c(a,b,q) = f(o(1),o(2),o(3))
+          end do
+        end do
+      end do
+      call hf_heights(nq,c,dq,1.e-6_rp,hgt,sgn,is_valid)
+      if(is_valid) then
+        kappa = hf_curvature(hgt,sgn,h,h,h,h,act(ia),act(ib))
+        call hf_normal(hgt,sgn,h,h,h,h,act(ia),act(ib),na,nb,nn3)
+        nrm(ia) = na; nrm(ib) = nb; nrm(d) = nn3
+        exit
+      end if
+    end do
+  end subroutine hf_cell
+  !
+  subroutine test_hf_spheres(passed)
+    !
+    ! height-function curvature and normals for spheres and circles (exact volume fractions)
+    !
+    logical, intent(inout) :: passed
+    integer , parameter :: nres = 4
+    integer , parameter, dimension(nres) :: rres = [4,8,16,32]
+    real(rp) :: r,xc,yc,zc,h,kex,kappa,nrm(3),nr(3),rr,e2,einf,frac,ean,eanmax
+    real(rp) :: res(5,nres)
+    real(rp), allocatable :: f(:,:,:),fn(:,:,:,:)
+    integer :: ires,ng,i,j,k,nn,nv,idim,nq
+    logical :: is_2d,act(3),is_valid
+    do nq=3,4
+    do idim=1,2
+      is_2d = idim == 2
+      act(:) = [.true.,.not.is_2d,.true.]
+      do ires=1,nres
+        h  = 1._rp
+        r  = rres(ires)*h
+        ng = 2*rres(ires)+12
+        xc = 0.5_rp*ng*h+0.123_rp*h; yc = 0.5_rp*ng*h+0.311_rp*h; zc = 0.5_rp*ng*h-0.207_rp*h
+        kex = merge(1._rp/r,2._rp/r,is_2d)
+        allocate(f(0:ng+1,0:ng+1,0:ng+1),fn(3,0:ng+1,0:ng+1,0:ng+1))
+        do k=0,ng+1
+          do j=0,ng+1
+            if(is_2d .and. j > 1) then
+              f(:,j,k) = f(:,1,k); fn(:,:,j,k) = fn(:,:,1,k)
+              cycle
+            end if
+            do i=0,ng+1
+              f(i,j,k) = frac_sphere(xc,yc,zc,r,(i-1)*h,(j-1)*h,(k-1)*h,h,h,h,is_2d,fn(:,i,j,k))
+            end do
+          end do
+        end do
+        if(is_2d) then
+          f(:,0,:) = f(:,1,:); fn(:,:,0,:) = fn(:,:,1,:)
+        end if
+        nn = 0; nv = 0; e2 = 0._rp; einf = 0._rp; ean = 0._rp; eanmax = 0._rp
+        do k=5,ng-4
+          do j=merge(1,5,is_2d),merge(1,ng-4,is_2d)
+            do i=5,ng-4
+              if(f(i,j,k) < 1.e-6_rp .or. f(i,j,k) > 1._rp-1.e-6_rp) cycle
+              nn = nn+1
+              ! in 2D, the y columns are periodic copies: use f with periodic wrap along y
+              call hf_cell(nq,f,i,j,k,h,act,kappa,nrm,is_valid)
+              if(.not.is_valid) cycle
+              nv = nv+1
+              e2 = e2+((kappa-kex)/kex)**2
+              einf = max(einf,abs(kappa-kex)/kex)
+              nr = fn(:,i,j,k)/sqrt(sum(fn(:,i,j,k)**2))
+              rr = acos(min(max(sum(nrm*nr),-1._rp),1._rp))
+              ean = ean+rr; eanmax = max(eanmax,rr)
+            end do
+          end do
+        end do
+        frac = 1._rp*nv/max(nn,1)
+        res(:,ires) = [sqrt(e2/max(nv,1)),einf,frac,ean/max(nv,1),eanmax]
+        deallocate(f,fn)
+      end do
+      print '(a,i2,a,a)', ' height functions, columns of ',2*nq+1,' cells, ',merge('circles (2D)','spheres     ',is_2d)
+      print '(a)', '    R/h   curvature rel. error L2 / Linf    valid fraction    normal angle error mean / max [rad]'
+      do ires=1,nres
+        print '(i7,3x,2es11.2,6x,f8.3,6x,2es11.2)', rres(ires),res(1,ires),res(2,ires),res(3,ires),res(4,ires),res(5,ires)
+      end do
+      print '(a,2f6.2)', '    observed order (last two resolutions), curvature L2 and mean normal error: ', &
+            log(res(1,nres-1)/res(1,nres))/log(2._rp),log(res(4,nres-1)/res(4,nres))/log(2._rp)
+      if(log(res(1,nres-1)/res(1,nres))/log(2._rp) < 1.5_rp) then
+        print*, '  FAILED: height-function curvature not second order'
+        passed = .false.
+      end if
+    end do
+    end do
+  end subroutine test_hf_spheres
 #if defined(_OPENACC)
   subroutine test_device(passed)
     !

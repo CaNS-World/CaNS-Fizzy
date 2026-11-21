@@ -19,7 +19,8 @@ module mod_plic
   use mod_types
   implicit none
   private
-  public plic_volume,plic_alpha,plic_volume_box,plic_normal_myc,plic_normal_youngs,plic_normal_cc
+  public plic_volume,plic_alpha,plic_volume_box,plic_normal_myc,plic_normal_youngs,plic_normal_cc, &
+         hf_heights,hf_curvature,hf_normal
   contains
   pure real(rp) function plic_volume(mx,my,mz,alpha) result(vol)
     !
@@ -256,6 +257,111 @@ module mod_plic
       end if
     end if
   end subroutine normal_cc
+  !
+  pure subroutine hf_heights(nq,c,dq,eps,hgt,sgn,is_valid)
+    !
+    ! height functions from the volume fractions c(-1:1,-1:1,-nq:nq) in a 3x3 set of (2*nq+1)-cell columns along
+    ! a direction, centred on the cell of interest; the last index runs along the columns, and dq(-nq:nq)
+    ! are the cell sizes along them; the columns are valid if their end cells are pure, with phase 1 at
+    ! the same end of all columns (sgn = +1 if phase 1 is at the lower end, -1 otherwise); the heights
+    ! hgt(-1:1,-1:1) are the interface positions along the columns, relative to the centre of the central cell
+    !
+    ! references: Cummins et al., Comput. Struct. 83 (2005) 425--434; Popinet, J. Comput. Phys. 228 (2009) 5838--5866
+    !
+    implicit none
+    integer , intent(in ) :: nq
+    real(rp), intent(in ), dimension(-1:1,-1:1,-nq:nq) :: c
+    real(rp), intent(in ), dimension(-nq:nq) :: dq
+    real(rp), intent(in ) :: eps
+    real(rp), intent(out), dimension(-1:1,-1:1) :: hgt
+    real(rp), intent(out) :: sgn
+    logical , intent(out) :: is_valid
+    real(rp) :: lo,hi,vol
+    integer :: a,b,q
+    !$acc routine seq
+    lo = 0.5_rp*dq(0) ! distance from the lower end of the columns to the central cell centre
+    hi = 0.5_rp*dq(0) ! distance from the central cell centre to the upper end
+    do q=1,nq
+      lo = lo + dq(-q)
+      hi = hi + dq( q)
+    end do
+    sgn = 0._rp
+    if(     c(0,0,-nq) >= 1._rp-eps .and. c(0,0,nq) <= eps) then
+      sgn =  1._rp
+    else if(c(0,0,-nq) <= eps .and. c(0,0,nq) >= 1._rp-eps) then
+      sgn = -1._rp
+    end if
+    is_valid = sgn /= 0._rp
+    hgt(:,:) = 0._rp
+    do b=-1,1
+      do a=-1,1
+        if(sgn > 0._rp) then
+          is_valid = is_valid .and. c(a,b,-nq) >= 1._rp-eps .and. c(a,b,nq) <= eps
+        else
+          is_valid = is_valid .and. c(a,b,-nq) <= eps .and. c(a,b,nq) >= 1._rp-eps
+        end if
+        vol = 0._rp
+        do q=-nq,nq
+          vol = vol + c(a,b,q)*dq(q)
+        end do
+        hgt(a,b) = merge(vol-lo,hi-vol,sgn > 0._rp)
+      end do
+    end do
+  end subroutine hf_heights
+  !
+  pure real(rp) function hf_curvature(hgt,sgn,dam,dap,dbm,dbp,is_act_a,is_act_b) result(kappa)
+    !
+    ! curvature from the heights hgt(-1:1,-1:1) of `hf_heights`, with the sign convention of Fizzy
+    ! (kappa = -div(n), n pointing into phase 1: positive for a drop of phase 1); dam, dap (dbm, dbp) are
+    ! the distances to the neighbouring columns along the first (second) transverse direction, and
+    ! is_act_a, is_act_b are false along directions in which the problem is invariant
+    !
+    implicit none
+    real(rp), intent(in), dimension(-1:1,-1:1) :: hgt
+    real(rp), intent(in) :: sgn,dam,dap,dbm,dbp
+    logical , intent(in) :: is_act_a,is_act_b
+    real(rp) :: ha,hb,haa,hbb,hab,hbm,hbp
+    !$acc routine seq
+    ha  = 0._rp; haa = 0._rp
+    hb  = 0._rp; hbb = 0._rp
+    hab = 0._rp
+    if(is_act_a) then
+      ha  = dcentred(hgt(-1,0),hgt(0,0),hgt(1,0),dam,dap)
+      haa = 2._rp*((hgt(1,0)-hgt(0,0))/dap-(hgt(0,0)-hgt(-1,0))/dam)/(dam+dap)
+    end if
+    if(is_act_b) then
+      hb  = dcentred(hgt(0,-1),hgt(0,0),hgt(0,1),dbm,dbp)
+      hbb = 2._rp*((hgt(0,1)-hgt(0,0))/dbp-(hgt(0,0)-hgt(0,-1))/dbm)/(dbm+dbp)
+    end if
+    if(is_act_a .and. is_act_b) then
+      hbm = dcentred(hgt(-1,-1),hgt(-1,0),hgt(-1,1),dbm,dbp)
+      hbp = dcentred(hgt( 1,-1),hgt( 1,0),hgt( 1,1),dbm,dbp)
+      hab = dcentred(hbm,hb,hbp,dam,dap)
+    end if
+    kappa = -sgn*(haa*(1._rp+hb**2)+hbb*(1._rp+ha**2)-2._rp*hab*ha*hb)/(1._rp+ha**2+hb**2)**1.5_rp
+  end function hf_curvature
+  !
+  pure subroutine hf_normal(hgt,sgn,dam,dap,dbm,dbp,is_act_a,is_act_b,na,nb,nq)
+    !
+    ! physical unit normal pointing out of phase 1, from the heights of `hf_heights`, with components
+    ! along the first and second transverse directions (na, nb) and along the columns (nq)
+    !
+    implicit none
+    real(rp), intent(in), dimension(-1:1,-1:1) :: hgt
+    real(rp), intent(in) :: sgn,dam,dap,dbm,dbp
+    logical , intent(in) :: is_act_a,is_act_b
+    real(rp), intent(out) :: na,nb,nq
+    real(rp) :: ha,hb,s
+    !$acc routine seq
+    ha = 0._rp
+    hb = 0._rp
+    if(is_act_a) ha = dcentred(hgt(-1,0),hgt(0,0),hgt(1,0),dam,dap)
+    if(is_act_b) hb = dcentred(hgt(0,-1),hgt(0,0),hgt(0,1),dbm,dbp)
+    s  = sqrt(1._rp+ha**2+hb**2)
+    na = -sgn*ha/s
+    nb = -sgn*hb/s
+    nq =  sgn/s
+  end subroutine hf_normal
   !
   pure real(rp) function dcentred(qm,q0,qp,dzm,dzp) result(dq)
     !

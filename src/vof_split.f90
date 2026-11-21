@@ -21,25 +21,30 @@ module mod_vof_split
   ! the face fluxes summed over the sweeps (and sub-steps), divided by the time step, are returned
   ! for a mass-consistent transport of momentum and other conserved quantities
   !
-  ! the volume fraction needs two halo layers: the interface is also reconstructed in the first one,
-  ! whose cells are the donors of the fluxes entering the subdomain
+  ! the volume fraction needs two halo layers for the advection (the interface is also reconstructed in the
+  ! first one, whose cells are the donors of the fluxes entering the subdomain), and four for the interface
+  ! curvature, computed from height functions in nine-cell columns
   !
   use mpi
   use mod_types
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
-  use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc
+  use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature,hf_normal
   implicit none
   private
-  public vof_split_init,vof_split_advance,vof_split_diagnostics
+  public vof_split_init,vof_split_advance,vof_split_curvature,vof_split_diagnostics
   !
   real(rp), parameter :: cfl_max = 0.5_rp    ! maximum CFL number of a sweep
   real(rp), parameter :: f_eps   = 1.e-12_rp ! cells with f_eps < f < 1-f_eps are reconstructed
+  integer , parameter :: nq_hf   = 4         ! half-length of the height-function columns (nine cells)
+  real(rp), parameter :: eps_hf  = 1.e-6_rp  ! tolerance for pure cells at the ends of the height-function columns
+  real(rp), parameter :: kappa_undef = huge(1._rp) ! marks cells without a curvature estimate (intermediate stages)
   !
   real(rp), allocatable, dimension(:,:,:) :: cc       ! dilatation indicator c_c
   real(rp), allocatable, dimension(:,:,:) :: fl       ! face fluxes of a sweep
   real(rp), allocatable, dimension(:,:,:) :: ua,va,wa ! advecting velocity, at the middle of the time step
   real(rp), allocatable, dimension(:,:,:) :: uo,vo,wo ! velocity at the previous time step
+  real(rp), allocatable, dimension(:,:,:) :: kap      ! work array for the curvature
   integer , allocatable, dimension(:)     :: ilist    ! compacted list of interfacial donor cells (packed indices)
   integer , dimension(1) :: nlist                     ! number of entries of ilist
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
@@ -54,6 +59,9 @@ module mod_vof_split
   !$acc declare create(clip_vol,fmin_raw,fmax_raw,clip_s,fmin_s,fmax_s)
   real(rp), dimension(3) :: cfl_last = 0._rp    ! CFL numbers of the advecting velocity in the last step
   integer  :: nsub_last = 0                     ! number of sub-steps in the last step
+  real(rp), dimension(3) :: kappa_stats = 0._rp ! interfacial cells with curvature from height functions,
+                                                ! from neighbouring height functions, and without estimate
+  !$acc declare create(kappa_stats)
   contains
   subroutine vof_split_init(ng,n,nh_psi)
     !
@@ -64,17 +72,17 @@ module mod_vof_split
     integer , intent(in)               :: nh_psi
     integer :: i,j,k
     !
-    if(nh_psi < 2) error stop 'ERROR: the split VoF needs two halo layers of the volume fraction.'
+    if(nh_psi < nq_hf) error stop 'ERROR: the halo width of the volume fraction is smaller than the height-function columns.'
     !
     ! directions with one or two grid cells are taken as invariant (2D runs): no sweeps,
     ! and no contribution to the interface normal
     !
     is_active(:) = ng(:) > 2
     allocate(cc(0:n(1)+1,0:n(2)+1,0:n(3)+1))
-    allocate(fl,ua,va,wa,uo,vo,wo,mold=cc)
+    allocate(fl,ua,va,wa,uo,vo,wo,kap,mold=cc)
     allocate(ilist((n(1)+2)*(n(2)+2)*(n(3)+2)))
     nlist(:) = 0
-    !$acc enter data create(cc,fl,ua,va,wa,uo,vo,wo,ilist) copyin(nlist)
+    !$acc enter data create(cc,fl,ua,va,wa,uo,vo,wo,kap,ilist) copyin(nlist)
     !$acc update device(clip_vol,fmin_raw,fmax_raw)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)+1
@@ -395,6 +403,279 @@ module mod_vof_split
     end if
   end subroutine donor_fractions
   !
+  subroutine vof_split_curvature(istage,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    !
+    ! interface curvature (sign convention of Fizzy: kappa = -div(n), n pointing into phase 1), in stages
+    ! separated by halo exchanges of kappa (without Dirichlet conditions, see `ifc_geometry`):
+    !   1. height functions (nine-cell columns) in interfacial cells, along the directions in decreasing order
+    !      of the MYC normal components; the unit normals (pointing into phase 1) are returned as well
+    !   2. interfacial cells without valid heights: average of the height-function curvatures of the
+    !      neighbouring interfacial cells
+    !   3. full or empty cells next to interfacial cells: average of the curvatures of the latter (used by the
+    !      face interpolation of the surface tension force); zero elsewhere
+    !
+    implicit none
+    integer , intent(in   ) :: istage
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzf
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: kappa,normx,normy,normz
+    real(rp) :: fc,ksum,kcnt,nhf
+    integer  :: i,j,k,ii,jj,kk,q,il,nl
+    !
+    select case(istage)
+    case(1)
+      !
+      ! (the interfacial cells are compacted into a list, processed by a second kernel)
+      !
+      nlist(1) = 0
+      !$acc update device(nlist) async(1)
+      !$acc parallel loop collapse(3) default(present) private(il) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            kappa(i,j,k) = 0._rp
+            normx(i,j,k) = 0._rp
+            normy(i,j,k) = 0._rp
+            normz(i,j,k) = 0._rp
+            fc = psi(i,j,k)
+            if(fc > f_eps .and. fc < 1._rp-f_eps) then
+              !$acc atomic capture
+              nlist(1) = nlist(1)+1
+              il = nlist(1)
+              !$acc end atomic
+              ilist(il) = (i-1)+n(1)*((j-1)+n(2)*(k-1))
+            end if
+          end do
+        end do
+      end do
+      !$acc update self(nlist) async(1)
+      !$acc wait(1)
+      nl = nlist(1)
+      call hf_list(n,nh_psi,nh_g,dl,dzf,nl,psi,kappa,normx,normy,normz,nhf)
+      kappa_stats(1) = nhf ! (local to the task)
+    case(2)
+      !
+      ! (the few cells without height-function curvature are counted with atomics, on the device)
+      !
+      !$acc serial async(1)
+      kappa_stats(2) = 0._rp
+      kappa_stats(3) = 0._rp
+      !$acc end serial
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            kap(i,j,k) = kappa(i,j,k)
+            if(kappa(i,j,k) == kappa_undef) then
+              ksum = 0._rp
+              kcnt = 0._rp
+              do kk=-1,1
+                do jj=-1,1
+                  do ii=-1,1
+                    fc = psi(i+ii,j+jj,k+kk)
+                    if(fc > f_eps .and. fc < 1._rp-f_eps .and. kappa(i+ii,j+jj,k+kk) /= kappa_undef) then
+                      ksum = ksum + kappa(i+ii,j+jj,k+kk)
+                      kcnt = kcnt + 1._rp
+                    end if
+                  end do
+                end do
+              end do
+              if(kcnt > 0._rp) then
+                kap(i,j,k) = ksum/kcnt
+                !$acc atomic update
+                kappa_stats(2) = kappa_stats(2) + 1._rp
+              else
+                kap(i,j,k) = 0._rp
+                !$acc atomic update
+                kappa_stats(3) = kappa_stats(3) + 1._rp
+              end if
+            end if
+          end do
+        end do
+      end do
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            kappa(i,j,k) = kap(i,j,k)
+          end do
+        end do
+      end do
+    case(3)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            kap(i,j,k) = kappa(i,j,k)
+            fc = psi(i,j,k)
+            if(.not.(fc > f_eps .and. fc < 1._rp-f_eps)) then
+              ksum = 0._rp
+              kcnt = 0._rp
+              do q=1,6
+                ii = merge(merge(-1,1,q == 1),0,q <= 2)
+                jj = merge(merge(-1,1,q == 3),0,q == 3 .or. q == 4)
+                kk = merge(merge(-1,1,q == 5),0,q >= 5)
+                fc = psi(i+ii,j+jj,k+kk)
+                if(fc > f_eps .and. fc < 1._rp-f_eps) then
+                  ksum = ksum + kappa(i+ii,j+jj,k+kk)
+                  kcnt = kcnt + 1._rp
+                end if
+              end do
+              kap(i,j,k) = 0._rp
+              if(kcnt > 0._rp) kap(i,j,k) = ksum/kcnt
+            end if
+          end do
+        end do
+      end do
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            kappa(i,j,k) = kap(i,j,k)
+          end do
+        end do
+      end do
+    end select
+  end subroutine vof_split_curvature
+  !
+  subroutine hf_list(n,nh_psi,nh_g,dl,dzf,nl,psi,kappa,normx,normy,normz,nhf)
+    !
+    ! height-function geometry of the nl cells of the compacted list ilist (packed interior indices): MYC
+    ! normal, and height functions (nine-cell columns) along the directions in decreasing order of the MYC
+    ! normal components (cell-scaled), until valid ones are found; the height-function curvature (kappa_undef
+    ! where the heights are not valid) and the unit normal pointing into phase 1 (that of the height functions
+    ! if valid, and the MYC one otherwise) are stored in kappa and (normx,normy,normz); nhf is the number of
+    ! cells with valid heights
+    !
+    ! (a single kernel: calling a device routine per cell, with the volume fraction as argument, is several
+    ! times slower on GPUs)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzf
+    integer , intent(in   ) :: nl
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: kappa,normx,normy,normz
+    real(rp), intent(out  ) :: nhf
+    real(rp), dimension(-1:1,-1:1,-1:1) :: c3
+    real(rp), dimension(-1:1) :: dz3
+    real(rp), dimension(-1:1,-1:1) :: hgt
+    real(rp), dimension(3) :: dm,dp,h,m,nrm
+    logical , dimension(3) :: act
+    logical  :: is_valid,is_act1,is_act2,is_act3
+    real(rp) :: dx,dy,kap_c,sgn,na,nb,nq,s,lo,hi,dqq,vol,fq,f0,f1
+    integer  :: i,j,k,q,il,lin,a,b,r,d,d1,d2,d3,ia,ib,itmp,ic,jc,kc,n1,n2
+    !
+    dx = dl(1)
+    dy = dl(2)
+    n1 = n(1)
+    n2 = n(2)
+    is_act1 = is_active(1)
+    is_act2 = is_active(2)
+    is_act3 = is_active(3)
+    nhf = 0._rp
+    !$acc parallel loop default(present) private(nrm,m,act,c3,dz3,hgt,dm,dp,h) reduction(+:nhf) async(1)
+    do il=1,nl
+      lin = ilist(il)
+      i = 1+mod(lin,n1)
+      j = 1+mod(lin/n1,n2)
+      k = 1+lin/(n1*n2)
+      act(:) = [is_act1,is_act2,is_act3]
+      do kc=-1,1
+        do jc=-1,1
+          do ic=-1,1
+            c3(ic,jc,kc) = psi(i+ic,j+jc,k+kc)
+          end do
+        end do
+        dz3(kc) = dzf(k+kc)
+      end do
+      call plic_normal_myc(c3,dx,dy,dz3,act,m(1),m(2),m(3))
+      h(:) = [dx,dy,dz3(0)]
+      nrm(:) = m(:)/h(:)
+      !
+      ! (norm stored in a scalar: with nrm(1:3) on both sides, nvfortran allocates a temporary on the device heap,
+      ! whose pointer NVHPC 25.9 and 25.11 do not pass to all the threads of a gang: illegal address)
+      !
+      s = sqrt(nrm(1)**2+nrm(2)**2+nrm(3)**2)
+      nrm(:) = nrm(:)/s
+      kap_c = 0._rp
+      is_valid = .false.
+      !
+      ! directions in decreasing order of the MYC normal components (scalars: a small index array updated in
+      ! place and then used in subscripts is miscompiled in device code by nvfortran)
+      !
+      d1 = 1; d2 = 2; d3 = 3
+      if(abs(m(d1)) < abs(m(d2))) then
+        itmp = d1; d1 = d2; d2 = itmp
+      end if
+      if(abs(m(d2)) < abs(m(d3))) then
+        itmp = d2; d2 = d3; d3 = itmp
+      end if
+      if(abs(m(d1)) < abs(m(d2))) then
+        itmp = d1; d1 = d2; d2 = itmp
+      end if
+      dm(:) = [dx,dy,0.5_rp*(dzf(k-1)+dzf(k))]
+      dp(:) = [dx,dy,0.5_rp*(dzf(k)+dzf(k+1))]
+      do r=1,3
+        d = merge(d1,merge(d2,d3,r == 2),r == 1)
+        if(.not.act(d)) cycle
+        ia = merge(2,1,d == 1)
+        ib = merge(2,3,d == 3)
+        lo = 0.5_rp*merge(dzf(k),merge(dx,dy,d == 1),d == 3)
+        hi = lo
+        do q=1,nq_hf
+          lo = lo + merge(dzf(k-q),merge(dx,dy,d == 1),d == 3)
+          hi = hi + merge(dzf(k+q),merge(dx,dy,d == 1),d == 3)
+        end do
+        f0 = psi(i+merge(-nq_hf,0,d == 1),j+merge(-nq_hf,0,d == 2),k+merge(-nq_hf,0,d == 3))
+        f1 = psi(i+merge( nq_hf,0,d == 1),j+merge( nq_hf,0,d == 2),k+merge( nq_hf,0,d == 3))
+        sgn = 0._rp
+        if(     f0 >= 1._rp-eps_hf .and. f1 <= eps_hf) then
+          sgn =  1._rp
+        else if(f0 <= eps_hf .and. f1 >= 1._rp-eps_hf) then
+          sgn = -1._rp
+        end if
+        is_valid = sgn /= 0._rp
+        hgt(:,:) = 0._rp
+        do b=-1,1
+          do a=-1,1
+            vol = 0._rp
+            do q=-nq_hf,nq_hf
+              fq  = psi(i+merge(q,a,d == 1),j+merge(q,merge(a,b,d == 1),d == 2),k+merge(q,b,d == 3))
+              dqq = merge(dzf(k+q),merge(dx,dy,d == 1),d == 3)
+              if(q == -nq_hf) f0 = fq
+              if(q ==  nq_hf) f1 = fq
+              vol = vol + fq*dqq
+            end do
+            if(sgn > 0._rp) then
+              is_valid = is_valid .and. f0 >= 1._rp-eps_hf .and. f1 <= eps_hf
+            else
+              is_valid = is_valid .and. f0 <= eps_hf .and. f1 >= 1._rp-eps_hf
+            end if
+            hgt(a,b) = merge(vol-lo,hi-vol,sgn > 0._rp)
+          end do
+        end do
+        if(is_valid) then
+          kap_c = hf_curvature(hgt,sgn,dm(ia),dp(ia),dm(ib),dp(ib),act(ia),act(ib))
+          call hf_normal(hgt,sgn,dm(ia),dp(ia),dm(ib),dp(ib),act(ia),act(ib),na,nb,nq)
+          nrm(ia) = na; nrm(ib) = nb; nrm(d) = nq
+          exit
+        end if
+      end do
+      if(is_valid) nhf = nhf + 1._rp
+      kappa(i,j,k) = merge(kap_c,kappa_undef,is_valid)
+      normx(i,j,k) = -nrm(1) ! pointing into phase 1
+      normy(i,j,k) = -nrm(2)
+      normz(i,j,k) = -nrm(3)
+    end do
+    !$acc wait(1)
+  end subroutine hf_list
+  !
   subroutine set_zero(p)
     implicit none
     real(rp), intent(inout), dimension(:,:,:) :: p
@@ -409,10 +690,11 @@ module mod_vof_split
     end do
   end subroutine set_zero
   !
-  subroutine vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol,clip,fmin,fmax,cfl,nsub)
+  subroutine vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol,clip,fmin,fmax,cfl,nsub,kstats)
     !
     ! total volume of phase 1, accumulated clipped volume, extrema of the volume fraction before
-    ! clipping in the last step, CFL numbers and number of sub-steps of the last step
+    ! clipping in the last step, CFL numbers and number of sub-steps of the last step, and numbers of
+    ! interfacial cells with curvature from height functions, from neighbouring ones, and without estimate
     !
     implicit none
     integer , intent(in ), dimension(3) :: n
@@ -423,6 +705,7 @@ module mod_vof_split
     real(rp), intent(out) :: vol,clip,fmin,fmax
     real(rp), intent(out), dimension(3) :: cfl
     integer , intent(out) :: nsub
+    real(rp), intent(out), dimension(3) :: kstats
     integer :: i,j,k
     !
     vol = 0._rp
@@ -434,12 +717,13 @@ module mod_vof_split
         end do
       end do
     end do
-    !$acc update self(clip_vol,fmin_raw,fmax_raw) async(1)
+    !$acc update self(clip_vol,fmin_raw,fmax_raw,kappa_stats(2:3)) async(1)
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,vol,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call MPI_ALLREDUCE(clip_vol,clip,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call MPI_ALLREDUCE(fmin_raw,fmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
     call MPI_ALLREDUCE(fmax_raw,fmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
+    call MPI_ALLREDUCE(kappa_stats,kstats,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     cfl(:) = cfl_last(:)
     nsub = nsub_last
   end subroutine vof_split_diagnostics
