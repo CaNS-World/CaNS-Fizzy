@@ -402,10 +402,6 @@ module mod_solver_vc
     !
     ! setup solver
     !
-    ! note: this part was taken from the Paris Simulator code
-    !       freely available under a GPL license
-    !       http://www.ida.upmc.fr/~zaleski/paris
-    !
     stype    = hypre_solver_i(iq)
     maxiter  = hypre_maxiter(iq)
     maxerror = hypre_tol(iq)
@@ -480,10 +476,6 @@ module mod_solver_vc
     !
     ! setup solver
     !
-    ! note: this part was taken from the Paris Simulator code
-    !       freely available under a GPL license
-    !       http://www.ida.upmc.fr/~zaleski/paris
-    !
     if      ( stype == HYPRESolverSMG ) then
       call HYPRE_StructSMGSetup(solver,mat,rhs,sol,ierr)
     else if ( stype == HYPRESolverPFMG ) then
@@ -541,10 +533,6 @@ module mod_solver_vc
     !
     ! setup solver, and solve
     !
-    ! note: this part was based on the the Paris Simulator code
-    !       freely available under a GPL license; see:
-    !       http://www.ida.upmc.fr/~zaleski/paris/
-    !
     niter = 0
     if      ( stype == HYPRESolverSMG ) then
       call HYPRE_StructSMGSolve(solver,mat,rhs,sol,ierr)
@@ -562,9 +550,6 @@ module mod_solver_vc
       call HYPRE_StructFGMRESSolve(solver,mat,rhs,sol,ierr)
       call HYPRE_StructFGMRESGetNumIter(solver,niter,ierr)
     end if ! stype
-    !
-    ! end of part based on the Paris Simulator code
-    !
     if(niter >= hypre_maxiter(iq)) then
       if(myid == 0) print*, 'WARNING: HYPRE solver not converged after ',niter,' iterations (maximum: `hypre_maxiter`).'
     end if
@@ -598,11 +583,6 @@ module mod_solver_vc
     solver  => asolver%solver
     stype   => asolver%stype
     ptype   => asolver%ptype
-    !
-    ! note: this part was based on the the Paris Simulator code
-    !       freely available under a GPL license; see:
-    !       http://www.ida.upmc.fr/~zaleski/paris/
-    !
     if      ( stype == HYPRESolverSMG ) then
       call HYPRE_StructSMGDestroy(solver,ierr)
     else if ( stype == HYPRESolverPFMG ) then
