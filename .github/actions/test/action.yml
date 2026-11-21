@@ -8,7 +8,7 @@ inputs:
     description: "Compiler environment used by the CaNS executable"
     required: true
   test_name:
-    description: "Test case name"
+    description: "Test case name; a suffix -<method> selects that interface method (e.g., rising_bubble-thinc)"
     required: true
 
 runs:
@@ -31,7 +31,11 @@ runs:
       run: |
         source ".github/actions/build/scripts/setenv-${{ inputs.compiler }}.sh"
         chmod +x ./run/cans
-        cd "tests/${{ inputs.test_name }}" || exit 1
+        test_name="${{ inputs.test_name }}"
+        case "$test_name" in
+          *-*) export TEST_TWO_FLUID_INPUT="ifc_reconstruction = '${test_name#*-}'"; test_name="${test_name%%-*}";;
+        esac
+        cd "tests/$test_name" || exit 1
         bash ./testit.sh
 
     - name: Upload log files

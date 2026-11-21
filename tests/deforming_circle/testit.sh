@@ -15,6 +15,10 @@ MPIRUN="mpirun -n 4 $MPIRUN_OPTIONS"
 cd $RUNDIR
 mkdir -p data
 cp $TESTDIR/input.nml $TESTDIR/spheres.in $RUNDIR
+#
+# interface method of the variant under test, if set (see `tests/testall.sh`): a line for the `two_fluid` namelist
+#
+if [ -n "$TEST_TWO_FLUID_INPUT" ]; then sed -i "/^&two_fluid/a $TEST_TWO_FLUID_INPUT" input*.nml; fi
 echo "INFO: Running CaNS"
 set +e
 ${MPIRUN} ./cans 1> log_file.log 2> err_log.log

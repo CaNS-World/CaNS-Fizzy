@@ -7,7 +7,7 @@
 module mod_chkdt
   use mpi
   use mod_common_mpi, only:ierr
-  use mod_param     , only:nscal,is_impdiff,is_impdiff_1d
+  use mod_param     , only:nscal,is_impdiff,is_impdiff_1d,is_ifc_acdi
   use mod_types
   implicit none
   private
@@ -79,12 +79,12 @@ module mod_chkdt
     !$acc end data
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,dti,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
-#if !defined(_INTERFACE_CAPTURING_VOF) && !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    dtipsi = gam*seps/dlmin**2
-    if(dtipsi == 0.) dtipsi = 1.
-#else
-    dtipsi = dti
-#endif
+    if(is_ifc_acdi) then
+      dtipsi = gam*seps/dlmin**2
+      if(dtipsi == 0.) dtipsi = 1.
+    else
+      dtipsi = dti
+    end if
     if(.not.is_solve_ns) then
       dtmax = min(dti**(-1),dtipsi**(-1))
     else

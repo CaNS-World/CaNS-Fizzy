@@ -86,6 +86,19 @@ real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, dimension(2) :: ka12,cp12,beta12
 real(rp), protected               :: acdi_gam_factor,acdi_gam_min,vof_thinc_beta
 real(rp), protected               :: psi_thickness_factor
+!
+! interface method, selected with three inputs; blank entries take the default of the reconstruction:
+!   ifc_reconstruction: 'acdi' (ACDI phase field, default), 'thinc' (THINC/QQ volume of fluid) or
+!                       'plic' (geometric volume of fluid, piecewise-linear interface)
+!   ifc_advection     : 'ab2' (default of 'acdi' and 'thinc') or
+!                       'split' (conservative direction-split advection; default of 'plic')
+!   ifc_transport     : transport of momentum and scalar: 'ab2' (default with the 'ab2' advection), or, with the
+!                       'split' advection, 'one-step' (default) or 'sweeps' (along with the sweeps)
+! the valid combinations are checked in `mod_sanity`
+!
+character(len=10), protected :: ifc_reconstruction,ifc_advection,ifc_transport
+logical , protected :: is_sdf_normals ! normals (and THINC/QQ reconstruction) from a signed-distance function
+logical , protected :: is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_vof_sweep_transport ! not inputs
 real(rp), protected               :: rho0 ! not an input
 real(rp), protected               :: visc0,alpha0 ! reference diffusivities of the constant-coefficient implicit diffusion; not inputs
 !
@@ -116,12 +129,9 @@ logical, protected :: is_debug = .true., is_debug_poisson = .false., &
 logical, protected :: is_impdiff = .false., is_impdiff_1d = .false., &
                       is_poisson_dtdma = .false., &
                       is_gridpoint_natural_channel = .false., &
-                      is_vof_sweep_transport = .false.
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-logical, protected :: is_visc_limiter = .true.  ! default with the sharp interface of the geometric volume-of-fluid method
-#else
-logical, protected :: is_visc_limiter = .false.
-#endif
+                      is_harmonic_interpolation = .false., & ! harmonic (instead of arithmetic) interpolation of the viscosity
+                                                             ! and thermal conductivity between the two fluids
+                      is_visc_limiter = .false. ! (true by default with the sharp interface of `ifc_reconstruction = 'plic'`)
 !
 ! HYPRE solver options for the variable-coefficient problems; each input has two entries:
 ! the first for the pressure, the second for the (implicit) diffusion
@@ -138,14 +148,11 @@ integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PF
 real(rp), protected, dimension(2) :: hypre_tol = 1.e-6
 !
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
-! (one layer suffices for CaNS; extensions with wider stencils may increase them here)
+! (one layer suffices for CaNS; extensions with wider stencils may increase them here); that of the phase
+! indicator follows the interface method, so it is set, with the largest one, when the input is read
 !
-#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-integer, parameter :: nh_psi = 1
-#else
-integer, parameter :: nh_psi = 4 ! the height functions of the geometric VoF method use nine-cell columns
-#endif
-integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_ifc = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi,nh_ifc)
+integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_ifc = 1
+integer, protected :: nh_psi = 1, nh_g = max(nh_v,nh_p,nh_s,nh_ifc)
 !
 ! i/o backend parameters
 !
@@ -202,12 +209,14 @@ contains
                         cbcpsi,cbcnor,bcnor,bcpsi, &
                         sigma,rho12,mu12, &
                         ka12,cp12,beta12, &
-                        psi_thickness_factor
+                        psi_thickness_factor, &
+                        ifc_reconstruction,ifc_advection,ifc_transport, &
+                        is_sdf_normals
     namelist /numerics/ &
                        is_impdiff,is_impdiff_1d, &
                        is_poisson_dtdma, &
                        is_gridpoint_natural_channel, &
-                       is_vof_sweep_transport, &
+                       is_harmonic_interpolation, &
                        is_visc_limiter
     namelist /hypre/ &
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
@@ -248,10 +257,9 @@ contains
     cbccur(:,:) = 'P'; bccur(:,:) = 0.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
-    psi_thickness_factor = 0.51; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12
-#if defined(_INTERFACE_CAPTURING_VOF)
-    psi_thickness_factor = 0.50 ! 0.25?
-#endif
+    psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
+    ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
+    is_sdf_normals = .true.
     !
     ! use a custom input file if one was provided on the command line
     !
@@ -402,6 +410,22 @@ contains
         close(iunit)
         error stop
       end if
+      !
+      ! interface method: defaults of the blank entries, and what follows from it
+      !
+      is_ifc_acdi  = ifc_reconstruction == 'acdi'
+      is_ifc_thinc = ifc_reconstruction == 'thinc'
+      is_ifc_plic  = ifc_reconstruction == 'plic'
+      if(ifc_advection == '') ifc_advection = merge('split','ab2  ',is_ifc_plic)
+      is_ifc_split = ifc_advection == 'split'
+      if(ifc_transport == '') ifc_transport = merge('one-step','ab2     ',is_ifc_split)
+      is_vof_sweep_transport = ifc_transport == 'sweeps'
+      if(is_ifc_plic) is_sdf_normals = .false. ! no signed-distance function with the geometric reconstruction
+      if(psi_thickness_factor < 0.) psi_thickness_factor = merge(0.51,0.50,is_ifc_acdi) ! 0.25?
+      if(is_ifc_plic) nh_psi = 4 ! the height functions of the geometric reconstruction use nine-cell columns
+      nh_g = max(nh_v,nh_p,nh_s,nh_psi,nh_ifc)
+      is_visc_limiter = is_ifc_plic
+      !
       cbccur(:,:) = cbcpsi(:,:)
       bccur(:,:) = bcpre(:,:)
       rho0 = 1. ! reference density of the pressure splitting; one with the variable-coefficient solver, where it has no role

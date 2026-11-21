@@ -46,26 +46,27 @@ module mod_impdiff
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(inout), dimension(:,:,:) :: dudt,dvdt,dwdt
     real(rp) :: mu,dmu,muzp,muzm
+    logical  :: is_harm
     integer  :: i,j,k
     !
     if(.not.allocated(dud)) then
       allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
       !$acc enter data create(dud,dvd,dwd) async(1)
     end if
-    call visc_coeffs(mu12,mu,dmu)
+    call visc_coeffs(mu12,mu,dmu,is_harm)
     !$acc parallel loop collapse(3) default(present) private(muzp,muzm) async(1)
     !$OMP parallel do   collapse(3) DEFAULT(shared)  private(muzp,muzm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          muzp = visc(mu,dmu,0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)))
-          muzm = visc(mu,dmu,0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)))
+          muzp = visc(is_harm,mu,dmu,0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i,j,k+1)+psi(i+1,j,k+1)))
+          muzm = visc(is_harm,mu,dmu,0.25*(psi(i,j,k)+psi(i+1,j,k)+psi(i,j,k-1)+psi(i+1,j,k-1)))
           dud(i,j,k) = dzfi(k)*((u(i,j,k+1)-u(i,j,k))*dzci(k)*muzp-(u(i,j,k)-u(i,j,k-1))*dzci(k-1)*muzm)
-          muzp = visc(mu,dmu,0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1)))
-          muzm = visc(mu,dmu,0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1)))
+          muzp = visc(is_harm,mu,dmu,0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k+1)+psi(i,j,k+1)))
+          muzm = visc(is_harm,mu,dmu,0.25*(psi(i,j,k)+psi(i,j+1,k)+psi(i,j+1,k-1)+psi(i,j,k-1)))
           dvd(i,j,k) = dzfi(k)*((v(i,j,k+1)-v(i,j,k))*dzci(k)*muzp-(v(i,j,k)-v(i,j,k-1))*dzci(k-1)*muzm)
-          muzp = visc(mu,dmu,psi(i,j,k+1))
-          muzm = visc(mu,dmu,psi(i,j,k  ))
+          muzp = visc(is_harm,mu,dmu,psi(i,j,k+1))
+          muzm = visc(is_harm,mu,dmu,psi(i,j,k  ))
           dwd(i,j,k) = dzci(k)*(2.*(w(i,j,k+1)-w(i,j,k))*dzfi(k+1)*muzp-2.*(w(i,j,k)-w(i,j,k-1))*dzfi(k)*muzm)
           dudt(i,j,k) = dudt(i,j,k) - dud(i,j,k)
           dvdt(i,j,k) = dvdt(i,j,k) - dvd(i,j,k)
@@ -299,10 +300,11 @@ module mod_impdiff
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(out), dimension(:,:,:) :: bu,bv,bw
     real(rp) :: mu,dmu,dxi2,dyi2,muxp,muxm,muyp,muym,muzp,muzm
+    logical  :: is_harm
     real(rp) :: c_ccc,c_pcc,c_mcc,c_cpc,c_cmc,c_ccp,c_ccm,c_ppc,c_pmc,c_mpc,c_pcp,c_pcm,c_mcp,c_cpp,c_cpm,c_cmp
     integer  :: i,j,k
     !
-    call visc_coeffs(mu12,mu,dmu)
+    call visc_coeffs(mu12,mu,dmu,is_harm)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
     !$OMP parallel do   collapse(3) DEFAULT(shared) &
     !$OMP private(muxp,muxm,muyp,muym,muzp,muzm) &
@@ -327,32 +329,32 @@ module mod_impdiff
           c_cpm = psi(i  ,j+1,k-1)
           c_cmp = psi(i  ,j-1,k+1)
           !
-          muxp = visc(mu,dmu,c_pcc)
-          muxm = visc(mu,dmu,c_ccc)
-          muyp = visc(mu,dmu,0.25*(c_ccc+c_cpc+c_ppc+c_pcc))
-          muym = visc(mu,dmu,0.25*(c_ccc+c_cmc+c_pmc+c_pcc))
-          muzp = visc(mu,dmu,0.25*(c_ccc+c_pcc+c_ccp+c_pcp))
-          muzm = visc(mu,dmu,0.25*(c_ccc+c_pcc+c_ccm+c_pcm))
+          muxp = visc(is_harm,mu,dmu,c_pcc)
+          muxm = visc(is_harm,mu,dmu,c_ccc)
+          muyp = visc(is_harm,mu,dmu,0.25*(c_ccc+c_cpc+c_ppc+c_pcc))
+          muym = visc(is_harm,mu,dmu,0.25*(c_ccc+c_cmc+c_pmc+c_pcc))
+          muzp = visc(is_harm,mu,dmu,0.25*(c_ccc+c_pcc+c_ccp+c_pcp))
+          muzm = visc(is_harm,mu,dmu,0.25*(c_ccc+c_pcc+c_ccm+c_pcm))
           bu(i,j,k) = 2.*dxi2*((u(i+1,j,k)-u(i,j,k))*muxp-(u(i,j,k)-u(i-1,j,k))*muxm) + &
                          dyi2*((u(i,j+1,k)-u(i,j,k))*muyp-(u(i,j,k)-u(i,j-1,k))*muym) + &
                       dzfi(k)*((u(i,j,k+1)-u(i,j,k))*dzci(k)*muzp-(u(i,j,k)-u(i,j,k-1))*dzci(k-1)*muzm)
           !
-          muxp = visc(mu,dmu,0.25*(c_ccc+c_pcc+c_ppc+c_cpc))
-          muxm = visc(mu,dmu,0.25*(c_ccc+c_mcc+c_mpc+c_cpc))
-          muyp = visc(mu,dmu,c_cpc)
-          muym = visc(mu,dmu,c_ccc)
-          muzp = visc(mu,dmu,0.25*(c_ccc+c_cpc+c_cpp+c_ccp))
-          muzm = visc(mu,dmu,0.25*(c_ccc+c_cpc+c_cpm+c_ccm))
+          muxp = visc(is_harm,mu,dmu,0.25*(c_ccc+c_pcc+c_ppc+c_cpc))
+          muxm = visc(is_harm,mu,dmu,0.25*(c_ccc+c_mcc+c_mpc+c_cpc))
+          muyp = visc(is_harm,mu,dmu,c_cpc)
+          muym = visc(is_harm,mu,dmu,c_ccc)
+          muzp = visc(is_harm,mu,dmu,0.25*(c_ccc+c_cpc+c_cpp+c_ccp))
+          muzm = visc(is_harm,mu,dmu,0.25*(c_ccc+c_cpc+c_cpm+c_ccm))
           bv(i,j,k) =    dxi2*((v(i+1,j,k)-v(i,j,k))*muxp-(v(i,j,k)-v(i-1,j,k))*muxm) + &
                       2.*dyi2*((v(i,j+1,k)-v(i,j,k))*muyp-(v(i,j,k)-v(i,j-1,k))*muym) + &
                       dzfi(k)*((v(i,j,k+1)-v(i,j,k))*dzci(k)*muzp-(v(i,j,k)-v(i,j,k-1))*dzci(k-1)*muzm)
           !
-          muxp = visc(mu,dmu,0.25*(c_ccc+c_pcc+c_ccp+c_pcp))
-          muxm = visc(mu,dmu,0.25*(c_ccc+c_mcc+c_ccp+c_mcp))
-          muyp = visc(mu,dmu,0.25*(c_ccc+c_cpc+c_ccp+c_cpp))
-          muym = visc(mu,dmu,0.25*(c_ccc+c_cmc+c_ccp+c_cmp))
-          muzp = visc(mu,dmu,c_ccp)
-          muzm = visc(mu,dmu,c_ccc)
+          muxp = visc(is_harm,mu,dmu,0.25*(c_ccc+c_pcc+c_ccp+c_pcp))
+          muxm = visc(is_harm,mu,dmu,0.25*(c_ccc+c_mcc+c_ccp+c_mcp))
+          muyp = visc(is_harm,mu,dmu,0.25*(c_ccc+c_cpc+c_ccp+c_cpp))
+          muym = visc(is_harm,mu,dmu,0.25*(c_ccc+c_cmc+c_ccp+c_cmp))
+          muzp = visc(is_harm,mu,dmu,c_ccp)
+          muzm = visc(is_harm,mu,dmu,c_ccc)
           bw(i,j,k) =    dxi2*((w(i+1,j,k)-w(i,j,k))*muxp-(w(i,j,k)-w(i-1,j,k))*muxm) + &
                          dyi2*((w(i,j+1,k)-w(i,j,k))*muyp-(w(i,j,k)-w(i,j-1,k))*muym) + &
                       2.*dzci(k)*((w(i,j,k+1)-w(i,j,k))*dzfi(k+1)*muzp-(w(i,j,k)-w(i,j,k-1))*dzfi(k)*muzm)
@@ -478,20 +480,21 @@ module mod_impdiff
     real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     real(rp), intent(out), dimension(:,:,:) :: bs
     real(rp) :: ka,dka,dxi2,dyi2,kaxp,kaxm,kayp,kaym,kazp,kazm
+    logical  :: is_harm
     integer  :: i,j,k
     !
-    call visc_coeffs(ka12,ka,dka)
+    call visc_coeffs(ka12,ka,dka,is_harm)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
     !$OMP parallel do   collapse(3) DEFAULT(shared) private(kaxp,kaxm,kayp,kaym,kazp,kazm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          kaxp = visc(ka,dka,0.5*(psi(i+1,j,k)+psi(i,j,k)))
-          kaxm = visc(ka,dka,0.5*(psi(i-1,j,k)+psi(i,j,k)))
-          kayp = visc(ka,dka,0.5*(psi(i,j+1,k)+psi(i,j,k)))
-          kaym = visc(ka,dka,0.5*(psi(i,j-1,k)+psi(i,j,k)))
-          kazp = visc(ka,dka,0.5*(psi(i,j,k+1)+psi(i,j,k)))
-          kazm = visc(ka,dka,0.5*(psi(i,j,k-1)+psi(i,j,k)))
+          kaxp = visc(is_harm,ka,dka,0.5*(psi(i+1,j,k)+psi(i,j,k)))
+          kaxm = visc(is_harm,ka,dka,0.5*(psi(i-1,j,k)+psi(i,j,k)))
+          kayp = visc(is_harm,ka,dka,0.5*(psi(i,j+1,k)+psi(i,j,k)))
+          kaym = visc(is_harm,ka,dka,0.5*(psi(i,j-1,k)+psi(i,j,k)))
+          kazp = visc(is_harm,ka,dka,0.5*(psi(i,j,k+1)+psi(i,j,k)))
+          kazm = visc(is_harm,ka,dka,0.5*(psi(i,j,k-1)+psi(i,j,k)))
           bs(i,j,k) = dxi2*((s(i+1,j,k)-s(i,j,k))*kaxp-(s(i,j,k)-s(i-1,j,k))*kaxm) + &
                       dyi2*((s(i,j+1,k)-s(i,j,k))*kayp-(s(i,j,k)-s(i,j-1,k))*kaym) + &
                       dzfi(k)*((s(i,j,k+1)-s(i,j,k))*dzci(k)*kazp-(s(i,j,k)-s(i,j,k-1))*dzci(k-1)*kazm)
@@ -588,12 +591,13 @@ module mod_impdiff
     real(rp), intent(out  ), dimension(0:,:,:,:) :: coeffs
     real(rp), intent(inout), dimension(:,:,:)    :: rhs
     real(rp) :: rho,drho,mu,dmu,vol,rhop,cc,psic,psif,sgn
+    logical  :: is_harm
     real(rp), dimension(0:1,3) :: cs
     integer , dimension(3) :: ijk,ijkn,e
     logical :: is_node
     integer :: i,j,k,idir,ib
     !
-    call visc_coeffs(mu12,mu,dmu)
+    call visc_coeffs(mu12,mu,dmu,is_harm)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     e(:) = 0; if(iq > 0) e(iq) = 1
     !$OMP parallel do   collapse(3) DEFAULT(shared) private(vol,rhop,cc,psic,psif,sgn,cs,ijk,ijkn,is_node,idir,ib)
@@ -611,10 +615,10 @@ module mod_impdiff
               ijkn(:) = ijk(:); ijkn(idir) = ijkn(idir) + 2*ib-1
               if(idir == iq) then
                 psif = psi(i+ib*e(1),j+ib*e(2),k+ib*e(3))
-                cs(ib,idir) = 2.*visc(mu,dmu,psif)
+                cs(ib,idir) = 2.*visc(is_harm,mu,dmu,psif)
               else
                 psif = 0.5*(psi(ijkn(1),ijkn(2),ijkn(3))+psi(ijkn(1)+e(1),ijkn(2)+e(2),ijkn(3)+e(3)))
-                cs(ib,idir) = visc(mu,dmu,0.5*(psic+psif))
+                cs(ib,idir) = visc(is_harm,mu,dmu,0.5*(psic+psif))
               end if
             end do
           end do
@@ -801,20 +805,21 @@ module mod_impdiff
     real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     real(rp), intent(inout), dimension(:,:,:) :: dsdt
     real(rp) :: ka,dka,kazp,kazm
+    logical  :: is_harm
     integer  :: i,j,k
     !
     if(.not.allocated(dsd)) then
       allocate(dsd(n(1),n(2),n(3)))
       !$acc enter data create(dsd) async(1)
     end if
-    call visc_coeffs(ka12,ka,dka)
+    call visc_coeffs(ka12,ka,dka,is_harm)
     !$acc parallel loop collapse(3) default(present) private(kazp,kazm) async(1)
     !$OMP parallel do   collapse(3) DEFAULT(shared)  private(kazp,kazm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          kazp = visc(ka,dka,0.5*(psi(i,j,k+1)+psi(i,j,k  )))
-          kazm = visc(ka,dka,0.5*(psi(i,j,k  )+psi(i,j,k-1)))
+          kazp = visc(is_harm,ka,dka,0.5*(psi(i,j,k+1)+psi(i,j,k  )))
+          kazm = visc(is_harm,ka,dka,0.5*(psi(i,j,k  )+psi(i,j,k-1)))
           dsd(i,j,k) = (kazp*(s(i,j,k+1)-s(i,j,k))*dzci(k)-kazm*(s(i,j,k)-s(i,j,k-1))*dzci(k-1))*dzfi(k)
           dsdt(i,j,k) = dsdt(i,j,k) - dsd(i,j,k)
         end do
@@ -867,11 +872,12 @@ module mod_impdiff
     real(rp), intent(inout), dimension(:,:,:) :: cw
     real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
     real(rp) :: rho,drho,mu,dmu,a,b,c,d,rhop,z,cwm,pm,psim,psic,psip,muzm,muzp
+    logical  :: is_harm
     real(rp) :: sgn0,sgn1,fac0,fac1
     integer  :: i,j,k,nz
     !
     nz = n(3)
-    call visc_coeffs(mu12,mu,dmu)
+    call visc_coeffs(mu12,mu,dmu,is_harm)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     !
     ! ghost values at the lower (0) and upper (1) boundaries: p(ghost) = sgn*p(interior) + fac (see `set_bc`)
@@ -888,12 +894,12 @@ module mod_impdiff
         !
         psim = 0.5*(psi(i,j,0)+psi(i+di,j+dj,0))
         psic = 0.5*(psi(i,j,1)+psi(i+di,j+dj,1))
-        muzm = visc(mu,dmu,0.5*(psim+psic))
+        muzm = visc(is_harm,mu,dmu,0.5*(psim+psic))
         cwm = 0.; pm = 0.
         !$acc loop seq
         do k=1,nz
           psip = 0.5*(psi(i,j,k+1)+psi(i+di,j+dj,k+1))
-          muzp = visc(mu,dmu,0.5*(psic+psip))
+          muzp = visc(is_harm,mu,dmu,0.5*(psic+psip))
           rhop = rho + drho*psic
           a = theta*dzfi(k)*dzci(k-1)*muzm
           c = theta*dzfi(k)*dzci(k  )*muzp
@@ -951,11 +957,12 @@ module mod_impdiff
     real(rp), intent(inout), dimension(:,:,:) :: cw
     real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
     real(rp) :: rho,drho,mu,dmu,a,b,c,d,rhop,z,cwm,pm,psim,psip,muzm,muzp
+    logical  :: is_harm
     real(rp) :: sgn0,sgn1,fac0,fac1
     integer  :: i,j,k,nz
     !
     nz = n(3)
-    call visc_coeffs(mu12,mu,dmu)
+    call visc_coeffs(mu12,mu,dmu,is_harm)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     !
     ! lower boundary node:  p(0 ) = sgn0*p(1   ) + fac0
@@ -972,13 +979,13 @@ module mod_impdiff
         ! and `muzm` and `muzp` the viscosities there
         !
         psim = psi(i,j,1)
-        muzm = visc(mu,dmu,psim)
+        muzm = visc(is_harm,mu,dmu,psim)
         cwm = 0.; pm = 0.
         !$acc loop seq
         do k=1,nz
           if(k < nz) then
             psip = psi(i,j,k+1)
-            muzp = visc(mu,dmu,psip)
+            muzp = visc(is_harm,mu,dmu,psip)
             rhop = rho + drho*(wzc(k)*psim+(1.-wzc(k))*psip)
             a = theta*dzci(k)*2.*dzfi(k  )*muzm
             c = theta*dzci(k)*2.*dzfi(k+1)*muzp
@@ -1029,31 +1036,33 @@ module mod_impdiff
     end select
   end subroutine bc_ghost
   !
-  subroutine visc_coeffs(mu12,mu,dmu)
+  subroutine visc_coeffs(mu12,mu,dmu,is_harm)
+    use mod_param, only: is_harmonic_interpolation
     !
-    ! coefficients of the interpolation of the viscosity between the two fluids (see `visc`)
+    ! coefficients of the interpolation of the viscosity between the two fluids (see `visc`),
+    ! and whether it is harmonic
     !
     implicit none
     real(rp), intent(in ), dimension(2) :: mu12
     real(rp), intent(out) :: mu,dmu
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-    mu = 1._rp/mu12(2); dmu = 1._rp/mu12(1)-1._rp/mu12(2)
-#else
-    mu = mu12(2); dmu = mu12(1)-mu12(2)
-#endif
+    logical , intent(out) :: is_harm
+    is_harm = is_harmonic_interpolation
+    if(is_harm) then
+      mu = 1._rp/mu12(2); dmu = 1._rp/mu12(1)-1._rp/mu12(2)
+    else
+      mu = mu12(2); dmu = mu12(1)-mu12(2)
+    end if
   end subroutine visc_coeffs
   !
-  pure real(rp) function visc(mu,dmu,psi)
+  pure real(rp) function visc(is_harm,mu,dmu,psi)
     !
     ! viscosity for a value `psi` of the phase indicator: arithmetic or harmonic interpolation
     !
     !$acc routine seq
     implicit none
+    logical , intent(in) :: is_harm
     real(rp), intent(in) :: mu,dmu,psi
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-    visc = 1._rp/(mu+dmu*psi)
-#else
     visc = mu+dmu*psi
-#endif
+    if(is_harm) visc = 1._rp/visc
   end function visc
 end module mod_impdiff

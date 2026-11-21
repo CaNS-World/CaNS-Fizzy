@@ -33,6 +33,8 @@ is_boussinesq_buoyancy = T
 /
 
 &two_fluid
+ifc_reconstruction = 'plic'
+ifc_transport      = 'sweeps'
 inipsi            = 'bub2'
 cbcpsi(0:1,1:3)   = 'N','N',  'P','P',  'N','N'
 cbcnor(0:1,1:3,1) = 'D','D',  'P','P',  'N','N'
@@ -58,8 +60,4 @@ cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable
 
 &io
 is_full_restart = T
-/
-
-&numerics
-is_vof_sweep_transport = T
 /

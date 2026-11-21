@@ -33,6 +33,8 @@ is_boussinesq_buoyancy = T
 /
 
 &two_fluid
+ifc_reconstruction = 'plic'
+ifc_transport      = 'sweeps'
 inipsi            = 'drp2'
 cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'P','P'
 cbcnor(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
@@ -54,8 +56,4 @@ psi_thickness_factor = 0.51
 &cudecomp
 cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
 cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
-/
-
-&numerics
-is_vof_sweep_transport = T
 /

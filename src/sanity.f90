@@ -18,7 +18,8 @@ module mod_sanity
   use mod_initflow  , only: add_noise
   use mod_initmpi   , only: initmpi
   use mod_initsolver, only: initsolver
-  use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,is_vof_sweep_transport,small
+  use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
+                            ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -84,17 +85,37 @@ module mod_sanity
     if(is_poisson_dtdma.and.(ipencil_axis == 3)) then
       if(myid == 0)  print*, 'ERROR: `is_poisson_dtdma = T` requires X/Y-aligned pencils.'; call abortit
     end if
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    if(is_impdiff) then
-      if(myid == 0)  print*, 'ERROR: implicit diffusion is not available yet with the geometric volume-of-fluid method &
-                                     &(`INTERFACE_CAPTURING_SPLIT_VOF=1`).'; call abortit
+    !
+    ! interface method: valid entries and combinations
+    !
+    if(.not.any(trim(ifc_reconstruction) == ['acdi ','thinc','plic '])) then
+      if(myid == 0)  print*, 'ERROR: `ifc_reconstruction` must be `acdi`, `thinc` or `plic`.'; call abortit
     end if
-#else
-    if(is_vof_sweep_transport) then
-      if(myid == 0)  print*, 'ERROR: `is_vof_sweep_transport = T` requires the geometric volume-of-fluid method &
-                                     &(`INTERFACE_CAPTURING_SPLIT_VOF=1`).'; call abortit
+    if(.not.any(trim(ifc_advection) == ['ab2  ','split'])) then
+      if(myid == 0)  print*, 'ERROR: `ifc_advection` must be `ab2` or `split`.'; call abortit
     end if
-#endif
+    if(.not.any(trim(ifc_transport) == ['ab2     ','one-step','sweeps  '])) then
+      if(myid == 0)  print*, 'ERROR: `ifc_transport` must be `ab2`, `one-step` or `sweeps`.'; call abortit
+    end if
+    if(trim(ifc_reconstruction) == 'acdi' .and. is_ifc_split) then
+      if(myid == 0)  print*, 'ERROR: the ACDI phase field (`ifc_reconstruction = acdi`) is advected with `ifc_advection = ab2`: &
+                                     &the direction-split advection needs a volume fraction.'; call abortit
+    end if
+    if(trim(ifc_reconstruction) == 'thinc' .and. is_ifc_split) then
+      if(myid == 0)  print*, 'ERROR: the THINC reconstruction is not available yet with `ifc_advection = split`.'; call abortit
+    end if
+    if(trim(ifc_reconstruction) == 'plic' .and. .not.is_ifc_split) then
+      if(myid == 0)  print*, 'ERROR: the geometric reconstruction (`ifc_reconstruction = plic`) needs the direction-split &
+                                     &advection (`ifc_advection = split`).'; call abortit
+    end if
+    if(is_ifc_split .neqv. trim(ifc_transport) /= 'ab2') then
+      if(myid == 0)  print*, 'ERROR: `ifc_transport = ab2` goes with `ifc_advection = ab2`, and `one-step` or `sweeps` &
+                                     &with `ifc_advection = split`.'; call abortit
+    end if
+    if(is_ifc_split .and. is_impdiff) then
+      if(myid == 0)  print*, 'ERROR: implicit diffusion is not available yet with the direction-split advection &
+                                     &(`ifc_advection = split`).'; call abortit
+    end if
   end subroutine test_sanity_input
   !
 #if !defined(_CONSTANT_COEFFS_POISSON)

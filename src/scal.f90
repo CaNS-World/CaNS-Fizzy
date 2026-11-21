@@ -5,6 +5,7 @@
 !
 ! -
 module mod_scal
+  use mod_param, only: is_harmonic_interpolation,is_ifc_split
   use mod_types
   implicit none
   private
@@ -38,34 +39,34 @@ module mod_scal
     real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm
     real(rp) :: ka,dka,rhocp,drhocp
+    logical  :: is_adv,is_harm
     !
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-    ! N.b.: care should be taken if one of the conductivities is zero.
-    ka = 1._rp/ka12(2); dka = 1._rp/ka12(1)-1._rp/ka12(2)
-#else
-    ka    = ka12(2)   ; dka    = ka12(1)-ka12(2)
-#endif
+    is_adv = .not.is_ifc_split ! (otherwise, advection is computed in `scal_a_cons` or along with the phase indicator)
+    is_harm = is_harmonic_interpolation
+    if(is_harm) then
+      ! N.b.: care should be taken if one of the conductivities is zero.
+      ka = 1._rp/ka12(2); dka = 1._rp/ka12(1)-1._rp/ka12(2)
+    else
+      ka    = ka12(2)   ; dka    = ka12(1)-ka12(2)
+    end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
-#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-          usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
-          usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
-          vsjp = 0.5*(rhocp*v(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(s(i,j+1,k)+s(i,j,k))
-          vsjm = 0.5*(rhocp*v(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(s(i,j-1,k)+s(i,j,k))
-          wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
-          wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
-#else
-          !
-          ! (with the geometric volume-of-fluid method, advection is computed in `scal_a_cons`)
-          !
-          usip = 0.; usim = 0.
-          vsjp = 0.; vsjm = 0.
-          wskp = 0.; wskm = 0.
-#endif
+          if(is_adv) then
+            usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
+            usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
+            vsjp = 0.5*(rhocp*v(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(s(i,j+1,k)+s(i,j,k))
+            vsjm = 0.5*(rhocp*v(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(s(i,j-1,k)+s(i,j,k))
+            wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
+            wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
+          else
+            usip = 0.; usim = 0.
+            vsjp = 0.; vsjm = 0.
+            wskp = 0.; wskm = 0.
+          end if
           !
           psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
           psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
@@ -73,21 +74,20 @@ module mod_scal
           psiym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
           psizp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
           psizm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          kaxp = 1._rp/(ka+dka*psixp)
-          kaxm = 1._rp/(ka+dka*psixm)
-          kayp = 1._rp/(ka+dka*psiyp)
-          kaym = 1._rp/(ka+dka*psiym)
-          kazp = 1._rp/(ka+dka*psizp)
-          kazm = 1._rp/(ka+dka*psizm)
-#else
           kaxp = ka+dka*psixp
           kaxm = ka+dka*psixm
           kayp = ka+dka*psiyp
           kaym = ka+dka*psiym
           kazp = ka+dka*psizp
           kazm = ka+dka*psizm
-#endif
+          if(is_harm) then
+            kaxp = 1._rp/kaxp
+            kaxm = 1._rp/kaxm
+            kayp = 1._rp/kayp
+            kaym = 1._rp/kaym
+            kazp = 1._rp/kazp
+            kazm = 1._rp/kazm
+          end if
           !
           dsdxp = (s(i+1,j,k)-s(i  ,j,k))*dxi
           dsdxm = (s(i  ,j,k)-s(i-1,j,k))*dxi
@@ -168,14 +168,16 @@ module mod_scal
     integer :: i,j,k,nx,ny,nz
     real(rp) :: dxi,dyi,lx,ly,lz
     real(rp) :: ka,dka,psip
+    logical  :: is_harm
     integer :: ierr
     !
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-    ! N.b.: care should be taken if one of the conductivities is zero.
-    ka = 1._rp/ka12(2); dka = 1._rp/ka12(1)-1._rp/ka12(2)
-#else
-    ka = ka12(2); dka = ka12(1)-ka12(2)
-#endif
+    is_harm = is_harmonic_interpolation
+    if(is_harm) then
+      ! N.b.: care should be taken if one of the conductivities is zero.
+      ka = 1._rp/ka12(2); dka = 1._rp/ka12(1)-1._rp/ka12(2)
+    else
+      ka = ka12(2); dka = ka12(1)-ka12(2)
+    end if
     !
     nx = n(1); ny = n(2); nz = n(3)
     dxi = dli(1); dyi = dli(2)
@@ -189,11 +191,8 @@ module mod_scal
         do j=1,ny
           dsdxp = (s(i+1,j,k)-s(i  ,j,k))*dxi
           psip = 0.5*(psi(i+1,j,k)+psi(i,j,k))
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          kaxp = 1._rp/(ka+dka*psip)
-#else
           kaxp = ka+dka*psip
-#endif
+          if(is_harm) kaxp = 1._rp/kaxp
           flux_x = flux_x + kaxp*dsdxp/(dyi*dzfi(k)*ly*lz)
         end do
       end do
@@ -205,11 +204,8 @@ module mod_scal
         do j=1,ny
           dsdxm = (s(i  ,j,k)-s(i-1,j,k))*dxi
           psip = 0.5*(psi(i,j,k)+psi(i-1,j,k))
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          kaxm = 1._rp/(ka+dka*psip)
-#else
           kaxm = ka+dka*psip
-#endif
+          if(is_harm) kaxm = 1._rp/kaxm
           flux_x = flux_x - kaxm*dsdxm/(dyi*dzfi(k)*ly*lz)
         end do
       end do
@@ -224,11 +220,8 @@ module mod_scal
         do i=1,nx
           dsdyp = (s(i,j+1,k)-s(i,j  ,k))*dyi
           psip = 0.5*(psi(i,j+1,k)+psi(i,j,k))
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          kayp = 1._rp/(ka+dka*psip)
-#else
           kayp = ka+dka*psip
-#endif
+          if(is_harm) kayp = 1._rp/kayp
           flux_y = flux_y + kayp*dsdyp/(dxi*dzfi(k)*lx*lz)
         end do
       end do
@@ -240,11 +233,8 @@ module mod_scal
         do i=1,nx
           dsdym = (s(i,j  ,k)-s(i,j-1,k))*dyi
           psip = 0.5*(psi(i,j,k)+psi(i,j-1,k))
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          kaym = 1._rp/(ka+dka*psip)
-#else
           kaym = ka+dka*psip
-#endif
+          if(is_harm) kaym = 1._rp/kaym
           flux_y = flux_y - kaym*dsdym/(dxi*dzfi(k)*lx*lz)
         end do
       end do
@@ -259,11 +249,8 @@ module mod_scal
         do i=1,nx
           dsdzp = (s(i,j,k+1)-s(i,j,k  ))*dzci(k  )
           psip = 0.5*(psi(i,j,k+1)+psi(i,j,k))
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          kazp = 1._rp/(ka+dka*psip)
-#else
           kazp = ka+dka*psip
-#endif
+          if(is_harm) kazp = 1._rp/kazp
           flux_z = flux_z + kazp*dsdzp/(dxi*dyi*lx*ly)
         end do
       end do
@@ -275,11 +262,8 @@ module mod_scal
         do i=1,nx
           dsdzm = (s(i,j,k  )-s(i,j,k-1))*dzci(k-1)
           psip = 0.5*(psi(i,j,k)+psi(i,j,k-1))
-#if defined(_VISC_HARMONIC_INTERPOLATION)
-          kazm = 1._rp/(ka+dka*psip)
-#else
           kazm = ka+dka*psip
-#endif
+          if(is_harm) kazm = 1._rp/kazm
           flux_z = flux_z - kazm*dsdzm/(dxi*dyi*lx*ly)
         end do
       end do

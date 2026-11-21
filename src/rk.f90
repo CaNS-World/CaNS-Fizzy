@@ -11,7 +11,7 @@ module mod_rk
   use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
   use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
-  use mod_param  , only: is_impdiff,is_impdiff_1d,is_vof_sweep_transport,visc0,alpha0
+  use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0,alpha0
   use mod_types
   implicit none
   private
@@ -160,57 +160,57 @@ module mod_rk
       end do
     end if
     !
-#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    rho = rho12(2); drho = rho12(1)-rho12(2)
-    !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          rhox_n = rho + drho*0.5*(psio(i,j,k)+psio(i+1,j,k))
-          rhoy_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j+1,k))
-          rhoz_n = rho + drho*(wzc(k)*psio(i,j,k)+(1.-wzc(k))*psio(i,j,k+1)) ! volume average
-          rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
-          rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
-          rhoz_p = rho + drho*(wzc(k)*psi( i,j,k)+(1.-wzc(k))*psi( i,j,k+1))
-          u(i,j,k) = (u(i,j,k)*rhox_n + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
-          v(i,j,k) = (v(i,j,k)*rhoy_n + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
-          w(i,j,k) = (w(i,j,k)*rhoz_n + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
-          dudtrko(i,j,k) = dudtrk(i,j,k)
-          dvdtrko(i,j,k) = dvdtrk(i,j,k)
-          dwdtrko(i,j,k) = dwdtrk(i,j,k)
-        end do
-      end do
-    end do
-#else
-    if(.not.is_vof_sweep_transport) then
-      !
-      ! the same update, together with the advection terms, in a single kernel
-      !
-      call mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psio,psiflx_x,psiflx_y,psiflx_z, &
-                          uadv,vadv,wadv,factor1,factor2,factor12,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,u,v,w)
-    else
-      !
-      ! the other terms are added to the velocity transported along with the volume fraction
-      !
+    if(.not.is_ifc_split) then
       rho = rho12(2); drho = rho12(1)-rho12(2)
       !$acc parallel loop collapse(3) default(present) async(1)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
-            rhox_p = rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k))
-            rhoy_p = rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k))
-            rhoz_p = rho + drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1))
-            u(i,j,k) = uadv(i,j,k) + (factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
-            v(i,j,k) = vadv(i,j,k) + (factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
-            w(i,j,k) = wadv(i,j,k) + (factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
+            rhox_n = rho + drho*0.5*(psio(i,j,k)+psio(i+1,j,k))
+            rhoy_n = rho + drho*0.5*(psio(i,j,k)+psio(i,j+1,k))
+            rhoz_n = rho + drho*(wzc(k)*psio(i,j,k)+(1.-wzc(k))*psio(i,j,k+1)) ! volume average
+            rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
+            rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
+            rhoz_p = rho + drho*(wzc(k)*psi( i,j,k)+(1.-wzc(k))*psi( i,j,k+1))
+            u(i,j,k) = (u(i,j,k)*rhox_n + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
+            v(i,j,k) = (v(i,j,k)*rhoy_n + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
+            w(i,j,k) = (w(i,j,k)*rhoz_n + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
             dudtrko(i,j,k) = dudtrk(i,j,k)
             dvdtrko(i,j,k) = dvdtrk(i,j,k)
             dwdtrko(i,j,k) = dwdtrk(i,j,k)
           end do
         end do
       end do
+    else
+      if(.not.is_vof_sweep_transport) then
+        !
+        ! the same update, together with the advection terms, in a single kernel
+        !
+        call mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psio,psiflx_x,psiflx_y,psiflx_z, &
+                            uadv,vadv,wadv,factor1,factor2,factor12,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,u,v,w)
+      else
+        !
+        ! the other terms are added to the velocity transported along with the volume fraction
+        !
+        rho = rho12(2); drho = rho12(1)-rho12(2)
+        !$acc parallel loop collapse(3) default(present) async(1)
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,n(1)
+              rhox_p = rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k))
+              rhoy_p = rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k))
+              rhoz_p = rho + drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1))
+              u(i,j,k) = uadv(i,j,k) + (factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
+              v(i,j,k) = vadv(i,j,k) + (factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
+              w(i,j,k) = wadv(i,j,k) + (factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
+              dudtrko(i,j,k) = dudtrk(i,j,k)
+              dvdtrko(i,j,k) = dvdtrk(i,j,k)
+              dwdtrko(i,j,k) = dwdtrk(i,j,k)
+            end do
+          end do
+        end do
+      end if
     end if
-#endif
     !
     ! pressure, surface tension, and buoyancy terms
     !
@@ -252,9 +252,7 @@ module mod_rk
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: so,sadv
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     real(rp) :: c1,c2
-#endif
     real(rp), allocatable, dimension(:,:,:), save :: dsdtrk
     real(rp), dimension(2), save :: rhocp12
     real(rp) :: rhocp,drhocp,rhocp_n,rhocp_p
@@ -270,8 +268,7 @@ module mod_rk
       rhocp12(:) = rho12(:)*cp12(:)
       !$acc wait(1)
     end if
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    if(.not.is_vof_sweep_transport) then
+    if(is_ifc_split.and..not.is_vof_sweep_transport) then
       c1 = rkpar(1)
       c2 = rkpar(2)
       if(is_first) then
@@ -288,7 +285,6 @@ module mod_rk
         end do
       end do
     end if
-#endif
     call scal_ad(n(1),n(2),n(3),nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z, &
                  psi,u,v,w,s,dsdtrk)
     if(is_impdiff) then
@@ -329,10 +325,10 @@ module mod_rk
           end do
         end do
       end do
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-      call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,sadv, &
-                       factor12,s)
-#endif
+      if(is_ifc_split) then
+        call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,sadv, &
+                         factor12,s)
+      end if
     else
       !
       ! the other terms are added to the scalar transported along with the volume fraction
@@ -352,11 +348,8 @@ module mod_rk
   !
   subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &
                     psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
-#if !defined(_INTERFACE_CAPTURING_VOF)
     use mod_acdi        , only: acdi_transport_pf
-#else
     use mod_vof_thinc_qq, only: vof_thinc_transport_psi
-#endif
     use mod_two_fluid   , only: clip_field
     !
     ! AB2 scheme for time integration of the phase field
@@ -386,13 +379,13 @@ module mod_rk
       allocate(dpsidtrk(n(1),n(2),n(3)))
       !$acc enter data create(dpsidtrk) async(1)
     end if
-#if !defined(_INTERFACE_CAPTURING_VOF)
-    call acdi_transport_pf(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
-                           psiflx_x,psiflx_y,psiflx_z)
-#else
-    call vof_thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
-                                 psiflx_x,psiflx_y,psiflx_z)
-#endif
+    if(is_ifc_acdi) then
+      call acdi_transport_pf(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
+                             psiflx_x,psiflx_y,psiflx_z)
+    else
+      call vof_thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
+                                   psiflx_x,psiflx_y,psiflx_z)
+    end if
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)

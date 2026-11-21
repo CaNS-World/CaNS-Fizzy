@@ -60,6 +60,8 @@ ka12(1:2)         =  0.01, 0.01
 cp12(1:2)         =  1., 1.
 beta12(1:2)       =  0., 0.
 psi_thickness_factor = 0.51
+ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
+is_sdf_normals = T
 /
 ```
 <details>
@@ -443,7 +445,7 @@ inipsi            = 'bub3'
 
 The two-dimensional fields (`bub2`, `drp2`, `dis2`, `cap-wav-1d` and `zalesak-disk`) accept the suffixes `-x`, `-y` or `-z`, the direction normal to their plane; e.g., `bub2-x` are bubbles in the Y-Z plane. A bare name means `-y`, the X-Z plane.
 
-With the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF`), these fields are sharp: each cell takes the exact volume fraction of phase 1, instead of a smooth profile.
+With the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`, see below), these fields are sharp: each cell takes the exact volume fraction of phase 1, instead of a smooth profile.
 
 See `two_fluid.f90` for more details. For the `bub[1-3]`, `drp[1-3]`, and `dis[1-3]` initial fields, the position and size of the films/bubbles/droplets can be specified by a `spheres.in` file, where each line corresponds to an individual spherical/circular/planar bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius. **Note:** _The recommended way to initialize a dispersed multiphase flow is to use `dis?`, with phase 1 being the dispersed phase, and phase 2 the continuous one. This is important because `inivel` above considers phase 2 as the continuous one._
 For example, the following file introduces in the computational domain two bubbles/droplets, the first centered at `[x,y,z] = [0.3,1.,0.5]` with a radius of `0.25`, and the second centered at `[1.5,0.6,1.]` with radius `0.5`.
@@ -509,7 +511,7 @@ These lines specify the physical and transport properties of the two-phase syste
 * `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
 * `beta12` sets the value of the thermal expansion coeffcient of each phase.
 
-By default, viscosity and thermal conductivity are interpolated arithmetically between the two phases. Setting `VISC_HARMONIC_INTERPOLATION=1` at compilation time switches both properties to harmonic phase interpolation.
+By default, viscosity and thermal conductivity are interpolated arithmetically between the two phases. The input `is_harmonic_interpolation = T` (`&numerics` namelist, see below) switches both properties to harmonic phase interpolation.
 
 ---
 
@@ -519,7 +521,47 @@ psi_thickness_factor = 0.51
 
 This value sets the interface thickness (the higher, the thicker). It corresponds to the non-dimensional epsilon parameter (`eps`) from the ACDI method which, for ACDI, should always be larger than `0.5`; for the THINC/QQ VoF method, a corresponding `beta` parameter is related related to this factor by `beta = 1./(2*eps)`. This parameter controls the interface thickness as given by the hyperbolic tangent function: `h = 0.5*(1.+tanh(r/(2.*eps))) = 0.5*(1.+tanh(r*beta))`, with `r` being the signed distance to the interface in computational space. The recommended default values are `psi_thickness_factor = 0.51` for ACDI (`eps = 0.51`), and `psi_thickness_factor = 0.5` to `0.25` (`beta = 1` to `2`), for the THINC/QQ VoF.
 
-Note: see the compile-time options `INTERFACE_CAPTURING_VOF` and `INTERFACE_CAPTURING_SPLIT_VOF` in [`docs/INFO_COMPILING.md`](INFO_COMPILING.md) for how to switch to VoF for interface capturing. The geometric method of `INTERFACE_CAPTURING_SPLIT_VOF` keeps the interface sharp, and does not use this parameter; every `iout0d` time steps, it appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate.
+Note: the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`, see below) keeps the interface sharp, and does not use this parameter.
+
+---
+
+```fortran
+ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
+is_sdf_normals = T
+```
+
+These lines select the **interface-capturing method**, at run time. Three independent entries describe it; `ifc_advection` and `ifc_transport` may be left out, and then take the default of the reconstruction.
+
+`ifc_reconstruction` sets how the interface is described:
+
+* `acdi` (default): the phase field of the ACDI diffuse-interface method;
+* `thinc`: the volume fraction of the THINC/QQ volume-of-fluid method, with a hyperbolic-tangent profile;
+* `plic`: the volume fraction of the geometric volume-of-fluid method, with a piecewise-linear (PLIC) interface in each cut cell, and the curvature computed from height functions.
+
+`ifc_advection` sets how the phase indicator is advected:
+
+* `ab2` (default of `acdi` and `thinc`): with the AB2 scheme, as the other terms;
+* `split` (default of `plic`): with a conservative direction-split scheme, which conserves the volume and keeps the volume fraction bounded to round-off, with sub-steps when the CFL number along a direction exceeds 1/2.
+
+`ifc_transport` sets how the momentum and the scalar are transported, consistently with the mass in all cases:
+
+* `ab2` (with `ifc_advection = 'ab2'`): with the AB2 scheme and the mass fluxes of the phase indicator;
+* `one-step` (default with `ifc_advection = 'split'`): in one step after the advection of the volume fraction, with its mass fluxes summed over the sweeps and central interpolation of the transported velocity: non-dissipative, but at large density ratios only robust at small CFL numbers (a ratio of 1000 needs a CFL number below about 0.1);
+* `sweeps` (with `ifc_advection = 'split'`): along with the sweeps of the volume fraction: after each sweep, the momentum is updated with the mass fluxes of that sweep, and the velocity is the new momentum over the new mass, so that mass and momentum stay consistent throughout; the transported velocity is the average over the donor region of a linear reconstruction, limited near the interface and unlimited elsewhere. This is robust at any density ratio (a drop with a density ratio of 1e6 in a uniform flow keeps its velocity to round-off), at the cost of some numerical dissipation near the interface and of a higher cost per time step (about 1.5 times that of `one-step` on GPUs, and 2.5 times on CPUs, in a three-dimensional test). Sub-steps of the volume fraction do not extend the stability of this transport beyond `cfl < 1`.
+
+The valid combinations are:
+
+| `ifc_reconstruction` | `ifc_advection` | `ifc_transport` |
+|---|---|---|
+| `acdi` | `ab2` | `ab2` |
+| `thinc` | `ab2` | `ab2` |
+| `plic` | `split` | `one-step` or `sweeps` |
+
+Any other one stops the run with a message. Implicit diffusion (`is_impdiff`) is not available yet with `ifc_advection = 'split'`.
+
+`is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
+
+With `ifc_advection = 'split'`, every `iout0d` time steps the code appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate.
 
 # About the `&numerics` namelist under `input.nml`
 
@@ -529,7 +571,7 @@ This namelist defines parameters related to the numerical discretization and com
 &numerics
 is_impdiff = F, is_impdiff_1d = F
 is_poisson_dtdma = F
-is_vof_sweep_transport = F
+is_harmonic_interpolation = F
 is_visc_limiter = F
 /
 ```
@@ -547,12 +589,9 @@ Note: at time steps beyond the explicit limit of the diffusion terms, other erro
 
 Note: `is_impdiff` is set to true automatically with `is_impdiff_1d = T`.
 
-`is_vof_sweep_transport` selects how the momentum and the scalar are transported with the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF=1`, see [`INFO_COMPILING.md`](INFO_COMPILING.md)), consistently with the mass in both cases:
+`is_harmonic_interpolation`, if true, interpolates the viscosity and the thermal conductivity between the two fluids **harmonically** instead of arithmetically (care should be taken if one of the conductivities is zero).
 
-* if false (default), in **one step** after the transport of the volume fraction, with its mass fluxes summed over the sweeps and central interpolation of the transported velocity: non-dissipative, but at large density ratios only robust at small CFL numbers (a ratio of 1000 needs a CFL number below about 0.1);
-* if true, **along with the sweeps** of the volume fraction: after each sweep, the momentum is updated with the mass fluxes of that sweep, and the velocity is the new momentum over the new mass, so that mass and momentum stay consistent throughout; the transported velocity is the average over the donor region of a linear reconstruction, limited near the interface and unlimited elsewhere. This is robust at any density ratio (a drop with a density ratio of 1e6 in a uniform flow keeps its velocity to round-off), at the cost of some numerical dissipation near the interface and of a higher cost per time step (about 1.5 times that of the default on GPUs, and 2.5 times on CPUs, in a three-dimensional test). Sub-steps of the volume fraction do not extend the stability of this transport beyond `cfl < 1`.
-
-`is_visc_limiter`, if true, **limits the viscosity next to the interface**: the viscosity interpolated to a cell edge or centre is bounded such that the kinematic viscosity, relative to the lightest momentum control volume around it, does not exceed that of the phase that dominates there. Without it, a sharp interface can pair the viscosity of the heavy fluid with the density of the light one, and explicit diffusion goes unstable at large viscosity and density ratios. It is true by default with the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF=1`), whose interface is sharp, and false otherwise.
+`is_visc_limiter`, if true, **limits the viscosity next to the interface**: the viscosity interpolated to a cell edge or centre is bounded such that the kinematic viscosity, relative to the lightest momentum control volume around it, does not exceed that of the phase that dominates there. Without it, a sharp interface can pair the viscosity of the heavy fluid with the density of the light one, and explicit diffusion goes unstable at large viscosity and density ratios. It is true by default with the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`), whose interface is sharp, and false otherwise.
 
 Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
 
@@ -633,6 +672,6 @@ The `hdf5` and `adios2` backends come from *CaNS*, and have not been tested yet 
 is_full_restart = F
 ```
 
-`is_full_restart`, if true, saves in each checkpoint what is needed to **restart the time integration exactly**: the pressure and the right-hand sides of the previous time step (e.g., `fld_po.bin`, `fld_dudtrko.bin`), as one file per field, and the last two time step sizes in `fld_dt.out`. A run restarted from such a checkpoint reproduces an uninterrupted run. By default, or if these files are not found, a restarted run begins with a first-order time step. With the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF`), the velocity and the scalar of the previous time step are saved as well (`fld_uo.bin`, `fld_so.bin`, ...).
+`is_full_restart`, if true, saves in each checkpoint what is needed to **restart the time integration exactly**: the pressure and the right-hand sides of the previous time step (e.g., `fld_po.bin`, `fld_dudtrko.bin`), as one file per field, and the last two time step sizes in `fld_dt.out`. A run restarted from such a checkpoint reproduces an uninterrupted run. By default, or if these files are not found, a restarted run begins with a first-order time step. With `ifc_advection = 'split'`, the velocity and the scalar of the previous time step are saved as well (`fld_uo.bin`, `fld_so.bin`, ...), or the transported ones with `ifc_transport = 'sweeps'`.
 
 If `&io` is not provided, *CaNS-Fizzy* defaults to `io_backend = 'mpiio'`. Note also that selecting `hdf5` or `adios2` requires compiling the code with support for the corresponding library; otherwise, *CaNS-Fizzy* falls back to `mpiio` with a warning at runtime.
