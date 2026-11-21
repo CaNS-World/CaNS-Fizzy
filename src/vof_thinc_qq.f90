@@ -59,12 +59,13 @@ module mod_vof_thinc_qq
     integer  :: i,j,k,ii,jj,kk
     real(rp) :: xx,yy,zz
     real(rp) :: vel_x,vel_y,vel_z, &
-                lpsi_x,lpsi_y,lpsi_z, &
+                lpsi_x,lpsi_y,lpsi_z,arg_x,arg_y,arg_z,d_full, &
                 lnormx_x,lnormy_y,lnormz_z, &
                 d_x,d_y,d_z,lflux_x,lflux_y,lflux_z
     logical  :: is_sdf
     !
     is_sdf = is_sdf_normals
+    d_full = 1.e3_rp/beta
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)
       do j=0,n(2)
@@ -107,9 +108,19 @@ module mod_vof_thinc_qq
             lpsi_x = psi(ii,j,k)
             lpsi_y = psi(i,jj,k)
             lpsi_z = psi(i,j,kk)
-            d_x = -.5_rp/beta*log(1._rp/(lpsi_x+eps)-1._rp+eps)
-            d_y = -.5_rp/beta*log(1._rp/(lpsi_y+eps)-1._rp+eps)
-            d_z = -.5_rp/beta*log(1._rp/(lpsi_z+eps)-1._rp+eps)
+            !
+            ! (the argument of the logarithm vanishes in a cell full of phase 1: the distance is then set
+            ! large enough for the flux below to be that of a full cell, as for an infinite distance)
+            !
+            arg_x = 1._rp/(lpsi_x+eps)-1._rp+eps
+            arg_y = 1._rp/(lpsi_y+eps)-1._rp+eps
+            arg_z = 1._rp/(lpsi_z+eps)-1._rp+eps
+            d_x = d_full
+            d_y = d_full
+            d_z = d_full
+            if(arg_x > 0._rp) d_x = -.5_rp/beta*log(arg_x)
+            if(arg_y > 0._rp) d_y = -.5_rp/beta*log(arg_y)
+            if(arg_z > 0._rp) d_z = -.5_rp/beta*log(arg_z)
           end if
           !
           lflux_x = 1._rp/(1._rp + exp(-2._rp*beta*(lnormx_x*xx + d_x)))
