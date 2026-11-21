@@ -162,6 +162,7 @@ These lines set the initial velocity field.
 * `ant`: three-dimensional Antuono vortex
 * `rot-x`, `rot-y`, `rot-z`: solid-body rotation with angular velocity $2 \pi$ around the axis X, Y or Z
 * `vor-x`, `vor-y`, `vor-z`: two-dimensional, time-dependent serpentine vortex in the plane normal to X, Y or Z
+* `def`: three-dimensional, time-dependent deformation field of LeVeque, with a period of 3
 
 The profile initializers (`zer`, `uni`, `cou`, `poi`, `tbl`, `iop`, `log`, `hcl`, `hcp`, `pdc`, `hdc`) accept `-x`, `-y`, or `-z` suffixes, for example `poi-y`. A bare name always means `-x`.
 
