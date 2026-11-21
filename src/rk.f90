@@ -159,9 +159,9 @@ module mod_rk
           rhox_p = rho + drho*0.5*(psi( i,j,k)+psi( i+1,j,k))
           rhoy_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j+1,k))
           rhoz_p = rho + drho*0.5*(psi( i,j,k)+psi( i,j,k+1))
-          u(i,j,k) = u(i,j,k)*rhox_n/rhox_p + (factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
-          v(i,j,k) = v(i,j,k)*rhoy_n/rhoy_p + (factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
-          w(i,j,k) = w(i,j,k)*rhoz_n/rhoz_p + (factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
+          u(i,j,k) = (u(i,j,k)*rhox_n + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k))/rhox_p
+          v(i,j,k) = (v(i,j,k)*rhoy_n + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k))/rhoy_p
+          w(i,j,k) = (w(i,j,k)*rhoz_n + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k))/rhoz_p
           dudtrko(i,j,k) = dudtrk(i,j,k)
           dvdtrko(i,j,k) = dvdtrk(i,j,k)
           dwdtrko(i,j,k) = dwdtrk(i,j,k)
@@ -171,26 +171,12 @@ module mod_rk
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
+    call mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
                      p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                     dudtrk,dvdtrk,dwdtrk)
-    !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          rhox_p = rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k))
-          rhoy_p = rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k))
-          rhoz_p = rho + drho*0.5*(psi(i,j,k)+psi(i,j,k+1))
-          u(i,j,k) = u(i,j,k) + factor12*dudtrk(i,j,k)/rhox_p
-          v(i,j,k) = v(i,j,k) + factor12*dvdtrk(i,j,k)/rhoy_p
-          w(i,j,k) = w(i,j,k) + factor12*dwdtrk(i,j,k)/rhoz_p
-        end do
-      end do
-    end do
+                     factor12,u,v,w)
   end subroutine rk
   !
   subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &

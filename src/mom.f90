@@ -826,15 +826,19 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_oth(n,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                         dudt,dvdt,dwdt)
+                         factor,u,v,w)
+    !
+    ! pressure, surface tension and body forces: integrated over the time `factor` and added to the velocity,
+    ! divided by the face density
+    !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_p,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   ) :: dt_r
@@ -850,9 +854,10 @@ module mod_mom
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
 #endif
-    real(rp), intent(inout), dimension( :, :, :)           :: dudt,dvdt,dwdt
+    real(rp), intent(in   ) :: factor
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     integer :: i,j,k
-    real(rp) :: rho,drho,rhobeta,drhobeta
+    real(rp) :: rho,drho,rhobeta,drhobeta,rho0i
     real(rp) :: dxi,dyi
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
                 p_ccc,p_pcc,p_cpc,p_ccp, &
@@ -877,6 +882,7 @@ module mod_mom
     !
     is_buoyant = is_boussinesq_buoyancy.and.present(s)
     rho     = rho12(2); drho = rho12(1)-rho12(2)
+    rho0i   = 1._rp/rho0
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)- rho12(2)*beta12(2)
     dxi = dli(1)
     dyi = dli(2)
@@ -984,9 +990,9 @@ module mod_mom
           dpdy_e = dpdy_e-surfy_e
           dpdz_e = dpdz_e-surfz_e
 #endif
-          dudt_aux = dudt_aux - (dpdx_e + rhoxp/rho0*(dpdx-dpdx_e))
-          dvdt_aux = dvdt_aux - (dpdy_e + rhoyp/rho0*(dpdy-dpdy_e))
-          dwdt_aux = dwdt_aux - (dpdz_e + rhozp/rho0*(dpdz-dpdz_e))
+          dudt_aux = dudt_aux - (dpdx_e + rhoxp*rho0i*(dpdx-dpdx_e))
+          dvdt_aux = dvdt_aux - (dpdy_e + rhoyp*rho0i*(dpdy-dpdy_e))
+          dwdt_aux = dwdt_aux - (dpdz_e + rhozp*rho0i*(dpdz-dpdz_e))
 #else
           dudt_aux = dudt_aux - dpdx
           dvdt_aux = dvdt_aux - dpdy
@@ -1011,9 +1017,9 @@ module mod_mom
           surfy_n(i,j,k) = surfy
           surfz_n(i,j,k) = surfz
 #endif
-          dudt(i,j,k) = dudt_aux
-          dvdt(i,j,k) = dvdt_aux
-          dwdt(i,j,k) = dwdt_aux
+          u(i,j,k) = u(i,j,k) + factor*dudt_aux/rhoxp
+          v(i,j,k) = v(i,j,k) + factor*dvdt_aux/rhoyp
+          w(i,j,k) = w(i,j,k) + factor*dwdt_aux/rhozp
         end do
       end do
     end do
@@ -1047,7 +1053,7 @@ module mod_mom
                                               surfx_o,surfy_o,surfz_o
 #endif
     real(rp), intent(out), dimension(3) :: fgrav,fsurf,fbuoy,momentum
-    real(rp) :: rho,drho,rhobeta,drhobeta,surf_factor
+    real(rp) :: rho,drho,rhobeta,drhobeta,surf_factor,rho0i
     real(rp) :: dxi,dyi,dzci_c,weight_f,weight_c
     real(rp) :: c_ccc,c_pcc,c_cpc,c_ccp,k_ccc,k_pcc,k_cpc,k_ccp
     real(rp) :: co_ccc,co_pcc,co_cpc,co_ccp
@@ -1069,6 +1075,7 @@ module mod_mom
     !
     is_buoyant = is_boussinesq_buoyancy.and.present(s)
     rho = rho12(2); drho = rho12(1)-rho12(2)
+    rho0i = 1._rp/rho0
     rhobeta = rho12(2)*beta12(2)
     drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
     dxi = dli(1); dyi = dli(2)
@@ -1133,9 +1140,9 @@ module mod_mom
           surfy_e = (1._rp+dt_r)*surfy_n(i,j,k)-dt_r*surfy_o(i,j,k)
           surfz_e = (1._rp+dt_r)*surfz_n(i,j,k)-dt_r*surfz_o(i,j,k)
 #if defined(_CONSTANT_COEFFS_POISSON)
-          surfx_f = surfx_e+rhoxp/rho0*(surfx-surfx_e)
-          surfy_f = surfy_e+rhoyp/rho0*(surfy-surfy_e)
-          surfz_f = surfz_e+rhozp/rho0*(surfz-surfz_e)
+          surfx_f = surfx_e+rhoxp*rho0i*(surfx-surfx_e)
+          surfy_f = surfy_e+rhoyp*rho0i*(surfy-surfy_e)
+          surfz_f = surfz_e+rhozp*rho0i*(surfz-surfz_e)
 #else
           surfx_f = surfx
           surfy_f = surfy

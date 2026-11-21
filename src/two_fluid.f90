@@ -133,6 +133,10 @@ module mod_two_fluid
     ! computes the normals and curvature based on a volume-of-fluid
     ! or level-set field using finite-differences based on Youngs method
     !
+    ! the normalized normals at the cell vertices are computed once and stored, and then averaged to the
+    ! cell centers and differentiated for the curvature (rather than computing the eight vertex normals of
+    ! each cell, i.e., each vertex normal eight times)
+    !
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
@@ -141,93 +145,67 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
     real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz,kappa
-    real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
-                psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
-                psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
+    real(rp), allocatable, dimension(:,:,:), save :: vnx,vny,vnz ! normals at the vertices (i+1/2,j+1/2,k+1/2)
+    real(rp) :: psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp
     real(rp) :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
                 my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
                 mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8
     real(rp) :: normi,norm_x,norm_y,norm_z
     integer  :: i,j,k
     !
+    if(.not.allocated(vnx)) then
+      allocate(vnx(0:n(1),0:n(2),0:n(3)),vny(0:n(1),0:n(2),0:n(3)),vnz(0:n(1),0:n(2),0:n(3)))
+      !$acc enter data create(vnx,vny,vnz) async(1)
+    end if
+    !
+    ! normals at the vertices, from the eight cells around them
+    !
     !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          psimmm = psi(i-1,j-1,k-1)
-          psimcm = psi(i-1,j  ,k-1)
-          psimpm = psi(i-1,j+1,k-1)
-          psicmm = psi(i  ,j-1,k-1)
-          psiccm = psi(i  ,j  ,k-1)
-          psicpm = psi(i  ,j+1,k-1)
-          psipmm = psi(i+1,j-1,k-1)
-          psipcm = psi(i+1,j  ,k-1)
-          psippm = psi(i+1,j+1,k-1)
-          psimmc = psi(i-1,j-1,k  )
-          psimcc = psi(i-1,j  ,k  )
-          psimpc = psi(i-1,j+1,k  )
-          psicmc = psi(i  ,j-1,k  )
+    !$OMP parallel do   collapse(3) DEFAULT(shared) &
+    !$OMP private(psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp,mx_1,my_1,mz_1,normi)
+    do k=0,n(3)
+      do j=0,n(2)
+        do i=0,n(1)
           psiccc = psi(i  ,j  ,k  )
           psicpc = psi(i  ,j+1,k  )
-          psipmc = psi(i+1,j-1,k  )
-          psipcc = psi(i+1,j  ,k  )
-          psippc = psi(i+1,j+1,k  )
-          psimmp = psi(i-1,j-1,k+1)
-          psimcp = psi(i-1,j  ,k+1)
-          psimpp = psi(i-1,j+1,k+1)
-          psicmp = psi(i  ,j-1,k+1)
           psiccp = psi(i  ,j  ,k+1)
           psicpp = psi(i  ,j+1,k+1)
-          psipmp = psi(i+1,j-1,k+1)
+          psipcc = psi(i+1,j  ,k  )
+          psippc = psi(i+1,j+1,k  )
           psipcp = psi(i+1,j  ,k+1)
           psippp = psi(i+1,j+1,k+1)
-          !
           mx_1 = 0.25*((psipcc+psippc+psipcp+psippp)-(psiccc+psicpc+psiccp+psicpp))*dli(1)
-          mx_2 = 0.25*((psipcc+psipmc+psipcp+psipmp)-(psiccc+psicmc+psiccp+psicmp))*dli(1)
-          mx_3 = 0.25*((psipcc+psippc+psipcm+psippm)-(psiccc+psicpc+psiccm+psicpm))*dli(1)
-          mx_4 = 0.25*((psipcc+psipmc+psipcm+psipmm)-(psiccc+psicmc+psiccm+psicmm))*dli(1)
-          mx_5 = 0.25*((psiccc+psicpc+psiccp+psicpp)-(psimcc+psimpc+psimcp+psimpp))*dli(1)
-          mx_6 = 0.25*((psiccc+psicmc+psiccp+psicmp)-(psimcc+psimmc+psimcp+psimmp))*dli(1)
-          mx_7 = 0.25*((psiccc+psicpc+psiccm+psicpm)-(psimcc+psimpc+psimcm+psimpm))*dli(1)
-          mx_8 = 0.25*((psiccc+psicmc+psiccm+psicmm)-(psimcc+psimmc+psimcm+psimmm))*dli(1)
-          !
           my_1 = 0.25*((psicpc+psippc+psicpp+psippp)-(psiccc+psipcc+psiccp+psipcp))*dli(2)
-          my_2 = 0.25*((psiccc+psipcc+psiccp+psipcp)-(psicmc+psipmc+psicmp+psipmp))*dli(2)
-          my_3 = 0.25*((psicpc+psippc+psicpm+psippm)-(psiccc+psipcc+psiccm+psipcm))*dli(2)
-          my_4 = 0.25*((psiccc+psipcc+psiccm+psipcm)-(psicmc+psipmc+psicmm+psipmm))*dli(2)
-          my_5 = 0.25*((psicpc+psimpc+psicpp+psimpp)-(psiccc+psimcc+psiccp+psimcp))*dli(2)
-          my_6 = 0.25*((psiccc+psimcc+psiccp+psimcp)-(psicmc+psimmc+psicmp+psimmp))*dli(2)
-          my_7 = 0.25*((psicpc+psimpc+psicpm+psimpm)-(psiccc+psimcc+psiccm+psimcm))*dli(2)
-          my_8 = 0.25*((psiccc+psimcc+psiccm+psimcm)-(psicmc+psimmc+psicmm+psimmm))*dli(2)
-          !
-          mz_1 = 0.25*((psiccp+psipcp+psicpp+psippp)-(psiccc+psipcc+psicpc+psippc))*dzci(k  )
-          mz_2 = 0.25*((psiccp+psipcp+psicmp+psipmp)-(psiccc+psipcc+psicmc+psipmc))*dzci(k  )
-          mz_3 = 0.25*((psiccc+psipcc+psicpc+psippc)-(psiccm+psipcm+psicpm+psippm))*dzci(k-1)
-          mz_4 = 0.25*((psiccc+psipcc+psicmc+psipmc)-(psiccm+psipcm+psicmm+psipmm))*dzci(k-1)
-          mz_5 = 0.25*((psiccp+psimcp+psicpp+psimpp)-(psiccc+psimcc+psicpc+psimpc))*dzci(k  )
-          mz_6 = 0.25*((psiccp+psimcp+psicmp+psimmp)-(psiccc+psimcc+psicmc+psimmc))*dzci(k  )
-          mz_7 = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
-          mz_8 = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
+          mz_1 = 0.25*((psiccp+psipcp+psicpp+psippp)-(psiccc+psipcc+psicpc+psippc))*dzci(k)
           !
           ! the vectors are normalized with the reciprocal of their magnitude: away from the interface they vanish,
           ! and a division with a zero numerator is slow on GPUs
           !
           normi = 1._rp/(sqrt(mx_1**2+my_1**2+mz_1**2)+eps)
-          mx_1 = mx_1*normi; my_1 = my_1*normi; mz_1 = mz_1*normi
-          normi = 1._rp/(sqrt(mx_2**2+my_2**2+mz_2**2)+eps)
-          mx_2 = mx_2*normi; my_2 = my_2*normi; mz_2 = mz_2*normi
-          normi = 1._rp/(sqrt(mx_3**2+my_3**2+mz_3**2)+eps)
-          mx_3 = mx_3*normi; my_3 = my_3*normi; mz_3 = mz_3*normi
-          normi = 1._rp/(sqrt(mx_4**2+my_4**2+mz_4**2)+eps)
-          mx_4 = mx_4*normi; my_4 = my_4*normi; mz_4 = mz_4*normi
-          normi = 1._rp/(sqrt(mx_5**2+my_5**2+mz_5**2)+eps)
-          mx_5 = mx_5*normi; my_5 = my_5*normi; mz_5 = mz_5*normi
-          normi = 1._rp/(sqrt(mx_6**2+my_6**2+mz_6**2)+eps)
-          mx_6 = mx_6*normi; my_6 = my_6*normi; mz_6 = mz_6*normi
-          normi = 1._rp/(sqrt(mx_7**2+my_7**2+mz_7**2)+eps)
-          mx_7 = mx_7*normi; my_7 = my_7*normi; mz_7 = mz_7*normi
-          normi = 1._rp/(sqrt(mx_8**2+my_8**2+mz_8**2)+eps)
-          mx_8 = mx_8*normi; my_8 = my_8*normi; mz_8 = mz_8*normi
+          vnx(i,j,k) = mx_1*normi
+          vny(i,j,k) = my_1*normi
+          vnz(i,j,k) = mz_1*normi
+        end do
+      end do
+    end do
+    !
+    ! normals and curvature at the cell centers
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared) &
+    !$OMP private(mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8,my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8) &
+    !$OMP private(mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8,normi,norm_x,norm_y,norm_z)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          mx_1 = vnx(i  ,j  ,k  ); my_1 = vny(i  ,j  ,k  ); mz_1 = vnz(i  ,j  ,k  )
+          mx_2 = vnx(i  ,j-1,k  ); my_2 = vny(i  ,j-1,k  ); mz_2 = vnz(i  ,j-1,k  )
+          mx_3 = vnx(i  ,j  ,k-1); my_3 = vny(i  ,j  ,k-1); mz_3 = vnz(i  ,j  ,k-1)
+          mx_4 = vnx(i  ,j-1,k-1); my_4 = vny(i  ,j-1,k-1); mz_4 = vnz(i  ,j-1,k-1)
+          mx_5 = vnx(i-1,j  ,k  ); my_5 = vny(i-1,j  ,k  ); mz_5 = vnz(i-1,j  ,k  )
+          mx_6 = vnx(i-1,j-1,k  ); my_6 = vny(i-1,j-1,k  ); mz_6 = vnz(i-1,j-1,k  )
+          mx_7 = vnx(i-1,j  ,k-1); my_7 = vny(i-1,j  ,k-1); mz_7 = vnz(i-1,j  ,k-1)
+          mx_8 = vnx(i-1,j-1,k-1); my_8 = vny(i-1,j-1,k-1); mz_8 = vnz(i-1,j-1,k-1)
           !
           ! compute the normal vector
           !

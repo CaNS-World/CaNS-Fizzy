@@ -30,81 +30,74 @@ program cans
   use, intrinsic :: ieee_arithmetic, only: is_nan => ieee_is_nan
   use mpi
   use decomp_2d
-  use mod_bound          , only: boundp,bounduvw,updt_rhs_b
-  use mod_chkdiv         , only: chkdiv
-  use mod_chkdt          , only: chkdt
-  use mod_common_mpi     , only: myid,ierr,dinfo_dtdma
-  use mod_correc         , only: correc
-  use mod_fft            , only: fftini,fftend
-  use mod_fillps         , only: fillps
-  use mod_forcing        , only: lscale_forcing
-  use mod_initflow       , only: initflow,initscal
-  use mod_initgrid       , only: initgrid,save_grid
-  use mod_initmpi        , only: initmpi
-  use mod_impdiff        , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing, &
-                                 impdiff_cc_mom_updt,impdiff_cc_scal_updt
+  use mod_bound              , only: boundp,bounduvw,updt_rhs_b
+  use mod_chkdiv             , only: chkdiv
+  use mod_chkdt              , only: chkdt
+  use mod_common_mpi         , only: myid,ierr,dinfo_dtdma
+  use mod_correc             , only: correc
+  use mod_fft                , only: fftini,fftend
+  use mod_fillps             , only: fillps
+  use mod_forcing            , only: lscale_forcing
+  use mod_initflow           , only: initflow,initscal
+  use mod_initgrid           , only: initgrid,save_grid
+  use mod_initmpi            , only: initmpi
+  use mod_impdiff            , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing, &
+                                     impdiff_cc_mom_updt,impdiff_cc_scal_updt
 #if !defined(_CONSTANT_COEFFS_POISSON)
-  use mod_impdiff        , only: impdiff_vc_mom_updt,impdiff_vc_mom_solve,impdiff_vc_scal_updt,impdiff_vc_scal_solve
+  use mod_impdiff            , only: impdiff_vc_mom_updt,impdiff_vc_mom_solve,impdiff_vc_scal_updt,impdiff_vc_scal_solve
 #endif
-  use mod_initsolver     , only: initsolver
-  use mod_load           , only: load_one
-  use mod_mom            , only: cmpt_momentum
-  use mod_rk             , only: tm => rk,tm_scal => rk_scal,tm_2fl => rk_2fl
-  use mod_output         , only: is_output_due, &
-                                 out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
-  use mod_param          , only: ng,l,dl,dli, &
-                                 gtype,gr, &
-                                 cfl,dtmax,dt_f, &
-                                 is_solve_ns,is_track_interface, &
-                                 inivel,inisca,inipsi, &
-                                 is_wallturb,is_forced_hit, &
-                                 nstep,time_max,tw_max,stop_type, &
-                                 restart,is_overwrite_save,nsaves_max, &
-                                 icheck,iout0d,iout1d,iout2d,iout3d,isave, &
-                                 tout0d,tout1d,tout2d,tout3d,tsave, &
-                                 cbcvel,bcvel,cbcpre,bcpre, &
-                                 cbcsca,bcsca,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
-                                 is_forced,bforce,ssource, &
-                                 gacc,nscal, &
-                                 rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
-                                 psi_thickness_factor, &
-                                 acdi_gam_factor,acdi_gam_min, &
-                                 vof_thinc_beta, &
-                                 dims, &
-                                 nb,is_bound, &
-                                 small, &
-                                 datadir,io_ext,is_full_restart, &
-                                 read_input, &
-                                 is_debug,is_debug_poisson, &
-                                 is_timing, &
-                                 is_impdiff,is_impdiff_1d, &
-                                 is_poisson_dtdma, &
-                                 is_mask_divergence_check, &
-                                 nh_v,nh_p,nh_s,nh_psi,nh_g
-  use mod_sanity         , only: test_sanity_input,test_sanity_solver
-  use mod_solve_helmholtz, only: solve_helmholtz,rhs_bound
-  use mod_acdi           , only: acdi_set_epsilon
-#if !defined(_INTERFACE_CAPTURING_VOF)
-  use mod_acdi           , only: acdi_set_gamma,acdi_cmpt_phi
-#elif defined(_SDF_NORMALS)
-  use mod_vof_thinc_qq   , only: vof_thinc_cmpt_phi
-#endif
-  use mod_two_fluid      , only: init2fl,cmpt_norm_curv => cmpt_norm_curv_youngs,bulk_mean_12_stag
+  use mod_initsolver         , only: initsolver
+  use mod_interface_capturing, only: ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_update_params,ifc_write_log
+  use mod_load               , only: load_one
+  use mod_mom                , only: cmpt_momentum
+  use mod_rk                 , only: tm => rk,tm_scal => rk_scal
+  use mod_output             , only: is_output_due, &
+                                     out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
+  use mod_param              , only: ng,l,dl,dli, &
+                                     gtype,gr, &
+                                     cfl,dtmax,dt_f, &
+                                     is_solve_ns,is_track_interface, &
+                                     inivel,inisca,inipsi, &
+                                     is_wallturb,is_forced_hit, &
+                                     nstep,time_max,tw_max,stop_type, &
+                                     restart,is_overwrite_save,nsaves_max, &
+                                     icheck,iout0d,iout1d,iout2d,iout3d,isave, &
+                                     tout0d,tout1d,tout2d,tout3d,tsave, &
+                                     cbcvel,bcvel,cbcpre,bcpre, &
+                                     cbcsca,bcsca, &
+                                     is_forced,bforce,ssource, &
+                                     gacc,nscal, &
+                                     rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
+                                     psi_thickness_factor, &
+                                     dims, &
+                                     nb,is_bound, &
+                                     small, &
+                                     datadir,io_ext,is_full_restart, &
+                                     read_input, &
+                                     is_debug,is_debug_poisson, &
+                                     is_timing, &
+                                     is_impdiff,is_impdiff_1d, &
+                                     is_poisson_dtdma, &
+                                     is_mask_divergence_check, &
+                                     nh_v,nh_p,nh_s,nh_psi,nh_g
+  use mod_sanity             , only: test_sanity_input,test_sanity_solver
+  use mod_solve_helmholtz    , only: solve_helmholtz,rhs_bound
+  use mod_two_fluid          , only: bulk_mean_12_stag
 #if !defined(_CONSTANT_COEFFS_POISSON)
-  use mod_solver_vc      , only: solver_vc,solver_vc_end
+  use mod_solver_vc          , only: solver_vc,solver_vc_end
 #endif
 #if !defined(_OPENACC)
-  use mod_solver         , only: solver
+  use mod_solver             , only: solver
 #else
-  use mod_solver_gpu     , only: solver => solver_gpu
-  use mod_workspaces     , only: init_wspace_arrays,set_cufft_wspace,cudecomp_finalize
-  use mod_common_cudecomp, only: istream_acc_queue_1,ap_z_dtdma
+  use mod_solver_gpu         , only: solver => solver_gpu
+  use mod_workspaces         , only: init_wspace_arrays,set_cufft_wspace,cudecomp_finalize
+  use mod_common_cudecomp    , only: istream_acc_queue_1,ap_z_dtdma
 #endif
-  use mod_updatep        , only: updatep
-  use mod_posix          , only: rename_file,read_link
-  use mod_utils          , only: bulk_mean
+  use mod_updatep            , only: updatep
+  use mod_posix              , only: rename_file,read_link
+  use mod_utils              , only: bulk_mean
 #if defined(_OPENACC)
-  use mod_utils          , only: device_memory_footprint
+  use mod_utils              , only: device_memory_footprint
 #endif
   use mod_types
   use omp_lib
@@ -421,7 +414,7 @@ program cans
                             dzc,dzf,dzci,dzfi,dzci_g,dzfi_g,nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
   end if
   !
-  call acdi_set_epsilon(dl,nh_g,dzfi,psi_thickness_factor,seps) ! interface width, used by the initial conditions of all methods
+  call ifc_init_params(dl,nh_g,dzfi,psi_thickness_factor,seps)
   !
   ! checkpoint variables: the fields, followed by the terms of the previous time step needed to
   ! restart the time integration exactly, saved and loaded with `is_full_restart = T`
@@ -504,7 +497,7 @@ program cans
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                   bforce,is_wallturb,time,u,v,w,p)
     if(nscal > 0) call initscal(inisca,bcsca,ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
-    call init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
+    call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
     if(myid == 0) print*, '*** Initial condition successfully set ***'
   else
     do is=1,nio
@@ -581,29 +574,7 @@ program cans
   !$acc enter data create(phi) async(1)
 #endif
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
-  call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
-  !$acc wait
-  !
-#if defined(_SDF_NORMALS)
-#if !defined(_INTERFACE_CAPTURING_VOF)
-  call acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
-#else
-  call vof_thinc_cmpt_phi(n,nh_psi,vof_thinc_beta,psi,phi)
-#endif
-  call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
-#else
-  call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
-#endif
-  call boundp(cbccur,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-  call boundp(cbcnor(:,:,1),n,nh_psi,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-  call boundp(cbcnor(:,:,2),n,nh_psi,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-  call boundp(cbcnor(:,:,3),n,nh_psi,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
-  !
-#if !defined(_INTERFACE_CAPTURING_VOF)
-  call acdi_set_gamma(n,nh_v,acdi_gam_factor,u,v,w,gam)
-  gam = max(gam,acdi_gam_min)
-  if(myid == 0) print*, 'ACDI parameters. Gamma: ', gam, 'Epsilon: ', seps
-#endif
+  call ifc_init(n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   !
   ! post-process and write initial condition
   !
@@ -679,24 +650,8 @@ program cans
       end do
     end do
     if(is_track_interface) then
-      call tm_2fl(tm_coeff,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
-                  psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
-      call bounduvw(cbcvel,n,nh_psi,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
-      call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
-#if defined(_SDF_NORMALS)
-#if !defined(_INTERFACE_CAPTURING_VOF)
-      call acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
-#else
-      call vof_thinc_cmpt_phi(n,nh_psi,vof_thinc_beta,psi,phi)
-#endif
-      call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
-#else
-      call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
-#endif
-      call boundp(cbccur,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-      call boundp(cbcnor(:,:,1),n,nh_psi,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-      call boundp(cbcnor(:,:,2),n,nh_psi,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-      call boundp(cbcnor(:,:,3),n,nh_psi,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      call ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
+                       normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
     else
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)
@@ -850,10 +805,7 @@ program cans
       if(tw    >= tw_max  ) is_done = is_done.or..true.
     end if
     dto = dt
-#if !defined(_INTERFACE_CAPTURING_VOF)
-    call acdi_set_gamma(n,nh_v,acdi_gam_factor,u,v,w,gam)
-    gam = max(gam,acdi_gam_min)
-#endif
+    call ifc_update_params(n,nh_v,u,v,w,gam)
     if(icheck > 0.and.mod(istep,max(icheck,1)) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
       call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
@@ -920,13 +872,7 @@ program cans
         call out0d(trim(datadir)//'forcing_balance.out',19,var)
       end if
       !
-#if !defined(_INTERFACE_CAPTURING_VOF)
-      var(1) = 1.*istep
-      var(2) = time
-      var(3) = gam
-      var(4) = seps
-      call out0d(trim(datadir)//'log_acdi.out',4,var)
-#endif
+      call ifc_write_log(istep,time,gam,seps)
     end if
     write(fldnum,'(i7.7)') istep
     if(is_output_due(istep,iout1d,tout1d,time_start,time)) then
