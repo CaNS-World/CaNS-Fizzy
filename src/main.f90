@@ -142,7 +142,7 @@ program cans
   real(rp), allocatable, dimension(:) :: dzc  ,dzf  ,zc  ,zf  ,dzci  ,dzfi, &
                                          dzc_g,dzf_g,zc_g,zf_g,dzci_g,dzfi_g, &
                                          xc_g,xf_g,yc_g,yf_g, &
-                                         grid_vol_ratio_c,grid_vol_ratio_f
+                                         grid_vol_ratio_c,grid_vol_ratio_f,wzc
   real(rp), dimension(3) :: dpdl,meanvel,momentum,momentum_o,wall_force_imp
   real(rp), dimension(3,6) :: force_balance
   real(rp), dimension(2) :: tm_coeff
@@ -242,6 +242,7 @@ program cans
            yc_g(1-nh_g:ng(2)+nh_g),yf_g(1-nh_g:ng(2)+nh_g))
   allocate(grid_vol_ratio_c,mold=dzc)
   allocate(grid_vol_ratio_f,mold=dzf)
+  allocate(wzc,mold=dzc)
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
            rhsbp%z(n(1),n(2),0:1))
@@ -357,6 +358,16 @@ program cans
   do k=1-nh_g,n(3)+nh_g
     grid_vol_ratio_c(k) = dl(1)*dl(2)*dzc(k)/(l(1)*l(2)*l(3))
     grid_vol_ratio_f(k) = dl(1)*dl(2)*dzf(k)/(l(1)*l(2)*l(3))
+  end do
+  !
+  ! weight of cell `k` in the volume average of a cell-centered field at the face between cells `k` and `k+1`
+  ! (the control volume of the vertical velocity), which is the average that conserves mass
+  !
+  !$acc enter data create(wzc) async
+  !$acc parallel loop default(present) async
+  do k=1-nh_g,n(3)+nh_g
+    wzc(k) = 0.5
+    if(k < n(3)+nh_g) wzc(k) = dzf(k)/(dzf(k)+dzf(k+1))
   end do
   !$acc update self(zc,zf,dzc,dzf,dzci,dzfi) async
   !$acc exit data copyout(zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
@@ -696,12 +707,12 @@ program cans
       rho_av(:) = 0.
       is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
       if(is_cmpt_rho_av(1)) &
-        call bulk_mean_12_stag(n,nh_psi,nh_g,1,grid_vol_ratio_f,psi,rho12,rho_av(1))
+        call bulk_mean_12_stag(n,nh_psi,nh_g,1,grid_vol_ratio_f,wzc,psi,rho12,rho_av(1))
       if(is_cmpt_rho_av(2)) &
-        call bulk_mean_12_stag(n,nh_psi,nh_g,2,grid_vol_ratio_f,psi,rho12,rho_av(2))
+        call bulk_mean_12_stag(n,nh_psi,nh_g,2,grid_vol_ratio_f,wzc,psi,rho12,rho_av(2))
       if(is_cmpt_rho_av(3)) &
-        call bulk_mean_12_stag(n,nh_psi,nh_g,3,grid_vol_ratio_c,psi,rho12,rho_av(3))
-      call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,grid_vol_ratio_c,grid_vol_ratio_f, &
+        call bulk_mean_12_stag(n,nh_psi,nh_g,3,grid_vol_ratio_c,wzc,psi,rho12,rho_av(3))
+      call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc,grid_vol_ratio_c,grid_vol_ratio_f, &
               dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -719,14 +730,14 @@ program cans
           ! zero-net-acceleration forcing: the wall shear of the terms integrated implicitly is balanced
           ! here, first with its value at the old time level, before the solve
           !
-          call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum_o)
-          call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+          call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum_o)
+          call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &
                                   wall_force_imp,momentum)
           wall_force_imp(:) = wall_force_imp(:)*dtrk
-          call impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,wall_force_imp,u,v,w)
+          call impdiff_updt_forcing(n,nh_v,nh_psi,nh_g,wzc,rho12,psi,wall_force_imp,u,v,w)
         end if
         if(is_impdiff_1d) then
-          call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
+          call impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbcvel,bcvel,dzc,dzf,dzci,dzfi,wzc,0.5_rp*dtrk,rho12,mu12,psi,u,v,w)
         else if(is_impdiff_cc) then
           call impdiff_cc_mom_updt(n,nh_v,0.5_rp*dtrk,u,v,w)
           call solve_helmholtz(n,nh_v,ng,hi,arrplanu,normfftu,alpha, &
@@ -737,9 +748,9 @@ program cans
                                lambdaxyw,aw,bw,cw,rhsbw%x,rhsbw%y,rhsbw%z,is_bound,cbcvel(:,:,3),['c','c','f'],w)
 #if !defined(_CONSTANT_COEFFS_POISSON)
         else
-          call impdiff_vc_mom_updt(n,nh_v,nh_psi,0.5_rp*dtrk,rho12,psi,u,v,w)
+          call impdiff_vc_mom_updt(n,nh_v,nh_psi,nh_g,wzc,0.5_rp*dtrk,rho12,psi,u,v,w)
           call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
-          call impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbcvel,cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dtrk, &
+          call impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbcvel,cbcpre,is_bound,dli,dzci,dzfi,wzc,0.5_rp*dtrk, &
                                     rho12,mu12,psi,u,v,w)
 #endif
         end if
@@ -747,9 +758,9 @@ program cans
           !
           ! and then with the small remainder that keeps the momentum unchanged by the implicit integration
           !
-          call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+          call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
           momentum(:) = momentum_o(:)-momentum(:)
-          call impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,momentum,u,v,w)
+          call impdiff_updt_forcing(n,nh_v,nh_psi,nh_g,wzc,rho12,psi,momentum,u,v,w)
           force_balance(:,1) = force_balance(:,1) + (wall_force_imp(:)+momentum(:))*dtrki
           force_balance(:,5) = force_balance(:,5) + (wall_force_imp(:)+momentum(:))*dtrki
         end if
@@ -761,17 +772,17 @@ program cans
       call solver(n,nh_p,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp,is_dtdma_update_p,ap_d,cp_d, &
                   .not.is_impdiff)
 #else
-      call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzfi,is_bound,rho12,psi,pp,po)
+      call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzfi,wzc,is_bound,rho12,psi,pp,po)
 #endif
       call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,pp)
 #if defined(_CONSTANT_COEFFS_POISSON)
-      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk/rho0,pp,psi,u,v,w)
+      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,wzc,rho12,dtrk/rho0,pp,psi,u,v,w)
 #else
-      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dtrk,pp,psi,u,v,w)
+      call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,wzc,rho12,dtrk,pp,psi,u,v,w)
 #endif
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
       if(any(is_forced(:))) then
-        call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+        call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
         where(is_forced(:)) force_balance(:,6) = (momentum(:)-force_balance(:,6))/dt
       end if
       call updatep(n,nh_p,nh_g,dli,dzci,dzfi,alpha,pp,p)

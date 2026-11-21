@@ -75,7 +75,7 @@ module mod_impdiff
     end do
   end subroutine impdiff_z_mom_rhs
   !
-  subroutine impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbc,bc,dzc,dzf,dzci,dzfi,theta,rho12,mu12,psi,u,v,w)
+  subroutine impdiff_z_mom_solve(n,nh_v,nh_psi,nh_g,cbc,bc,dzc,dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi,u,v,w)
     !
     ! solves, for each velocity component u_q and each line along z,
     !   rho_q u_q - theta*d/dz(c_q mu du_q/dz) = rho_q u_q* + theta*d/dz(c_q mu du_q/dz)^n,
@@ -91,7 +91,7 @@ module mod_impdiff
     integer , intent(in   )               :: nh_v,nh_psi,nh_g
     character(len=1), intent(in), dimension(0:1,3,3) :: cbc
     real(rp), intent(in   ), dimension(0:1,3,3)      :: bc
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
@@ -103,10 +103,11 @@ module mod_impdiff
     end if
     call solve_lines_c(n,nh_v,nh_psi,nh_g,1,0,cbc(:,3,1),bc(:,3,1),dzc,dzci,dzfi,theta,rho12,mu12,psi,dud,cw,u)
     call solve_lines_c(n,nh_v,nh_psi,nh_g,0,1,cbc(:,3,2),bc(:,3,2),dzc,dzci,dzfi,theta,rho12,mu12,psi,dvd,cw,v)
-    call solve_lines_f(n,nh_v,nh_psi,nh_g    ,cbc(:,3,3),bc(:,3,3),dzf,dzci,dzfi,theta,rho12,mu12,psi,dwd,cw,w)
+    call solve_lines_f(n,nh_v,nh_psi,nh_g    ,cbc(:,3,3),bc(:,3,3),dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi,dwd,cw,w)
   end subroutine impdiff_z_mom_solve
   !
-  subroutine impdiff_cc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,visc0,rho12,psi,psio,u,v,w,dudt,dvdt,dwdt,dudto,dvdto,dwdto)
+  subroutine impdiff_cc_mom_rhs(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,visc0,rho12,psi,psio,u,v,w,dudt,dvdt,dwdt, &
+                                dudto,dvdto,dwdto)
     !
     ! constant-coefficient implicit diffusion in all directions: the term that is integrated implicitly is
     ! the Laplacian of each velocity component times a reference kinematic viscosity, visc0*lap(u_q);
@@ -121,7 +122,7 @@ module mod_impdiff
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_v,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   )               :: visc0
     real(rp), intent(in   ), dimension(2) :: rho12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
@@ -152,10 +153,11 @@ module mod_impdiff
                               ((w(i,j,k+1)-w(i,j,k))*dzfi(k+1)-(w(i,j,k)-w(i,j,k-1))*dzfi(k))*dzci(k))
           dudt(i,j,k) = dudt(i,j,k) - (rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k)))*dud(i,j,k)
           dvdt(i,j,k) = dvdt(i,j,k) - (rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k)))*dvd(i,j,k)
-          dwdt(i,j,k) = dwdt(i,j,k) - (rho + drho*0.5*(psi(i,j,k)+psi(i,j,k+1)))*dwd(i,j,k)
+          dwdt(i,j,k) = dwdt(i,j,k) - (rho + drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1)))*dwd(i,j,k)
           dudto(i,j,k) = dudto(i,j,k) + drho*0.5*(psio(i,j,k)+psio(i+1,j,k)-psi(i,j,k)-psi(i+1,j,k))*dud(i,j,k)
           dvdto(i,j,k) = dvdto(i,j,k) + drho*0.5*(psio(i,j,k)+psio(i,j+1,k)-psi(i,j,k)-psi(i,j+1,k))*dvd(i,j,k)
-          dwdto(i,j,k) = dwdto(i,j,k) + drho*0.5*(psio(i,j,k)+psio(i,j,k+1)-psi(i,j,k)-psi(i,j,k+1))*dwd(i,j,k)
+          dwdto(i,j,k) = dwdto(i,j,k) + drho*(wzc(k)*psio(i,j,k)+(1.-wzc(k))*psio(i,j,k+1) - &
+                                              wzc(k)*psi( i,j,k)-(1.-wzc(k))*psi( i,j,k+1))*dwd(i,j,k)
         end do
       end do
     end do
@@ -359,14 +361,15 @@ module mod_impdiff
     end do
   end subroutine impdiff_vc_mom_cmpt
   !
-  subroutine impdiff_vc_mom_updt(n,nh_v,nh_psi,theta,rho12,psi,u,v,w)
+  subroutine impdiff_vc_mom_updt(n,nh_v,nh_psi,nh_g,wzc,theta,rho12,psi,u,v,w)
     !
     ! adds the explicit half of the Crank-Nicolson integration of the terms of `impdiff_vc_mom_rhs`,
     ! with `theta` half of the time step
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_v,nh_psi
+    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(1-nh_g:) :: wzc
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rho12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
@@ -381,13 +384,14 @@ module mod_impdiff
         do i=1,n(1)
           u(i,j,k) = u(i,j,k) + theta*dud(i,j,k)/(rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k)))
           v(i,j,k) = v(i,j,k) + theta*dvd(i,j,k)/(rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k)))
-          w(i,j,k) = w(i,j,k) + theta*dwd(i,j,k)/(rho + drho*0.5*(psi(i,j,k)+psi(i,j,k+1)))
+          w(i,j,k) = w(i,j,k) + theta*dwd(i,j,k)/(rho + drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1)))
         end do
       end do
     end do
   end subroutine impdiff_vc_mom_updt
   !
-  subroutine impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbc,cbcpre,is_bound,dli,dzci,dzfi,theta,rho12,mu12,psi,u,v,w)
+  subroutine impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbc,cbcpre,is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi, &
+                                  u,v,w)
     !
     ! solves for the implicit half of the Crank-Nicolson integration, in correction form: with u_q the input
     ! velocity (which includes the explicit half, and whose halos and boundary values must be up to date),
@@ -403,7 +407,7 @@ module mod_impdiff
     character(len=1), intent(in), dimension(0:1,3)   :: cbcpre
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
@@ -413,11 +417,11 @@ module mod_impdiff
     !
     call impdiff_vc_mom_cmpt(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,mu12,psi,u,v,w,dud,dvd,dwd)
     allocate(coeffs(0:6,n(1),n(2),n(3)))
-    call helmholtz_coeffs(n,nh_psi,nh_g,1,cbc(:,:,1),is_bound,dli,dzci,dzfi,theta,rho12,mu12,psi,coeffs,dud)
+    call helmholtz_coeffs(n,nh_psi,nh_g,1,cbc(:,:,1),is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,dud)
     call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dud)
-    call helmholtz_coeffs(n,nh_psi,nh_g,2,cbc(:,:,2),is_bound,dli,dzci,dzfi,theta,rho12,mu12,psi,coeffs,dvd)
+    call helmholtz_coeffs(n,nh_psi,nh_g,2,cbc(:,:,2),is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,dvd)
     call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dvd)
-    call helmholtz_coeffs(n,nh_psi,nh_g,3,cbc(:,:,3),is_bound,dli,dzci,dzfi,theta,rho12,mu12,psi,coeffs,dwd)
+    call helmholtz_coeffs(n,nh_psi,nh_g,3,cbc(:,:,3),is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,dwd)
     call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dwd)
     deallocate(coeffs)
     !$OMP parallel do   collapse(3) DEFAULT(shared)
@@ -542,7 +546,7 @@ module mod_impdiff
     !
     call impdiff_vc_scal_cmpt(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,ka12,psi,s,dsd)
     allocate(coeffs(0:6,n(1),n(2),n(3)))
-    call helmholtz_coeffs(n,nh_psi,nh_g,0,cbc,is_bound,dli,dzci,dzfi,theta,rhocp12,ka12,psi,coeffs,dsd)
+    call helmholtz_coeffs(n,nh_psi,nh_g,0,cbc,is_bound,dli,dzci,dzfi,dzci,theta,rhocp12,ka12,psi,coeffs,dsd) ! (no weights needed)
     call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dsd)
     deallocate(coeffs)
     !$OMP parallel do   collapse(3) DEFAULT(shared)
@@ -555,14 +559,15 @@ module mod_impdiff
     end do
   end subroutine impdiff_vc_scal_solve
   !
-  subroutine helmholtz_coeffs(n,nh_psi,nh_g,iq,cbc,is_bound,dli,dzci,dzfi,theta,rho12,mu12,psi,coeffs,rhs)
+  subroutine helmholtz_coeffs(n,nh_psi,nh_g,iq,cbc,is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,rhs)
     !
     ! matrix and right-hand side of the system of `impdiff_vc_mom_solve` for a variable staggered along
     ! direction `iq` (0: cell-centered, with `rho12` and `mu12` its storage and diffusion coefficients):
     !   coeffs(0)*dp_c + sum_nb coeffs(nb)*dp_nb = rhs,
     ! with the lower and upper neighbours along direction `idir` at entries 2*idir-1 and 2*idir;
     ! each equation is multiplied by the height of its control volume, which makes the matrix symmetric;
-    ! on input `rhs` holds the diffusion term of the present field
+    ! on input `rhs` holds the diffusion term of the present field; `wzc` are the weights of the volume average
+    ! at the z faces, used for the density of a variable staggered along z
     !
     ! boundaries: the correction of a variable centered along the direction mirrors its interior value in the
     ! ghost cell, with a minus (plus) sign for a Dirichlet (Neumann) condition; a boundary node of a
@@ -576,7 +581,7 @@ module mod_impdiff
     character(len=1), intent(in), dimension(0:1,3) :: cbc
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
@@ -628,6 +633,7 @@ module mod_impdiff
           cs(:,1) = cs(:,1)*dli(1)**2*vol
           cs(:,2) = cs(:,2)*dli(2)**2*vol
           cs(:,:) = cs(:,:)*theta
+          if(iq == 3) psic = wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1) ! volume average, for the density
           rhop = (rho + drho*psic)*vol
           cc   = rhop + sum(cs(:,:))
           !
@@ -672,7 +678,7 @@ module mod_impdiff
   end subroutine helmholtz_coeffs
 #endif
   !
-  subroutine impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,psio, &
+  subroutine impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &
                                 wall_force,dwall_force_old)
     !
     ! computes the wall shear force per unit volume carried by the terms that are integrated implicitly,
@@ -688,7 +694,7 @@ module mod_impdiff
     integer , intent(in ), dimension(3) :: n
     integer , intent(in )               :: nh_psi,nh_g
     logical , intent(in ), dimension(3) :: is_forced
-    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f,wzc
     real(rp), intent(in ), dimension(2) :: rho12
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
     real(rp), intent(out), dimension(3) :: wall_force,dwall_force_old
@@ -726,13 +732,13 @@ module mod_impdiff
           do i=1,n(1)
             psixp = 0.5*(psi(i,j,k)+psi(i+1,j,k))
             psiyp = 0.5*(psi(i,j,k)+psi(i,j+1,k))
-            psizp = 0.5*(psi(i,j,k)+psi(i,j,k+1))
+            psizp = wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1)
             fx = fx - (rho+drho*psixp)*dud(i,j,k)*grid_vol_ratio_f(k)
             fy = fy - (rho+drho*psiyp)*dvd(i,j,k)*grid_vol_ratio_f(k)
             fz = fz - (rho+drho*psizp)*dwd(i,j,k)*grid_vol_ratio_c(k)
             gx = gx - drho*(0.5*(psio(i,j,k)+psio(i+1,j,k))-psixp)*dud(i,j,k)*grid_vol_ratio_f(k)
             gy = gy - drho*(0.5*(psio(i,j,k)+psio(i,j+1,k))-psiyp)*dvd(i,j,k)*grid_vol_ratio_f(k)
-            gz = gz - drho*(0.5*(psio(i,j,k)+psio(i,j,k+1))-psizp)*dwd(i,j,k)*grid_vol_ratio_c(k)
+            gz = gz - drho*(wzc(k)*psio(i,j,k)+(1.-wzc(k))*psio(i,j,k+1)-psizp)*dwd(i,j,k)*grid_vol_ratio_c(k)
           end do
         end do
       end do
@@ -749,14 +755,15 @@ module mod_impdiff
     end where
   end subroutine impdiff_wall_force
   !
-  subroutine impdiff_updt_forcing(n,nh_v,nh_psi,rho12,psi,dtf,u,v,w)
+  subroutine impdiff_updt_forcing(n,nh_v,nh_psi,nh_g,wzc,rho12,psi,dtf,u,v,w)
     !
     ! adds a uniform force per unit volume, times the time step (`dtf`), to the velocity; it is used by
     ! the zero-net-acceleration forcing to balance the wall shear of the terms integrated implicitly
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_v,nh_psi
+    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(1-nh_g:) :: wzc
     real(rp), intent(in   ), dimension(2) :: rho12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in   ), dimension(3) :: dtf
@@ -773,7 +780,7 @@ module mod_impdiff
         do i=1,n(1)
           u(i,j,k) = u(i,j,k) + dtfx/(rho + drho*0.5*(psi(i,j,k)+psi(i+1,j,k)))
           v(i,j,k) = v(i,j,k) + dtfy/(rho + drho*0.5*(psi(i,j,k)+psi(i,j+1,k)))
-          w(i,j,k) = w(i,j,k) + dtfz/(rho + drho*0.5*(psi(i,j,k)+psi(i,j,k+1)))
+          w(i,j,k) = w(i,j,k) + dtfz/(rho + drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1)))
         end do
       end do
     end do
@@ -925,7 +932,7 @@ module mod_impdiff
     end do
   end subroutine solve_lines_c
   !
-  subroutine solve_lines_f(n,nh,nh_psi,nh_g,cbc,bc,dzf,dzci,dzfi,theta,rho12,mu12,psi,dpd,cw,p)
+  subroutine solve_lines_f(n,nh,nh_psi,nh_g,cbc,bc,dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi,dpd,cw,p)
     !
     ! lines of a variable `p` that is staggered along z (the vertical velocity), with twice the viscosity
     ! (see `solve_lines_c` for the other arguments);
@@ -936,7 +943,7 @@ module mod_impdiff
     integer , intent(in   )               :: nh,nh_psi,nh_g
     character(len=1), intent(in), dimension(0:1) :: cbc
     real(rp), intent(in   ), dimension(0:1)      :: bc
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzf,dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzf,dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
@@ -972,7 +979,7 @@ module mod_impdiff
           if(k < nz) then
             psip = psi(i,j,k+1)
             muzp = visc(mu,dmu,psip)
-            rhop = rho + drho*0.5*(psim+psip)
+            rhop = rho + drho*(wzc(k)*psim+(1.-wzc(k))*psip)
             a = theta*dzci(k)*2.*dzfi(k  )*muzm
             c = theta*dzci(k)*2.*dzfi(k+1)*muzp
             b = rhop + a + c

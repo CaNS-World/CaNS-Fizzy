@@ -10,18 +10,19 @@ module mod_correc
   private
   public correc
   contains
-  subroutine correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,rho12,dt,p,psi,u,v,w)
+  subroutine correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,wzc,rho12,dt,p,psi,u,v,w)
     !
     ! corrects the velocity so that it is divergence free;
     ! with the variable-coefficient Poisson solver, the pressure gradient is divided by the density at the
-    ! cell faces (from `rho12` and `psi`), while with the constant-coefficient one the reference density
-    ! is part of `dt`, and `nh_psi`, `rho12` and `psi` are not used
+    ! cell faces (from `rho12` and `psi`, with the volume weights `wzc` along z), while with the
+    ! constant-coefficient one the reference density is part of `dt`, and `nh_psi`, `wzc`, `rho12` and `psi`
+    ! are not used
     !
     implicit none
     integer , intent(in), dimension(3) :: n
     integer , intent(in)               :: nh_v,nh_p,nh_psi,nh_g
     real(rp), intent(in), dimension(3 ) :: dli
-    real(rp), intent(in), dimension(1-nh_g:) :: dzci
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,wzc
     real(rp), intent(in), dimension(2) :: rho12
     real(rp), intent(in) :: dt
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:) :: p
@@ -83,7 +84,7 @@ module mod_correc
 #if defined(_CONSTANT_COEFFS_POISSON)
           w(i,j,k) = w(i,j,k) - dt*dzci(k)*(p(i,j,k+1)-p(i,j,k))
 #else
-          w(i,j,k) = w(i,j,k) - dt*dzci(k)*(p(i,j,k+1)-p(i,j,k))/(rho + drho*0.5*(psi(i,j,k+1)+psi(i,j,k)))
+          w(i,j,k) = w(i,j,k) - dt*dzci(k)*(p(i,j,k+1)-p(i,j,k))/(rho + drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1)))
 #endif
         end do
       end do

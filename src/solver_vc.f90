@@ -40,7 +40,7 @@ module mod_solver_vc
   type(hypre_solver), save :: asolver_p,asolver_d
   logical           , save :: is_init_p = .false.,is_init_d = .false.
   contains
-  subroutine solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,po)
+  subroutine solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,wzc,is_bound,alpha12,psi,p,po)
     !
     ! solves the variable-coefficient Poisson equation for the pressure,
     !   div(1/rho grad p) = rhs, rho = alpha12(2) + (alpha12(1)-alpha12(2))*psi,
@@ -56,7 +56,7 @@ module mod_solver_vc
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi
+    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi,wzc
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
     real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
@@ -67,7 +67,7 @@ module mod_solver_vc
       call init_matrix(ng,lo,hi,cbc,asolver_p)
       is_init_p = .true.
     end if
-    call fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver_p)
+    call fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,wzc,is_bound,alpha12,psi,p,asolver_p)
     call create_solver(iq,asolver_p)
     call setup_solver(asolver_p)
     call solve_helmholtz(iq,asolver_p,ng,lo,hi,nh_p,nh_g,dzfi,p,po)
@@ -238,7 +238,7 @@ module mod_solver_vc
     end do
   end subroutine init_matrix
   !
-  subroutine fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,is_bound,alpha12,psi,p,asolver)
+  subroutine fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,wzc,is_bound,alpha12,psi,p,asolver)
     !
     ! computes the coefficients of the matrix, and adds the contributions of the boundary conditions
     ! to the right-hand side `p`;
@@ -252,7 +252,7 @@ module mod_solver_vc
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi
+    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi,wzc
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
     real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
@@ -308,7 +308,11 @@ module mod_solver_vc
           do idir=1,3
             do ib=0,1
               ijkn(:) = ijk(:); ijkn(idir) = ijkn(idir) + 2*ib-1
-              cs(ib,idir) = (alpha + dalpha*0.5*(psi(ijkn(1),ijkn(2),ijkn(3))+psi(i,j,k)))**(-1)
+              if(idir /= 3) then
+                cs(ib,idir) = (alpha + dalpha*0.5*(psi(ijkn(1),ijkn(2),ijkn(3))+psi(i,j,k)))**(-1)
+              else ! volume average
+                cs(ib,idir) = (alpha + dalpha*(wzc(k-1+ib)*psi(i,j,k-1+ib)+(1.-wzc(k-1+ib))*psi(i,j,k+ib)))**(-1)
+              end if
             end do
           end do
           cs(:,1) = cs(:,1)*dli(1)*dli(1)*vol

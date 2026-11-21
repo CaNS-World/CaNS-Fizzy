@@ -566,12 +566,12 @@ module mod_mom
     end do
   end subroutine momz_buoy
   !
-  subroutine mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
+  subroutine mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in ), dimension(3) :: n
     integer , intent(in) :: nh_v,nh_psi,nh_g
     real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in ), dimension(2) :: rho12,mu12
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
@@ -588,7 +588,7 @@ module mod_mom
                 flx_x_mcc,flx_x_ccc,flx_x_pcc,flx_x_mpc,flx_x_cpc,flx_x_mcp,flx_x_ccp, &
                 flx_y_cmc,flx_y_ccc,flx_y_cpc,flx_y_pmc,flx_y_pcc,flx_y_cmp,flx_y_ccp, &
                 flx_z_ccm,flx_z_ccc,flx_z_ccp,flx_z_pcm,flx_z_pcc,flx_z_cpm,flx_z_cpc, &
-                dzci_c,dzci_m,dzfi_c,dzfi_p
+                dzci_c,dzci_m,dzfi_c,dzfi_p,wgt_c,wgt_p
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
@@ -699,11 +699,14 @@ module mod_mom
           dzci_m = dzci(k-1)
           dzfi_c = dzfi(k  )
           dzfi_p = dzfi(k+1)
+          wgt_c  = wzc(k)      ! fractions of the control volume of w within the cells k and k+1
+          wgt_p  = 1.-wzc(k)
           !
           ! advection
           !
           !
-          ! mass--momentum-consistent flx
+          ! mass--momentum-consistent flx (the mass fluxes of the staggered control volumes are averages of
+          ! those of the cell faces weighted by the overlapped volumes, as their densities are)
           !
           uuip = 0.25*(flx_x_pcc+flx_x_ccc)*(u_ccc+u_pcc)
           uuim = 0.25*(flx_x_mcc+flx_x_ccc)*(u_ccc+u_mcc)
@@ -721,10 +724,10 @@ module mod_mom
           wvkm = 0.25*(flx_z_ccm+flx_z_cpm)*(v_ccc+v_ccm)
           dvdt_aux = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
           !
-          uwip = 0.25*(flx_x_ccc+flx_x_ccp)*(w_ccc+w_pcc)
-          uwim = 0.25*(flx_x_mcc+flx_x_mcp)*(w_ccc+w_mcc)
-          vwjp = 0.25*(flx_y_ccc+flx_y_ccp)*(w_ccc+w_cpc)
-          vwjm = 0.25*(flx_y_cmc+flx_y_cmp)*(w_ccc+w_cmc)
+          uwip = 0.5*(wgt_c*flx_x_ccc+wgt_p*flx_x_ccp)*(w_ccc+w_pcc)
+          uwim = 0.5*(wgt_c*flx_x_mcc+wgt_p*flx_x_mcp)*(w_ccc+w_mcc)
+          vwjp = 0.5*(wgt_c*flx_y_ccc+wgt_p*flx_y_ccp)*(w_ccc+w_cpc)
+          vwjm = 0.5*(wgt_c*flx_y_cmc+wgt_p*flx_y_cmp)*(w_ccc+w_cmc)
           wwkp = 0.25*(flx_z_ccc+flx_z_ccp)*(w_ccc+w_ccp)
           wwkm = 0.25*(flx_z_ccc+flx_z_ccm)*(w_ccc+w_ccm)
           dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
@@ -826,7 +829,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -840,7 +843,7 @@ module mod_mom
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   ) :: dt_r
     real(rp), intent(in   ), dimension(2) :: rho12,beta12
     real(rp), intent(in   ), dimension(3) :: bforce,gacc
@@ -940,7 +943,7 @@ module mod_mom
           !
           psixp = 0.5*(c_pcc+c_ccc)
           psiyp = 0.5*(c_cpc+c_ccc)
-          psizp = 0.5*(c_ccp+c_ccc)
+          psizp = wzc(k)*c_ccc+(1.-wzc(k))*c_ccp ! volume average
           !
           rhoxp = rho + drho*psixp
           rhoyp = rho + drho*psiyp
@@ -1025,7 +1028,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_oth
   !
-  subroutine cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_cmpt,dli,dzci,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+  subroutine cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_cmpt,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                             rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                             surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -1040,7 +1043,7 @@ module mod_mom
     integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
     logical , intent(in), dimension(3) :: is_cmpt
     real(rp), intent(in), dimension(3) :: dli
-    real(rp), intent(in), dimension(1-nh_g:) :: dzci,grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in), dimension(1-nh_g:) :: dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f
     real(rp), intent(in) :: dt_r
     real(rp), intent(in), dimension(2) :: rho12,beta12
     real(rp), intent(in), dimension(3) :: gacc,rho_av
@@ -1116,13 +1119,13 @@ module mod_mom
           !
           psixp = 0.5_rp*(c_pcc+c_ccc)
           psiyp = 0.5_rp*(c_cpc+c_ccc)
-          psizp = 0.5_rp*(c_ccp+c_ccc)
+          psizp = wzc(k)*c_ccc+(1.-wzc(k))*c_ccp
           rhoxp = rho+drho*psixp
           rhoyp = rho+drho*psiyp
           rhozp = rho+drho*psizp
           rhox_old = rho+drho*0.5_rp*(co_pcc+co_ccc)
           rhoy_old = rho+drho*0.5_rp*(co_cpc+co_ccc)
-          rhoz_old = rho+drho*0.5_rp*(co_ccp+co_ccc)
+          rhoz_old = rho+drho*(wzc(k)*co_ccc+(1.-wzc(k))*co_ccp)
           !
           skappaxp = 0.5_rp*(k_pcc+k_ccc)*surf_factor
           skappayp = 0.5_rp*(k_cpc+k_ccc)*surf_factor
@@ -1203,7 +1206,7 @@ module mod_mom
     end where
   end subroutine cmpt_bodyforce
   !
-  subroutine cmpt_momentum(n,nh_v,nh_psi,nh_g,is_cmpt,grid_vol_ratio_c,grid_vol_ratio_f,rho12,psi,u,v,w,momentum)
+  subroutine cmpt_momentum(n,nh_v,nh_psi,nh_g,is_cmpt,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
     !
     ! computes the volume-averaged mixture momentum on the staggered grid
     !
@@ -1211,7 +1214,7 @@ module mod_mom
     integer , intent(in), dimension(3) :: n
     integer , intent(in) :: nh_v,nh_psi,nh_g
     logical , intent(in), dimension(3) :: is_cmpt
-    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f
+    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f,wzc
     real(rp), intent(in), dimension(2) :: rho12
     real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
@@ -1235,7 +1238,7 @@ module mod_mom
           weight_c = grid_vol_ratio_c(k)
           rhoxp = rho+drho*0.5_rp*(psi(i+1,j,k)+psi(i,j,k))
           rhoyp = rho+drho*0.5_rp*(psi(i,j+1,k)+psi(i,j,k))
-          rhozp = rho+drho*0.5_rp*(psi(i,j,k+1)+psi(i,j,k))
+          rhozp = rho+drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1))
           if(is_cmptx) momx = momx+rhoxp*u(i,j,k)*weight_f
           if(is_cmpty) momy = momy+rhoyp*v(i,j,k)*weight_f
           if(is_cmptz) momz = momz+rhozp*w(i,j,k)*weight_c
