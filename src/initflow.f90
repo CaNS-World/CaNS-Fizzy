@@ -50,7 +50,7 @@ module mod_initflow
     idir_s = 1
     if(isuffix == 5) then
       if((ini(isuffix-1:isuffix-1) == '-').and. &
-         (.not.any(ini(1:3) == ['tgv','ant','rot','vor','def']))) then
+         (.not.any(ini(1:3) == ['tgv','ant','rot','vor','def','dia']))) then
         select case(ini(isuffix:isuffix))
         case('x','y','z')
           idir_s = index('xyz',ini(isuffix:isuffix))
@@ -316,6 +316,11 @@ module mod_initflow
           end do
         end do
       end do
+    case('dia') ! uniform translation along the diagonal of the domain
+      u(:,:,:) = uref
+      v(:,:,:) = uref
+      w(:,:,:) = uref
+      p(:,:,:) = 0.
     case default
       if(myid == 0) print*, 'ERROR: invalid name for initial velocity field'
       if(myid == 0) print*, ''
@@ -324,7 +329,7 @@ module mod_initflow
       call MPI_FINALIZE(ierr)
       error stop
     end select
-    if(.not.any(trim(ini(1:3)) == ['tgv','ant','rot','vor','def'])) then
+    if(.not.any(trim(ini(1:3)) == ['tgv','ant','rot','vor','def','dia'])) then
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
