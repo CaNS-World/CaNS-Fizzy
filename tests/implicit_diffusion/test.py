@@ -4,8 +4,8 @@ def test_implicit_diffusion():
     #
     # a viscous two-fluid flow with a scalar, on a grid stretched along z:
     # the runs with implicit diffusion, along z (`is_impdiff_1d = T`) and in all directions with constant
-    # coefficients (`is_impdiff = T`), at a time step 20 times larger than the limit of the explicit scheme,
-    # must agree with an explicit run at a small time step;
+    # coefficients (`is_impdiff = T`), at time steps 10 to 20 times larger than the limit of the explicit
+    # scheme, must agree with an explicit run at a small time step;
     # the tolerances are a few times the differences that the second-order schemes yield here
     #
     def load(case,field):
