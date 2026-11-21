@@ -511,7 +511,7 @@ These lines specify the physical and transport properties of the two-phase syste
 * `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
 * `beta12` sets the value of the thermal expansion coeffcient of each phase.
 
-By default, viscosity and thermal conductivity are interpolated arithmetically between the two phases. Setting `VISC_HARMONIC_INTERPOLATION=1` at compilation time switches both properties to harmonic phase interpolation.
+By default, viscosity and thermal conductivity are interpolated arithmetically between the two phases. The input `is_harmonic_interpolation = T` (`&numerics` namelist, see below) switches both properties to harmonic phase interpolation.
 
 ---
 
@@ -571,6 +571,7 @@ This namelist defines parameters related to the numerical discretization and com
 &numerics
 is_impdiff = F, is_impdiff_1d = F
 is_poisson_dtdma = F
+is_harmonic_interpolation = F
 is_visc_limiter = F
 /
 ```
@@ -587,6 +588,8 @@ In both cases the interface regularization remains explicit.
 Note: at time steps beyond the explicit limit of the diffusion terms, other errors may take over. In particular, the error of the constant-coefficient pressure splitting (`CONSTANT_COEFFS_POISSON=1`) grows with the time step and the density ratio: at a density ratio of 1000 it dominated the tests above, for all the implicit options, and was absent with the variable-coefficient pressure solver.
 
 Note: `is_impdiff` is set to true automatically with `is_impdiff_1d = T`.
+
+`is_harmonic_interpolation`, if true, interpolates the viscosity and the thermal conductivity between the two fluids **harmonically** instead of arithmetically (care should be taken if one of the conductivities is zero).
 
 `is_visc_limiter`, if true, **limits the viscosity next to the interface**: the viscosity interpolated to a cell edge or centre is bounded such that the kinematic viscosity, relative to the lightest momentum control volume around it, does not exceed that of the phase that dominates there. Without it, a sharp interface can pair the viscosity of the heavy fluid with the density of the light one, and explicit diffusion goes unstable at large viscosity and density ratios. It is true by default with the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`), whose interface is sharp, and false otherwise.
 

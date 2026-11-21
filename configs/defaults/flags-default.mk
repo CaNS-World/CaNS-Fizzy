@@ -130,8 +130,7 @@ endif
 #
 CAPILLARY_BRACKBILL_NORMALIZATION ?= 1
 CUSTOM_DEFINES_2FL = CONSTANT_COEFFS_POISSON \
-                     CAPILLARY_BRACKBILL_NORMALIZATION \
-                     VISC_HARMONIC_INTERPOLATION
+                     CAPILLARY_BRACKBILL_NORMALIZATION
 
 DEFINES += $(foreach var,$(CUSTOM_DEFINES_2FL),$(if $(filter 1,$(strip $($(var)))), -D_$(var)))
 

@@ -129,6 +129,8 @@ logical, protected :: is_debug = .true., is_debug_poisson = .false., &
 logical, protected :: is_impdiff = .false., is_impdiff_1d = .false., &
                       is_poisson_dtdma = .false., &
                       is_gridpoint_natural_channel = .false., &
+                      is_harmonic_interpolation = .false., & ! harmonic (instead of arithmetic) interpolation of the viscosity
+                                                             ! and thermal conductivity between the two fluids
                       is_visc_limiter = .false. ! (true by default with the sharp interface of `ifc_reconstruction = 'plic'`)
 !
 ! HYPRE solver options for the variable-coefficient problems; each input has two entries:
@@ -214,6 +216,7 @@ contains
                        is_impdiff,is_impdiff_1d, &
                        is_poisson_dtdma, &
                        is_gridpoint_natural_channel, &
+                       is_harmonic_interpolation, &
                        is_visc_limiter
     namelist /hypre/ &
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
