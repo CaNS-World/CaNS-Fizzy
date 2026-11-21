@@ -128,7 +128,7 @@ module mod_two_fluid
     call MPI_ALLREDUCE(MPI_IN_PLACE,mean,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine bulk_mean_12_stag
   !
-  subroutine cmpt_norm_curv_youngs(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_norm_curv_youngs(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the normals and curvature based on a volume-of-fluid
     ! or level-set field using finite-differences based on Youngs method
@@ -140,11 +140,11 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz,kappa
+    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz,kappa
     real(rp), allocatable, dimension(:,:,:), save :: vnx,vny,vnz ! normals at the vertices (i+1/2,j+1/2,k+1/2)
     real(rp) :: psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp
     real(rp) :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
@@ -227,7 +227,7 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv_youngs
   !
-  subroutine cmpt_norm_fd2(n,nh_psi,nh_g,dli,dzfi,psi,normx,normy,normz)
+  subroutine cmpt_norm_fd2(n,nh_psi,nh_ifc,nh_g,dli,dzfi,psi,normx,normy,normz)
     !
     ! computes the normals based on a volume-of-fluid or level-set field
     ! using second-order finite-differences
@@ -235,11 +235,11 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz
+    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm,dpsidx,dpsidy,dpsidz,norm
     integer  :: i,j,k
     !
@@ -265,19 +265,19 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_fd2
   !
-  subroutine cmpt_curv_fd2(n,nh_psi,nh_g,dli,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_curv_fd2(n,nh_psi,nh_ifc,nh_g,dli,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the curvature using second-order finite-differences
     !
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz
-    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: kappa
+    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz
+    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: kappa
     real(rp) :: normxp,normxm,normyp,normym,normzp,normzm
     integer  :: i,j,k
     !
@@ -804,7 +804,7 @@ module mod_two_fluid
     end if
   end function smooth_impulse
 #if 0
-  subroutine cmpt_norm_curv_old(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_norm_curv_old(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
     !
     ! computes the normals and curvature based on a VoF field
     ! using finite-differences based on Youngs method
@@ -813,11 +813,11 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3)           :: n
-    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3)           :: dli
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: normx,normy,normz,kappa
+    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz,kappa
     real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
                 psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
                 psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp

@@ -139,7 +139,7 @@ integer, parameter :: nh_psi = 1
 #else
 integer, parameter :: nh_psi = 4 ! the height functions of the geometric VoF method use nine-cell columns
 #endif
-integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi)
+integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_ifc = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi,nh_ifc)
 !
 ! i/o backend parameters
 !

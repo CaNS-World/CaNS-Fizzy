@@ -36,7 +36,8 @@ module mod_vof_thinc_qq
 #endif
   !
   contains
-  subroutine vof_thinc_transport_psi(n,nh_v,nh_psi,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidt,flux_x,flux_y,flux_z)
+  subroutine vof_thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidt, &
+                                     flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the VoF transport equation
     !
@@ -45,16 +46,16 @@ module mod_vof_thinc_qq
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzfi
     real(rp), intent(in   )                      :: beta
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: phi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: flux_x,flux_y,flux_z
+    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: flux_x,flux_y,flux_z
     integer  :: i,j,k,ii,jj,kk
     real(rp) :: xx,yy,zz
     real(rp) :: vel_x,vel_y,vel_z, &
@@ -133,17 +134,17 @@ module mod_vof_thinc_qq
     end do
   end subroutine vof_thinc_transport_psi
   !
-  subroutine vof_thinc_cmpt_phi(n,nh_psi,beta,psi,phi)
+  subroutine vof_thinc_cmpt_phi(n,nh_psi,nh_ifc,beta,psi,phi)
     !
     ! compute the dimensionless signed-distance proxy implied by the
     ! midpoint THINC reconstruction
     !
     implicit none
     integer , intent(in ), dimension(3)        :: n
-    integer , intent(in) :: nh_psi
+    integer , intent(in) :: nh_psi,nh_ifc
     real(rp), intent(in )                      :: beta
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: phi
+    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: phi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
@@ -158,22 +159,22 @@ module mod_vof_thinc_qq
     end do
   end subroutine vof_thinc_cmpt_phi
   !
-  subroutine vof_thinc_transport_psi_gauss(n,nh_v,nh_psi,nh_g,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidt, &
+  subroutine vof_thinc_transport_psi_gauss(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidt, &
                                            flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the VoF transport equation
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzfi
     real(rp), intent(in   )                      :: vofmin,beta
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: flux_x,flux_y,flux_z
+    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: flux_x,flux_y,flux_z
     integer  :: i,j,k,ii,jj,kk,q1,q2
     real(rp) :: xx,yy,zz,r1,r2,ww
     real(rp) :: vel_x,vel_y,vel_z,lpsi_x,lpsi_y,lpsi_z, &

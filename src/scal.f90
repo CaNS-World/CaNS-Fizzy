@@ -18,15 +18,16 @@ module mod_scal
   end type scalar
   !
   contains
-  subroutine scal_ad(nx,ny,nz,nh_v,nh_s,nh_psi,nh_g,dxi,dyi,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
+  subroutine scal_ad(nx,ny,nz,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dxi,dyi,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w, &
+                     s,dsdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
     real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
-    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
@@ -106,7 +107,7 @@ module mod_scal
     end do
   end subroutine scal_ad
   !
-  subroutine scal_a_cons(n,nh_v,nh_s,nh_psi,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,sa,factor,s)
+  subroutine scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,sa,factor,s)
     !
     ! advection term of the scalar in conservative form, consistent with the transport of the geometric
     ! volume-of-fluid method: integrated over the time `factor` and added to the scalar, divided by rho*cp
@@ -117,11 +118,12 @@ module mod_scal
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   ) :: nh_v,nh_s,nh_psi,nh_g
+    integer , intent(in   ) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzfi
     real(rp), intent(in   ), dimension(2) :: rhocp12
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: sa
     real(rp), intent(in   ) :: factor

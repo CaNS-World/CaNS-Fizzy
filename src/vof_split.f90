@@ -90,8 +90,8 @@ module mod_vof_split
     end do
   end subroutine vof_split_init
   !
-  subroutine vof_split_advance(tm_coeff,is_first,istep,n,nh_v,nh_psi,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound,u,v,w, &
-                               psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,ua,va,wa)
+  subroutine vof_split_advance(tm_coeff,is_first,istep,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound, &
+                               u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,ua,va,wa)
     !
     ! advances the volume fraction over one time step, with the face velocity extrapolated to the
     ! middle of the time step from the current and previous velocity fields (both divergence free);
@@ -103,7 +103,7 @@ module mod_vof_split
     logical , intent(in   )               :: is_first
     integer , intent(in   )               :: istep
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzfi
     real(rp), intent(in   ) :: dt
@@ -113,7 +113,7 @@ module mod_vof_split
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: uo,vo,wo,ua,va,wa
     real(rp) :: dts
     integer  :: i,j,k,isub,nsub,q,idir
@@ -157,11 +157,11 @@ module mod_vof_split
         if(.not.is_active(idir)) cycle
         select case(idir)
         case(1)
-          call sweep(1,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi)
+          call sweep(1,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi)
         case(2)
-          call sweep(2,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi)
+          call sweep(2,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi)
         case(3)
-          call sweep(3,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
+          call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
         end select
         call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
       end do
@@ -226,7 +226,7 @@ module mod_vof_split
     cfl(:) = [cflx,cfly,cflz]
   end subroutine vof_split_velocity
   !
-  subroutine sweep(idir,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi)
+  subroutine sweep(idir,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi)
     !
     ! one directional sweep: geometric donor-region fluxes, and conservative update with the dilatation term;
     ! the face fluxes, times scl, are stored in psiflx if is_init, and accumulated otherwise; the extrema of
@@ -236,14 +236,15 @@ module mod_vof_split
     implicit none
     integer , intent(in   ) :: idir
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzf,dzfi
     real(rp), intent(in   ) :: dt
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: vel
     logical , intent(in   ) :: is_init
     real(rp), intent(in   ) :: scl
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx,psi
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx
     real(rp), dimension(-1:1,-1:1,-1:1) :: c
     real(rp), dimension(-1:1) :: dz3
     logical , dimension(3) :: act
@@ -406,7 +407,7 @@ module mod_vof_split
     end if
   end subroutine donor_fractions
   !
-  subroutine vof_split_curvature(istage,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+  subroutine vof_split_curvature(istage,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
     !
     ! interface curvature (sign convention of Fizzy: kappa = -div(n), n pointing into phase 1), in stages
     ! separated by halo exchanges of kappa (without Dirichlet conditions, see `ifc_geometry`):
@@ -420,11 +421,11 @@ module mod_vof_split
     implicit none
     integer , intent(in   ) :: istage
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_psi,nh_g
+    integer , intent(in   )               :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzf
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: kappa,normx,normy,normz
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa,normx,normy,normz
     real(rp) :: fc,ksum,kcnt,nhf
     integer  :: i,j,k,ii,jj,kk,q,il,nl
     !
@@ -457,7 +458,7 @@ module mod_vof_split
       !$acc update self(nlist) async(1)
       !$acc wait(1)
       nl = nlist(1)
-      call hf_list(n,nh_psi,nh_g,dl,dzf,nl,psi,kappa,normx,normy,normz,nhf)
+      call hf_list(n,nh_psi,nh_ifc,nh_g,dl,dzf,nl,psi,kappa,normx,normy,normz,nhf)
       kappa_stats(1) = nhf ! (local to the task)
     case(2)
       !
@@ -544,7 +545,7 @@ module mod_vof_split
     end select
   end subroutine vof_split_curvature
   !
-  subroutine hf_list(n,nh_psi,nh_g,dl,dzf,nl,psi,kappa,normx,normy,normz,nhf)
+  subroutine hf_list(n,nh_psi,nh_ifc,nh_g,dl,dzf,nl,psi,kappa,normx,normy,normz,nhf)
     !
     ! height-function geometry of the nl cells of the compacted list ilist (packed interior indices): MYC
     ! normal, and height functions (nine-cell columns) along the directions in decreasing order of the MYC
@@ -558,12 +559,12 @@ module mod_vof_split
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_psi,nh_g
+    integer , intent(in   )               :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzf
     integer , intent(in   ) :: nl
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: kappa,normx,normy,normz
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa,normx,normy,normz
     real(rp), intent(out  ) :: nhf
     real(rp), dimension(-1:1,-1:1,-1:1) :: c3
     real(rp), dimension(-1:1) :: dz3

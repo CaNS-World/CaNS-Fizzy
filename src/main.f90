@@ -80,7 +80,7 @@ program cans
                                      is_impdiff,is_impdiff_1d, &
                                      is_poisson_dtdma, &
                                      is_mask_divergence_check, &
-                                     nh_v,nh_p,nh_s,nh_psi,nh_g
+                                     nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
   use mod_sanity             , only: test_sanity_input,test_sanity_solver
   use mod_solve_helmholtz    , only: solve_helmholtz,rhs_bound
   use mod_two_fluid          , only: bulk_mean_12_stag
@@ -283,12 +283,13 @@ program cans
     end if
   end if
   allocate(psi(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
-  allocate(kappa,normx,normy,normz,mold=psi)
   allocate(psio,mold=psi)
+  allocate(kappa(1-nh_ifc:n(1)+nh_ifc,1-nh_ifc:n(2)+nh_ifc,1-nh_ifc:n(3)+nh_ifc))
+  allocate(normx,normy,normz,mold=kappa)
 #if defined(_SDF_NORMALS)
-  allocate(phi,mold=psi)
+  allocate(phi,mold=kappa)
 #endif
-  allocate(psiflx_x,psiflx_y,psiflx_z,mold=psi)
+  allocate(psiflx_x,psiflx_y,psiflx_z,mold=kappa)
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
   allocate(uadv,vadv,wadv,uo,vo,wo,mold=u)
   if(nscal > 0) allocate(so,mold=s)
@@ -624,7 +625,7 @@ program cans
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
   !$acc enter data create(uadv,vadv,wadv) async(1)
 #endif
-  call ifc_init(n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
+  call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   !
   ! post-process and write initial condition
   !
@@ -700,15 +701,15 @@ program cans
       end do
     end do
     if(is_track_interface) then
-      call ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
+      call ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                        istep,uo,vo,wo,uadv,vadv,wadv)
     else
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)
-      do k=1-nh_psi,n(3)+nh_psi
-        do j=1-nh_psi,n(2)+nh_psi
-          do i=1-nh_psi,n(1)+nh_psi
+      do k=1-nh_ifc,n(3)+nh_ifc
+        do j=1-nh_ifc,n(2)+nh_ifc
+          do i=1-nh_ifc,n(1)+nh_ifc
             psiflx_x(i,j,k) = 0.
             psiflx_y(i,j,k) = 0.
             psiflx_z(i,j,k) = 0.
@@ -718,7 +719,7 @@ program cans
       call ifc_advecting_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,uadv,vadv,wadv)
     end if
     if(nscal > 0) then
-      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
+      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
                    psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,uadv,vadv,wadv)
       if(is_impdiff) then
         if(is_impdiff_1d) then
@@ -753,7 +754,8 @@ program cans
         call bulk_mean_12_stag(n,nh_psi,nh_g,2,grid_vol_ratio_f,wzc,psi,rho12,rho_av(2))
       if(is_cmpt_rho_av(3)) &
         call bulk_mean_12_stag(n,nh_psi,nh_g,3,grid_vol_ratio_c,wzc,psi,rho12,rho_av(3))
-      call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc,grid_vol_ratio_c,grid_vol_ratio_f, &
+      call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
+              grid_vol_ratio_c,grid_vol_ratio_f, &
               dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &

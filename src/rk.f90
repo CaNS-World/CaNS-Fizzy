@@ -17,8 +17,8 @@ module mod_rk
   private
   public rk,rk_scal,rk_2fl
   contains
-  subroutine rk(rkpar,n,nh_v,nh_p,nh_s,nh_psi,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc,grid_vol_ratio_c,grid_vol_ratio_f, &
-                dt,dt_r, &
+  subroutine rk(rkpar,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
+                grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
                 bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -38,7 +38,7 @@ module mod_rk
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
     integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
     logical , intent(in), dimension(0:1,3) :: is_bound
     logical , intent(in), dimension(3) :: is_forced
     real(rp), intent(in), dimension(3) :: l,dli
@@ -48,7 +48,8 @@ module mod_rk
     real(rp), intent(in   )                :: sigma,rho_av(3)
     real(rp), intent(in   ), dimension(2)  :: rho12,mu12,beta12
     real(rp), intent(in   )                :: rho0
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi,kappa
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)           :: kappa
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:)           :: p
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
@@ -56,7 +57,8 @@ module mod_rk
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
 #endif
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psio,psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psio
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   )                                 :: is_first
     real(rp), intent(inout), dimension(3)                   :: wall_force_old
     real(rp), intent(inout), dimension(:,:,:)               :: dudtrko,dvdtrko,dwdtrko
@@ -93,7 +95,7 @@ module mod_rk
       wall_force(3) = sum(tauz(:)/l(:))
       if(is_first) wall_force_old(:) = wall_force(:)
       force_balance(:,1) = rkpar(1)*wall_force(:)+rkpar(2)*wall_force_old(:)
-      call cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_forced,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+      call cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_forced,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                           rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                           surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -109,7 +111,7 @@ module mod_rk
     !
     ! advection, diffusion and regularization terms
     !
-    call mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi, &
+    call mom_xyz_ad(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi, &
                     dudtrk,dvdtrk,dwdtrk)
     if(is_impdiff) then
       !
@@ -180,13 +182,13 @@ module mod_rk
     !
     ! advection terms
     !
-    call mom_xyz_a_cons(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,factor12, &
+    call mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,factor12, &
                         u,v,w)
 #endif
     !
     ! pressure, surface tension, and buoyancy terms
     !
-    call mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
+    call mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
                      p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -194,7 +196,7 @@ module mod_rk
                      factor12,u,v,w)
   end subroutine rk
   !
-  subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
+  subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
                      psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,uadv,vadv,wadv)
     use mod_scal, only: scal_ad,scal_a_cons
     !
@@ -207,7 +209,7 @@ module mod_rk
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   )                :: dt
@@ -215,7 +217,8 @@ module mod_rk
     real(rp), intent(in   ), dimension(2)  :: rho12,ka12,cp12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psio,psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psio
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   )                   :: is_first
     real(rp), intent(inout), dimension(:,:,:) :: dsdtrko
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
@@ -261,7 +264,7 @@ module mod_rk
       end do
     end do
 #endif
-    call scal_ad(n(1),n(2),n(3),nh_v,nh_s,nh_psi,nh_g,dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z, &
+    call scal_ad(n(1),n(2),n(3),nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z, &
                  psi,u,v,w,s,dsdtrk)
     if(is_impdiff) then
       !
@@ -301,11 +304,11 @@ module mod_rk
       end do
     end do
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,sadv,factor12,s)
+    call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,sadv,factor12,s)
 #endif
   end subroutine rk_scal
   !
-  subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &
+  subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &
                     psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
 #if !defined(_INTERFACE_CAPTURING_VOF)
     use mod_acdi        , only: acdi_transport_pf
@@ -319,15 +322,15 @@ module mod_rk
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   ) :: gam,seps,beta,dt
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: phi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(out  ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   )                   :: is_first
     real(rp), intent(inout), dimension(:,:,:) :: dpsidtrko
     real(rp), allocatable, dimension(:,:,:), save :: dpsidtrk
@@ -342,10 +345,10 @@ module mod_rk
       !$acc enter data create(dpsidtrk) async(1)
     end if
 #if !defined(_INTERFACE_CAPTURING_VOF)
-    call acdi_transport_pf(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
+    call acdi_transport_pf(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
                            psiflx_x,psiflx_y,psiflx_z)
 #else
-    call vof_thinc_transport_psi(n,nh_v,nh_psi,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
+    call vof_thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
                                  psiflx_x,psiflx_y,psiflx_z)
 #endif
     if(is_first) then

@@ -80,18 +80,19 @@ module mod_interface_capturing
 #endif
   end subroutine ifc_init_field
   !
-  subroutine ifc_init(n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
+  subroutine ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
     !
     ! initialization from the initial (or loaded) phase indicator, already present on the device
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl,dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: seps
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,phi,normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: phi,normx,normy,normz,kappa
     real(rp), intent(inout) :: gam
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     real(rp) :: clip,fmin,fmax,cfl(3),kstats(3)
@@ -105,7 +106,7 @@ module mod_interface_capturing
     call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub,kstats)
     if(myid == 0) print*, 'Geometric VoF. Initial volume of phase 1: ', vol0
 #endif
-    call ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
+    call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
 #if !defined(_INTERFACE_CAPTURING_VOF) && !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     call acdi_set_gamma(n,nh_v,acdi_gam_factor,u,v,w,gam)
     gam = max(gam,acdi_gam_min)
@@ -113,7 +114,7 @@ module mod_interface_capturing
 #endif
   end subroutine ifc_init
   !
-  subroutine ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
+  subroutine ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
                          normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                          istep,uo,vo,wo,uadv,vadv,wadv)
     !
@@ -123,29 +124,30 @@ module mod_interface_capturing
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl,dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: dt,gam,seps
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: normx,normy,normz,phi,kappa,psi
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz,phi,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   ) :: is_first
     real(rp), intent(inout), dimension(:,:,:) :: dpsidtrko
     integer , intent(in   ) :: istep
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
     !
 #if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-    call rk_2fl(tm_coeff,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
+    call rk_2fl(tm_coeff,n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
                 psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
-    call bounduvw(cbcvel,n,nh_psi,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+    call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
     call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
 #else
-    call vof_split_advance(tm_coeff,is_first,istep,n,nh_v,nh_psi,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound,u,v,w, &
+    call vof_split_advance(tm_coeff,is_first,istep,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound,u,v,w, &
                            psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv)
-    call bounduvw(cbcvel,n,nh_psi,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+    call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
 #endif
-    call ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
+    call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
   end subroutine ifc_advance
   !
   subroutine ifc_advecting_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,uadv,vadv,wadv)
@@ -169,18 +171,18 @@ module mod_interface_capturing
 #endif
   end subroutine ifc_advecting_velocity
   !
-  subroutine ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
+  subroutine ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
     !
     ! interface normals and curvature, with their boundary conditions
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_psi,nh_g
+    integer , intent(in   )               :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl,dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: seps
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: phi,normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: phi,normx,normy,normz,kappa
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     character(len=1), dimension(0:1,3) :: cbc_tmp
 #endif
@@ -193,27 +195,27 @@ module mod_interface_capturing
     !
     cbc_tmp(:,:) = cbccur(:,:)
     where(cbc_tmp(:,:) == 'D') cbc_tmp(:,:) = 'N'
-    call vof_split_curvature(1,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
-    call boundp(cbc_tmp,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-    call vof_split_curvature(2,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
-    call boundp(cbc_tmp,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-    call vof_split_curvature(3,n,nh_psi,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
-    call boundp(cbccur,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+    call vof_split_curvature(1,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call boundp(cbc_tmp,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+    call vof_split_curvature(2,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call boundp(cbc_tmp,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+    call vof_split_curvature(3,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,normx,normy,normz)
+    call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
 #else
 #if defined(_SDF_NORMALS)
 #if !defined(_INTERFACE_CAPTURING_VOF)
-    call acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
+    call acdi_cmpt_phi(n,nh_psi,nh_ifc,seps,psi,phi)
 #else
-    call vof_thinc_cmpt_phi(n,nh_psi,vof_thinc_beta,psi,phi)
+    call vof_thinc_cmpt_phi(n,nh_psi,nh_ifc,vof_thinc_beta,psi,phi)
 #endif
-    call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
+    call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
 #else
-    call cmpt_norm_curv(n,nh_psi,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+    call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
 #endif
-    call boundp(cbccur,n,nh_psi,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-    call boundp(cbcnor(:,:,1),n,nh_psi,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-    call boundp(cbcnor(:,:,2),n,nh_psi,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-    call boundp(cbcnor(:,:,3),n,nh_psi,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+    call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
+    call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+    call boundp(cbcnor(:,:,2),n,nh_ifc,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+    call boundp(cbcnor(:,:,3),n,nh_ifc,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
 #endif
   end subroutine ifc_geometry
   !

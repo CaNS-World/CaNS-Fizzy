@@ -404,14 +404,15 @@ module mod_mom
     end do
   end subroutine momz_p
   !
-  subroutine momx_sigma(nx,ny,nz,nh_psi,dxi,sigma,kappa,psi,dudt)
+  subroutine momx_sigma(nx,ny,nz,nh_psi,nh_ifc,dxi,sigma,kappa,psi,dudt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_psi
+    integer , intent(in) :: nh_psi,nh_ifc
     real(rp), intent(in) :: dxi
     real(rp), intent(in) :: sigma
-    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), intent(in   ) :: kappa
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: kappap
     integer :: i,j,k
@@ -429,14 +430,15 @@ module mod_mom
     end do
   end subroutine momx_sigma
   !
-  subroutine momy_sigma(nx,ny,nz,nh_psi,dyi,sigma,psi,kappa,dvdt)
+  subroutine momy_sigma(nx,ny,nz,nh_psi,nh_ifc,dyi,sigma,psi,kappa,dvdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_psi
+    integer , intent(in) :: nh_psi,nh_ifc
     real(rp), intent(in) :: dyi
     real(rp), intent(in) :: sigma
-    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), intent(in   ) :: kappa
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: kappap
     integer :: i,j,k
@@ -454,14 +456,15 @@ module mod_mom
     end do
   end subroutine momy_sigma
   !
-  subroutine momz_sigma(nx,ny,nz,nh_psi,nh_g,dzci,sigma,psi,kappa,dwdt)
+  subroutine momz_sigma(nx,ny,nz,nh_psi,nh_ifc,nh_g,dzci,sigma,psi,kappa,dwdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in), dimension(1-nh_g:) :: dzci
     real(rp), intent(in) :: sigma
-    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), intent(in   ) :: kappa
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: kappap
     integer :: i,j,k
@@ -566,16 +569,16 @@ module mod_mom
     end do
   end subroutine momz_buoy
   !
-  subroutine mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
+  subroutine mom_xyz_ad(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in ), dimension(2) :: rho12,mu12
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
@@ -838,7 +841,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_a_cons(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,factor, &
+  subroutine mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,factor, &
                             u,v,w)
     !
     ! advection terms in conservative form, consistent with the transport of the geometric volume-of-fluid
@@ -854,11 +857,12 @@ module mod_mom
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   ) :: nh_v,nh_psi,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   ), dimension(2) :: rho12
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
     real(rp), intent(in   ) :: factor
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
@@ -969,7 +973,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_a_cons
   !
-  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -981,7 +985,7 @@ module mod_mom
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   ) :: dt_r
@@ -990,7 +994,8 @@ module mod_mom
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av(3)
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:)           :: p
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi,kappa
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)           :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
@@ -1168,7 +1173,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_oth
   !
-  subroutine cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_cmpt,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+  subroutine cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_cmpt,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                             rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                             surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -1180,7 +1185,7 @@ module mod_mom
     !
     implicit none
     integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
     logical , intent(in), dimension(3) :: is_cmpt
     real(rp), intent(in), dimension(3) :: dli
     real(rp), intent(in), dimension(1-nh_g:) :: dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f
@@ -1188,7 +1193,8 @@ module mod_mom
     real(rp), intent(in), dimension(2) :: rho12,beta12
     real(rp), intent(in), dimension(3) :: gacc,rho_av
     real(rp), intent(in) :: sigma,rho0
-    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio,kappa
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
+    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
     real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
