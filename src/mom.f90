@@ -841,11 +841,13 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,factor, &
-                            u,v,w)
+  subroutine mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psio,psiflx_x,psiflx_y,psiflx_z,ua,va,wa, &
+                            factor1,factor2,factor12,dudt,dvdt,dwdt,dudto,dvdto,dwdto,u,v,w)
     !
     ! advection terms in conservative form, consistent with the transport of the geometric volume-of-fluid
-    ! method: integrated over the time `factor` and added to the velocity, divided by the face density
+    ! method, integrated in one step (over the time `factor12`), together with the AB2 update of the velocity
+    ! with the other terms (`dudt` and `dudto`, with weights `factor1` and `factor2`), in a single kernel:
+    !   u <- (rho_old*u + factor12*advection + factor1*dudt + factor2*dudto)/rho_new,   dudto <- dudt
     !
     ! the cell-face mass fluxes are rho_2*ua + (rho_1-rho_2)*psiflx, with psiflx the (time-averaged) phase-1
     ! volume fluxes of the volume-of-fluid step and ua its divergence-free advecting velocity, which is also
@@ -861,10 +863,12 @@ module mod_mom
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   ), dimension(2) :: rho12
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
-    real(rp), intent(in   ) :: factor
+    real(rp), intent(in   ) :: factor1,factor2,factor12
+    real(rp), intent(in   ), dimension(:,:,:) :: dudt,dvdt,dwdt
+    real(rp), intent(inout), dimension(:,:,:) :: dudto,dvdto,dwdto
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     integer :: i,j,k
     real(rp) :: rho,drho,dxi,dyi,dzci_c,dzfi_c,wgt_c,wgt_p
@@ -875,7 +879,7 @@ module mod_mom
                 flx_y_cmc,flx_y_ccc,flx_y_cpc,flx_y_pmc,flx_y_pcc,flx_y_cmp,flx_y_ccp, &
                 flx_z_ccm,flx_z_ccc,flx_z_ccp,flx_z_pcm,flx_z_pcc,flx_z_cpm,flx_z_cpc
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
-    real(rp) :: rhoxp,rhoyp,rhozp
+    real(rp) :: rhoxp,rhoyp,rhozp,rhoxo,rhoyo,rhozo,dudt_a,dvdt_a,dwdt_a
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     dxi = dli(1)
@@ -962,12 +966,24 @@ module mod_mom
           wwkp = 0.25*(flx_z_ccc+flx_z_ccp)*(w_ccc+w_ccp)
           wwkm = 0.25*(flx_z_ccc+flx_z_ccm)*(w_ccc+w_ccm)
           !
-          rhoxp = rho + drho*0.5*(psi(i+1,j,k)+psi(i,j,k))
-          rhoyp = rho + drho*0.5*(psi(i,j+1,k)+psi(i,j,k))
-          rhozp = rho + drho*(wgt_c*psi(i,j,k)+wgt_p*psi(i,j,k+1))
-          u(i,j,k) = u(i,j,k) + factor*(dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm ))/rhoxp
-          v(i,j,k) = v(i,j,k) + factor*(dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm ))/rhoyp
-          w(i,j,k) = w(i,j,k) + factor*(dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm ))/rhozp
+          dudt_a = dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm )
+          dvdt_a = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
+          dwdt_a = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
+          !
+          ! update, with the densities of the staggered control volumes before and after the volume-of-fluid step
+          !
+          rhoxo = rho + drho*0.5*(psio(i+1,j,k)+psio(i,j,k))
+          rhoyo = rho + drho*0.5*(psio(i,j+1,k)+psio(i,j,k))
+          rhozo = rho + drho*(wgt_c*psio(i,j,k)+wgt_p*psio(i,j,k+1))
+          rhoxp = rho + drho*0.5*(psi( i+1,j,k)+psi( i,j,k))
+          rhoyp = rho + drho*0.5*(psi( i,j+1,k)+psi( i,j,k))
+          rhozp = rho + drho*(wgt_c*psi( i,j,k)+wgt_p*psi( i,j,k+1))
+          u(i,j,k) = (u(i,j,k)*rhoxo + factor12*dudt_a + factor1*dudt(i,j,k) + factor2*dudto(i,j,k))/rhoxp
+          v(i,j,k) = (v(i,j,k)*rhoyo + factor12*dvdt_a + factor1*dvdt(i,j,k) + factor2*dvdto(i,j,k))/rhoyp
+          w(i,j,k) = (w(i,j,k)*rhozo + factor12*dwdt_a + factor1*dwdt(i,j,k) + factor2*dwdto(i,j,k))/rhozp
+          dudto(i,j,k) = dudt(i,j,k)
+          dvdto(i,j,k) = dvdt(i,j,k)
+          dwdto(i,j,k) = dwdt(i,j,k)
         end do
       end do
     end do

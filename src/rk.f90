@@ -158,6 +158,7 @@ module mod_rk
       end do
     end if
     !
+#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -178,12 +179,12 @@ module mod_rk
         end do
       end do
     end do
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+#else
     !
-    ! advection terms
+    ! the same update, together with the advection terms, in a single kernel
     !
-    call mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,factor12, &
-                        u,v,w)
+    call mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psio,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv, &
+                        factor1,factor2,factor12,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,u,v,w)
 #endif
     !
     ! pressure, surface tension, and buoyancy terms
