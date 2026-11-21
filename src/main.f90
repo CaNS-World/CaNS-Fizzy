@@ -77,7 +77,7 @@ program cans
                                      read_input, &
                                      is_debug,is_debug_poisson, &
                                      is_timing, &
-                                     is_impdiff,is_impdiff_1d,is_ifc_split,is_vof_sweep_transport, &
+                                     is_impdiff,is_impdiff_1d,is_ifc_split,is_sdf_normals,is_vof_sweep_transport, &
                                      is_poisson_dtdma, &
                                      is_mask_divergence_check, &
                                      nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
@@ -288,7 +288,7 @@ program cans
   allocate(psio,mold=psi)
   allocate(kappa(1-nh_ifc:n(1)+nh_ifc,1-nh_ifc:n(2)+nh_ifc,1-nh_ifc:n(3)+nh_ifc))
   allocate(normx,normy,normz,mold=kappa)
-  allocate(phi,mold=kappa)
+  if(is_sdf_normals) allocate(phi,mold=kappa) ! (otherwise an absent argument of the routines that take it)
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=kappa)
   if(is_ifc_split) then
     allocate(uadv,vadv,wadv,uo,vo,wo,mold=u)
@@ -545,7 +545,7 @@ program cans
   normx(:,:,:) = 0.
   normy(:,:,:) = 0.
   normz(:,:,:) = 0.
-  phi(:,:,:) = 0.
+  if(is_sdf_normals) phi(:,:,:) = 0.
   psiflx_x(:,:,:) = 0.
   psiflx_y(:,:,:) = 0.
   psiflx_z(:,:,:) = 0.
@@ -645,7 +645,9 @@ program cans
     end if
   end if
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
-  !$acc enter data create(phi) async(1)
+  if(is_sdf_normals) then
+    !$acc enter data create(phi) async(1)
+  end if
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
   call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   !
