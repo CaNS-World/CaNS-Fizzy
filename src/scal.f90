@@ -5,6 +5,7 @@
 !
 ! -
 module mod_scal
+  use mod_param, only: is_ifc_split
   use mod_types
   implicit none
   private
@@ -38,7 +39,9 @@ module mod_scal
     real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm
     real(rp) :: ka,dka,rhocp,drhocp
+    logical  :: is_adv
     !
+    is_adv = .not.is_ifc_split ! (otherwise, advection is computed in `scal_a_cons` or along with the phase indicator)
 #if defined(_VISC_HARMONIC_INTERPOLATION)
     ! N.b.: care should be taken if one of the conductivities is zero.
     ka = 1._rp/ka12(2); dka = 1._rp/ka12(1)-1._rp/ka12(2)
@@ -51,21 +54,18 @@ module mod_scal
     do k=1,nz
       do j=1,ny
         do i=1,nx
-#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-          usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
-          usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
-          vsjp = 0.5*(rhocp*v(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(s(i,j+1,k)+s(i,j,k))
-          vsjm = 0.5*(rhocp*v(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(s(i,j-1,k)+s(i,j,k))
-          wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
-          wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
-#else
-          !
-          ! (with the geometric volume-of-fluid method, advection is computed in `scal_a_cons`)
-          !
-          usip = 0.; usim = 0.
-          vsjp = 0.; vsjm = 0.
-          wskp = 0.; wskm = 0.
-#endif
+          if(is_adv) then
+            usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
+            usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
+            vsjp = 0.5*(rhocp*v(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(s(i,j+1,k)+s(i,j,k))
+            vsjm = 0.5*(rhocp*v(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(s(i,j-1,k)+s(i,j,k))
+            wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
+            wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
+          else
+            usip = 0.; usim = 0.
+            vsjp = 0.; vsjm = 0.
+            wskp = 0.; wskm = 0.
+          end if
           !
           psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
           psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))

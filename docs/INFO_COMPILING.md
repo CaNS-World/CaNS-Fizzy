@@ -23,10 +23,7 @@ USE_ADIOS2=0       # ADIOS2 I/O support
 #
 # two-fluid options
 #
-CONSTANT_COEFFS_POISSON=1       # constant-coefficient (FFT-based) pressure solver with pressure splitting
-INTERFACE_CAPTURING_VOF=0       # uses THINC/QQ volume-of-fluid instead of the ACDI pathway
-INTERFACE_CAPTURING_SPLIT_VOF=0 # uses the geometric (PLIC) direction-split volume-of-fluid instead of the ACDI pathway
-SDF_NORMALS=1                   # default: ACDI or SDF-based THINC reconstruction and normals
+CONSTANT_COEFFS_POISSON=1 # constant-coefficient (FFT-based) pressure solver with pressure splitting
 ```
 
 In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA` (`nvfortran`), or `CRAY` (`ftn`); the predefined profiles for compiler options can be selected by choosing one of the `FFLAGS_*` options; finer control of the compiler flags may be achieved by building with, e.g., `make FFLAGS+=[OTHER_FLAGS]`, or by tweaking the profiles directly under `configs/flags.mk`. Similarly, the library paths (e.g., for *FFTW*) may need to be adapted in the `Makefile` (`LIBS` variable) or by building with `make LIBS+='-L[PATH_TO_LIB] -l[NAME_OF_LIB]'`. Finally, the following pre-processing options are available:
@@ -37,12 +34,9 @@ In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA
  * `USE_ADIOS2`       : enable ADIOS2-based I/O support
  * `USE_DIEZDECOMP`   : use [diezDecomp](https://github.com/Rafael10Diez/diezDecomp) as GPU communication backend instead of the default (cuDecomp), e.g., for portability in different accelerators. While diezDecomp supports CPU-CPU communication, this is not used in CaNS yet.
 
-and the following ones select the two-fluid method:
+and the following ones select the two-fluid method (the interface-capturing method itself, ACDI, THINC/QQ or geometric volume of fluid, is selected at run time: see `ifc_reconstruction` in [`INFO_INPUT.md`](INFO_INPUT.md)):
 
  * `CONSTANT_COEFFS_POISSON`          : uses the direct FFT-based solver for the pressure Poisson equation, with a pressure-splitting method (default); if set to `0`, the variable-coefficient Poisson equation is solved with an iterative multigrid solver of the HYPRE library (CPU builds only; see below)
- * `INTERFACE_CAPTURING_VOF`          : uses the THINC/QQ volume-of-fluid method instead of the ACDI diffuse-interface pathway
- * `INTERFACE_CAPTURING_SPLIT_VOF`    : uses the geometric volume-of-fluid method instead of the ACDI diffuse-interface pathway: a piecewise-linear (PLIC) reconstruction of the interface, and a conservative direction-split advection that conserves the volume and keeps the volume fraction bounded to round-off, with sub-steps when the CFL number along a direction exceeds 1/2; the momentum and the scalar are transported in one step with the mass fluxes of the volume fraction or, with the input `is_vof_sweep_transport = T` (see [`INFO_INPUT.md`](INFO_INPUT.md)), along with the sweeps of the volume fraction, for large density ratios; the curvature is computed from height functions. The viscosity is limited next to the interface by default with this method (input `is_visc_limiter`, see [`INFO_INPUT.md`](INFO_INPUT.md)). Implicit diffusion is not available yet with this method; it cannot be combined with `INTERFACE_CAPTURING_VOF`, and it does not use `SDF_NORMALS`
- * `SDF_NORMALS`                      : enables approximate signed-distance fields for interface transport, normals, and curvature (default); setting it to `0` uses CDI or standard THINC directly from the phase indicator without allocating a distance field
  * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method
  * `CAPILLARY_BRACKBILL_NORMALIZATION`: enables density-based Brackbill scaling of the surface-tension force (default); setting it to `0` disables the scaling
  * `VISC_HARMONIC_INTERPOLATION`      : uses harmonic phase interpolation for viscosity and thermal conductivity instead of the default arithmetic interpolation

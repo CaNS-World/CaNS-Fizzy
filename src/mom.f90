@@ -6,7 +6,7 @@
 ! -
 module mod_mom
   use mpi
-  use mod_param, only: is_boussinesq_buoyancy,is_visc_limiter
+  use mod_param, only: is_boussinesq_buoyancy,is_ifc_split,is_visc_limiter
   use mod_types
   implicit none
   private
@@ -597,7 +597,7 @@ module mod_mom
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
-    logical  :: is_lim
+    logical  :: is_adv,is_lim
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
 #if defined(_VISC_HARMONIC_INTERPOLATION)
@@ -607,6 +607,7 @@ module mod_mom
 #endif
     nu1 = mu12(1)/rho12(1)
     nu2 = mu12(2)/rho12(2)
+    is_adv = .not.is_ifc_split ! (otherwise, advection is computed in `mom_xyz_a_cons` or along with the phase indicator)
     is_lim = is_visc_limiter
     dxi = dli(1)
     dyi = dli(2)
@@ -712,42 +713,42 @@ module mod_mom
           !
           ! advection
           !
-#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-          !
-          ! mass--momentum-consistent flx (the mass fluxes of the staggered control volumes are averages of
-          ! those of the cell faces weighted by the overlapped volumes, as their densities are)
-          !
-          uuip = 0.25*(flx_x_pcc+flx_x_ccc)*(u_ccc+u_pcc)
-          uuim = 0.25*(flx_x_mcc+flx_x_ccc)*(u_ccc+u_mcc)
-          vujp = 0.25*(flx_y_pcc+flx_y_ccc)*(u_ccc+u_cpc)
-          vujm = 0.25*(flx_y_pmc+flx_y_cmc)*(u_ccc+u_cmc)
-          wukp = 0.25*(flx_z_pcc+flx_z_ccc)*(u_ccc+u_ccp)
-          wukm = 0.25*(flx_z_pcm+flx_z_ccm)*(u_ccc+u_ccm)
-          dudt_aux = dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm )
-          !
-          uvip = 0.25*(flx_x_ccc+flx_x_cpc)*(v_ccc+v_pcc)
-          uvim = 0.25*(flx_x_mcc+flx_x_mpc)*(v_ccc+v_mcc)
-          vvjp = 0.25*(flx_y_ccc+flx_y_cpc)*(v_ccc+v_cpc)
-          vvjm = 0.25*(flx_y_ccc+flx_y_cmc)*(v_ccc+v_cmc)
-          wvkp = 0.25*(flx_z_ccc+flx_z_cpc)*(v_ccc+v_ccp)
-          wvkm = 0.25*(flx_z_ccm+flx_z_cpm)*(v_ccc+v_ccm)
-          dvdt_aux = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
-          !
-          uwip = 0.5*(wgt_c*flx_x_ccc+wgt_p*flx_x_ccp)*(w_ccc+w_pcc)
-          uwim = 0.5*(wgt_c*flx_x_mcc+wgt_p*flx_x_mcp)*(w_ccc+w_mcc)
-          vwjp = 0.5*(wgt_c*flx_y_ccc+wgt_p*flx_y_ccp)*(w_ccc+w_cpc)
-          vwjm = 0.5*(wgt_c*flx_y_cmc+wgt_p*flx_y_cmp)*(w_ccc+w_cmc)
-          wwkp = 0.25*(flx_z_ccc+flx_z_ccp)*(w_ccc+w_ccp)
-          wwkm = 0.25*(flx_z_ccc+flx_z_ccm)*(w_ccc+w_ccm)
-          dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
-#else
-          !
-          ! (with the geometric volume-of-fluid method, advection is computed in `mom_xyz_a_cons`)
-          !
-          dudt_aux = 0.
-          dvdt_aux = 0.
-          dwdt_aux = 0.
-#endif
+          if(is_adv) then
+            !
+            ! mass--momentum-consistent flx (the mass fluxes of the staggered control volumes are averages of
+            ! those of the cell faces weighted by the overlapped volumes, as their densities are)
+            !
+            uuip = 0.25*(flx_x_pcc+flx_x_ccc)*(u_ccc+u_pcc)
+            uuim = 0.25*(flx_x_mcc+flx_x_ccc)*(u_ccc+u_mcc)
+            vujp = 0.25*(flx_y_pcc+flx_y_ccc)*(u_ccc+u_cpc)
+            vujm = 0.25*(flx_y_pmc+flx_y_cmc)*(u_ccc+u_cmc)
+            wukp = 0.25*(flx_z_pcc+flx_z_ccc)*(u_ccc+u_ccp)
+            wukm = 0.25*(flx_z_pcm+flx_z_ccm)*(u_ccc+u_ccm)
+            dudt_aux = dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm )
+            !
+            uvip = 0.25*(flx_x_ccc+flx_x_cpc)*(v_ccc+v_pcc)
+            uvim = 0.25*(flx_x_mcc+flx_x_mpc)*(v_ccc+v_mcc)
+            vvjp = 0.25*(flx_y_ccc+flx_y_cpc)*(v_ccc+v_cpc)
+            vvjm = 0.25*(flx_y_ccc+flx_y_cmc)*(v_ccc+v_cmc)
+            wvkp = 0.25*(flx_z_ccc+flx_z_cpc)*(v_ccc+v_ccp)
+            wvkm = 0.25*(flx_z_ccm+flx_z_cpm)*(v_ccc+v_ccm)
+            dvdt_aux = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
+            !
+            uwip = 0.5*(wgt_c*flx_x_ccc+wgt_p*flx_x_ccp)*(w_ccc+w_pcc)
+            uwim = 0.5*(wgt_c*flx_x_mcc+wgt_p*flx_x_mcp)*(w_ccc+w_mcc)
+            vwjp = 0.5*(wgt_c*flx_y_ccc+wgt_p*flx_y_ccp)*(w_ccc+w_cpc)
+            vwjm = 0.5*(wgt_c*flx_y_cmc+wgt_p*flx_y_cmp)*(w_ccc+w_cmc)
+            wwkp = 0.25*(flx_z_ccc+flx_z_ccp)*(w_ccc+w_ccp)
+            wwkm = 0.25*(flx_z_ccc+flx_z_ccm)*(w_ccc+w_ccm)
+            dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
+          else
+            !
+            ! (computed elsewhere)
+            !
+            dudt_aux = 0.
+            dvdt_aux = 0.
+            dwdt_aux = 0.
+          end if
           !
           ! diffusion
           !

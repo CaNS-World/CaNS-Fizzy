@@ -16,7 +16,7 @@ module mod_vof_thinc_qq
   !
   use mpi
   use mod_types
-  use mod_param, only: eps
+  use mod_param, only: eps,is_sdf_normals
   implicit none
   private
   public vof_thinc_transport_psi,vof_thinc_cmpt_phi
@@ -59,12 +59,12 @@ module mod_vof_thinc_qq
     integer  :: i,j,k,ii,jj,kk
     real(rp) :: xx,yy,zz
     real(rp) :: vel_x,vel_y,vel_z, &
-#if !defined(_SDF_NORMALS)
                 lpsi_x,lpsi_y,lpsi_z, &
-#endif
                 lnormx_x,lnormy_y,lnormz_z, &
                 d_x,d_y,d_z,lflux_x,lflux_y,lflux_z
+    logical  :: is_sdf
     !
+    is_sdf = is_sdf_normals
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)
       do j=0,n(2)
@@ -99,18 +99,18 @@ module mod_vof_thinc_qq
           lnormy_y = normy(i,jj,k)
           lnormz_z = normz(i,j,kk)
           !
-#if defined(_SDF_NORMALS)
-          d_x = phi(ii,j,k)
-          d_y = phi(i,jj,k)
-          d_z = phi(i,j,kk)
-#else
-          lpsi_x = psi(ii,j,k)
-          lpsi_y = psi(i,jj,k)
-          lpsi_z = psi(i,j,kk)
-          d_x = -.5_rp/beta*log(1._rp/(lpsi_x+eps)-1._rp+eps)
-          d_y = -.5_rp/beta*log(1._rp/(lpsi_y+eps)-1._rp+eps)
-          d_z = -.5_rp/beta*log(1._rp/(lpsi_z+eps)-1._rp+eps)
-#endif
+          if(is_sdf) then
+            d_x = phi(ii,j,k)
+            d_y = phi(i,jj,k)
+            d_z = phi(i,j,kk)
+          else
+            lpsi_x = psi(ii,j,k)
+            lpsi_y = psi(i,jj,k)
+            lpsi_z = psi(i,j,kk)
+            d_x = -.5_rp/beta*log(1._rp/(lpsi_x+eps)-1._rp+eps)
+            d_y = -.5_rp/beta*log(1._rp/(lpsi_y+eps)-1._rp+eps)
+            d_z = -.5_rp/beta*log(1._rp/(lpsi_z+eps)-1._rp+eps)
+          end if
           !
           lflux_x = 1._rp/(1._rp + exp(-2._rp*beta*(lnormx_x*xx + d_x)))
           lflux_y = 1._rp/(1._rp + exp(-2._rp*beta*(lnormy_y*yy + d_y)))

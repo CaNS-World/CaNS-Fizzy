@@ -128,18 +128,8 @@ endif
 #
 # CaNS-Fizzy: two-fluid options
 #
-SDF_NORMALS ?= 1
-ifeq ($(strip $(INTERFACE_CAPTURING_SPLIT_VOF)),1)
-ifeq ($(strip $(INTERFACE_CAPTURING_VOF)),1)
-$(error INTERFACE_CAPTURING_VOF and INTERFACE_CAPTURING_SPLIT_VOF cannot be combined)
-endif
-override SDF_NORMALS = 0 # no signed-distance field with the geometric reconstruction
-endif
 CAPILLARY_BRACKBILL_NORMALIZATION ?= 1
 CUSTOM_DEFINES_2FL = CONSTANT_COEFFS_POISSON \
-                     INTERFACE_CAPTURING_VOF \
-                     INTERFACE_CAPTURING_SPLIT_VOF \
-                     SDF_NORMALS \
                      CAPILLARY_BRACKBILL_NORMALIZATION \
                      VISC_HARMONIC_INTERPOLATION
 

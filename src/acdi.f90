@@ -8,7 +8,7 @@ module mod_acdi
   use mpi
   use mod_common_mpi, only:ierr
   use mod_types
-  use mod_param , only: eps
+  use mod_param , only: eps,is_sdf_normals
   implicit none
   private
   public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi
@@ -93,13 +93,12 @@ module mod_acdi
     real(rp) :: normx_xm,normx_xp,normx_ym,normx_yp,normx_zm,normx_zp, &
                 normy_xm,normy_xp,normy_ym,normy_yp,normy_zm,normy_zp, &
                 normz_xm,normz_xp,normz_ym,normz_yp,normz_zm,normz_zp
-#if defined(_SDF_NORMALS)
     real(rp) :: phi_ccm,phi_mcc,phi_cmc,phi_ccc,phi_cpc,phi_pcc,phi_ccp
-#else
     real(rp) :: psi_xm,psi_xp,psi_ym,psi_yp,psi_zm,psi_zp
-#endif
+    logical  :: is_sdf
     real(rp) :: rn_01,rn_11,rn_02,rn_12,rn_03,rn_13
     !
+    is_sdf = is_sdf_normals
     dxi = dli(1)
     dyi = dli(2)
     !
@@ -122,15 +121,15 @@ module mod_acdi
           psi_cpc = psi(i  ,j+1,k  )
           psi_ccp = psi(i  ,j  ,k+1)
           !
-#if defined(_SDF_NORMALS)
-          phi_ccm = phi(i  ,j  ,k-1)
-          phi_cmc = phi(i  ,j-1,k  )
-          phi_mcc = phi(i-1,j  ,k  )
-          phi_ccc = phi(i  ,j  ,k  )
-          phi_pcc = phi(i+1,j  ,k  )
-          phi_cpc = phi(i  ,j+1,k  )
-          phi_ccp = phi(i  ,j  ,k+1)
-#endif
+          if(is_sdf) then
+            phi_ccm = phi(i  ,j  ,k-1)
+            phi_cmc = phi(i  ,j-1,k  )
+            phi_mcc = phi(i-1,j  ,k  )
+            phi_ccc = phi(i  ,j  ,k  )
+            phi_pcc = phi(i+1,j  ,k  )
+            phi_cpc = phi(i  ,j+1,k  )
+            phi_ccp = phi(i  ,j  ,k+1)
+          end if
           !
           u_mcc = u(i-1,j  ,k  )
           u_ccc = u(i  ,j  ,k  )
@@ -187,27 +186,27 @@ module mod_acdi
           rn_03 = normz_zm*(1._rp/(sqrt(normx_zm**2+normy_zm**2+normz_zm**2)+eps))
           rn_13 = normz_zp*(1._rp/(sqrt(normx_zp**2+normy_zp**2+normz_zp**2)+eps))
           !
-#if !defined(_SDF_NORMALS)
-          psi_xm = 0.5*(psi_ccc+psi_mcc)
-          psi_xp = 0.5*(psi_pcc+psi_ccc)
-          psi_ym = 0.5*(psi_ccc+psi_cmc)
-          psi_yp = 0.5*(psi_cpc+psi_ccc)
-          psi_zm = 0.5*(psi_ccc+psi_ccm)
-          psi_zp = 0.5*(psi_ccp+psi_ccc)
-          sharpxm = gam*psi_xm*(1.-psi_xm)*rn_01
-          sharpxp = gam*psi_xp*(1.-psi_xp)*rn_11
-          sharpym = gam*psi_ym*(1.-psi_ym)*rn_02
-          sharpyp = gam*psi_yp*(1.-psi_yp)*rn_12
-          sharpzm = gam*psi_zm*(1.-psi_zm)*rn_03
-          sharpzp = gam*psi_zp*(1.-psi_zp)*rn_13
-#else
-          sharpxm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_mcc)/seps))**2)*rn_01)
-          sharpxp = 0.25*gam*((1.-(tanh(0.25*(phi_pcc+phi_ccc)/seps))**2)*rn_11)
-          sharpym = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_cmc)/seps))**2)*rn_02)
-          sharpyp = 0.25*gam*((1.-(tanh(0.25*(phi_cpc+phi_ccc)/seps))**2)*rn_12)
-          sharpzm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_ccm)/seps))**2)*rn_03)
-          sharpzp = 0.25*gam*((1.-(tanh(0.25*(phi_ccp+phi_ccc)/seps))**2)*rn_13)
-#endif
+          if(.not.is_sdf) then
+            psi_xm = 0.5*(psi_ccc+psi_mcc)
+            psi_xp = 0.5*(psi_pcc+psi_ccc)
+            psi_ym = 0.5*(psi_ccc+psi_cmc)
+            psi_yp = 0.5*(psi_cpc+psi_ccc)
+            psi_zm = 0.5*(psi_ccc+psi_ccm)
+            psi_zp = 0.5*(psi_ccp+psi_ccc)
+            sharpxm = gam*psi_xm*(1.-psi_xm)*rn_01
+            sharpxp = gam*psi_xp*(1.-psi_xp)*rn_11
+            sharpym = gam*psi_ym*(1.-psi_ym)*rn_02
+            sharpyp = gam*psi_yp*(1.-psi_yp)*rn_12
+            sharpzm = gam*psi_zm*(1.-psi_zm)*rn_03
+            sharpzp = gam*psi_zp*(1.-psi_zp)*rn_13
+          else
+            sharpxm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_mcc)/seps))**2)*rn_01)
+            sharpxp = 0.25*gam*((1.-(tanh(0.25*(phi_pcc+phi_ccc)/seps))**2)*rn_11)
+            sharpym = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_cmc)/seps))**2)*rn_02)
+            sharpyp = 0.25*gam*((1.-(tanh(0.25*(phi_cpc+phi_ccc)/seps))**2)*rn_12)
+            sharpzm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_ccm)/seps))**2)*rn_03)
+            sharpzp = 0.25*gam*((1.-(tanh(0.25*(phi_ccp+phi_ccc)/seps))**2)*rn_13)
+          end if
           !
           ! transport
           !
