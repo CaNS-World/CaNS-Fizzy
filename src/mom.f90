@@ -6,7 +6,7 @@
 ! -
 module mod_mom
   use mpi
-  use mod_param, only: is_boussinesq_buoyancy
+  use mod_param, only: is_boussinesq_buoyancy,is_visc_limiter
   use mod_types
   implicit none
   private
@@ -581,7 +581,7 @@ module mod_mom
     real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
-    real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
+    real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta,nu1,nu2
     real(rp) :: dxi,dyi
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
                 d_ccm,d_pcm,d_cpm,d_cmc,d_pmc,d_mcc,d_ccc,d_pcc,d_mpc,d_cpc,d_cmp,d_mcp,d_ccp,d_cpp,d_ppc,d_pcp, &
@@ -591,12 +591,13 @@ module mod_mom
                 flx_x_mcc,flx_x_ccc,flx_x_pcc,flx_x_mpc,flx_x_cpc,flx_x_mcp,flx_x_ccp, &
                 flx_y_cmc,flx_y_ccc,flx_y_cpc,flx_y_pmc,flx_y_pcc,flx_y_cmp,flx_y_ccp, &
                 flx_z_ccm,flx_z_ccc,flx_z_ccp,flx_z_pcm,flx_z_pcc,flx_z_cpm,flx_z_cpc, &
-                dzci_c,dzci_m,dzfi_c,dzfi_p,wgt_c,wgt_p
+                dzci_c,dzci_m,dzfi_c,dzfi_p,wgt_c,wgt_p,wgt_m
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
+    logical  :: is_lim
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
 #if defined(_VISC_HARMONIC_INTERPOLATION)
@@ -604,6 +605,9 @@ module mod_mom
 #else
     mu  = mu12(2)      ; dmu = mu12(1)-mu12(2)
 #endif
+    nu1 = mu12(1)/rho12(1)
+    nu2 = mu12(2)/rho12(2)
+    is_lim = is_visc_limiter
     dxi = dli(1)
     dyi = dli(2)
     !
@@ -704,6 +708,7 @@ module mod_mom
           dzfi_p = dzfi(k+1)
           wgt_c  = wzc(k)      ! fractions of the control volume of w within the cells k and k+1
           wgt_p  = 1.-wzc(k)
+          wgt_m  = wzc(k-1)
           !
           ! advection
           !
@@ -771,6 +776,14 @@ module mod_mom
           muzp = mu+dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
           muzm = mu+dmu*0.25*(c_ccc+c_pcc+c_ccm+c_pcm)
 #endif
+          if(is_lim) then ! kinematic viscosity bounded at the interface, see `mu_lim_edge`
+            muxp = mu_lim_cell(muxp,c_pcc,rho,drho,nu1,nu2)
+            muxm = mu_lim_cell(muxm,c_ccc,rho,drho,nu1,nu2)
+            muyp = mu_lim_edge(muyp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
+            muym = mu_lim_edge(muym,c_cmc,c_pmc,c_ccc,c_pcc,0.5_rp,rho,drho,nu1,nu2)
+            muzp = mu_lim_edge(muzp,c_ccc,c_pcc,c_ccp,c_pcp,wgt_c ,rho,drho,nu1,nu2)
+            muzm = mu_lim_edge(muzm,c_ccm,c_pcm,c_ccc,c_pcc,wgt_m ,rho,drho,nu1,nu2)
+          end if
           dudt_aux = dudt_aux + dxi*(   (dudxp+dudxp)*muxp-(dudxm+dudxm)*muxm) + &
                                 dyi*(   (dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym) + &
                                 dzfi_c*((dudzp+dwdxp)*muzp-(dudzm+dwdxm)*muzm)
@@ -800,6 +813,14 @@ module mod_mom
           muzp = mu+dmu*0.25*(c_ccc+c_cpc+c_cpp+c_ccp)
           muzm = mu+dmu*0.25*(c_ccc+c_cpc+c_cpm+c_ccm)
 #endif
+          if(is_lim) then
+            muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
+            muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mpc,c_cpc,0.5_rp,rho,drho,nu1,nu2)
+            muyp = mu_lim_cell(muyp,c_cpc,rho,drho,nu1,nu2)
+            muym = mu_lim_cell(muym,c_ccc,rho,drho,nu1,nu2)
+            muzp = mu_lim_edge(muzp,c_ccc,c_cpc,c_ccp,c_cpp,wgt_c ,rho,drho,nu1,nu2)
+            muzm = mu_lim_edge(muzm,c_ccm,c_cpm,c_ccc,c_cpc,wgt_m ,rho,drho,nu1,nu2)
+          end if
           dvdt_aux = dvdt_aux + dxi*(   (dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm) + &
                                 dyi*(   (dvdyp+dvdyp)*muyp-(dvdym+dvdym)*muym) + &
                                 dzfi_c*((dvdzp+dwdyp)*muzp-(dvdzm+dwdym)*muzm)
@@ -829,6 +850,14 @@ module mod_mom
           muzp = mu+dmu*c_ccp
           muzm = mu+dmu*c_ccc
 #endif
+          if(is_lim) then
+            muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_ccp,c_pcp,wgt_c ,rho,drho,nu1,nu2)
+            muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mcp,c_ccp,wgt_c ,rho,drho,nu1,nu2)
+            muyp = mu_lim_edge(muyp,c_ccc,c_cpc,c_ccp,c_cpp,wgt_c ,rho,drho,nu1,nu2)
+            muym = mu_lim_edge(muym,c_cmc,c_ccc,c_cmp,c_ccp,wgt_c ,rho,drho,nu1,nu2)
+            muzp = mu_lim_cell(muzp,c_ccp,rho,drho,nu1,nu2)
+            muzm = mu_lim_cell(muzm,c_ccc,rho,drho,nu1,nu2)
+          end if
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm) + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym) + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)
@@ -840,6 +869,35 @@ module mod_mom
       end do
     end do
   end subroutine mom_xyz_ad
+  !
+  pure real(rp) function mu_lim_edge(mu_e,ca,cb,cc,cd,wz,rho,drho,nu1,nu2) result(mu_l)
+    !
+    ! limits the viscosity on a cell edge such that its kinematic viscosity, relative to the lightest of the
+    ! four staggered control volumes that share the edge, does not exceed that of the phase that dominates
+    ! the four cells around the edge (T.-Y. Huang et al., arXiv:2606.02467, 2026): with a sharp interface,
+    ! the viscosity interpolated to an edge can otherwise be that of the heavy phase next to a control volume
+    ! with the density of the light one, with a kinematic viscosity far above those of both phases;
+    ! ca, cb, cc, cd are the volume fractions of the cells (0,0), (1,0), (0,1), (1,1) around the edge, and
+    ! wz the weight of the cells (.,0) in the control volumes along the second direction (see `wzc`)
+    !
+    implicit none
+    real(rp), intent(in) :: mu_e,ca,cb,cc,cd,wz,rho,drho,nu1,nu2
+    real(rp) :: rho_min
+    !$acc routine seq
+    rho_min = min(rho+drho*0.5_rp*(ca+cb),rho+drho*0.5_rp*(cc+cd), &
+                  rho+drho*(wz*ca+(1._rp-wz)*cc),rho+drho*(wz*cb+(1._rp-wz)*cd))
+    mu_l = min(mu_e,rho_min*merge(nu1,nu2,ca+cb+cc+cd >= 2._rp))
+  end function mu_lim_edge
+  !
+  pure real(rp) function mu_lim_cell(mu_c,c,rho,drho,nu1,nu2) result(mu_l)
+    !
+    ! same as `mu_lim_edge`, for the viscosity at a cell centre (relative to the density of the cell)
+    !
+    implicit none
+    real(rp), intent(in) :: mu_c,c,rho,drho,nu1,nu2
+    !$acc routine seq
+    mu_l = min(mu_c,(rho+drho*c)*merge(nu1,nu2,c >= 0.5_rp))
+  end function mu_lim_cell
   !
   subroutine mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psio,psiflx_x,psiflx_y,psiflx_z,ua,va,wa, &
                             factor1,factor2,factor12,dudt,dvdt,dwdt,dudto,dvdto,dwdto,u,v,w)
