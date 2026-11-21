@@ -537,7 +537,7 @@ module mod_two_fluid
     logical  :: is_sphere,is_swap_pf
     integer  :: nspheres,i,j,k,ierr
     character(len=len(inipsi)) :: ini
-    integer :: isuffix,ih,ia,ib
+    integer :: isuffix,ih,ia,ib,ishape
     !
     ! two-dimensional initial conditions take a suffix `-x`, `-y` or `-z` with the direction
     ! normal to their plane; without a suffix, they lie in the x-z plane (`-y`)
@@ -556,8 +556,18 @@ module mod_two_fluid
     !
     is_sphere  = .false.
     is_swap_pf = .false.
+    ishape = 0 ! spheres, cylinders and films from `spheres.in`
     select case(trim(ini))
-    case('uni','zer','flm','cap-wav-1d','zalesak-disk')
+    case('uni')
+      ishape = 1
+    case('zer')
+      ishape = 2
+    case('flm')
+      ishape = 3
+    case('cap-wav-1d')
+      ishape = 4
+    case('zalesak-disk')
+      ishape = 5
     case('bub3','drp3','dis3')
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
@@ -648,23 +658,23 @@ module mod_two_fluid
       ! signed-distance(-like) function of the initial interface, positive in phase 1
       !
       real(rp), intent(in) :: x,y,z
-      real(rp), dimension(3) :: xyz
-      real(rp) :: xx,zz,d1,d2,dmin,dist,sw,sl,shift,xxc,zzc,r,eta,deta,zfilm_max
-      integer  :: q,ii,jj,kk
+      real(rp), dimension(3) :: xyz,dd
+      real(rp) :: xx,zz,d1,d2,dmin,sw,sl,shift,xxc,zzc,r,eta,deta,zfilm_max
+      integer  :: q,ii
       xyz(:) = [x,y,z]
-      select case(trim(ini))
-      case('uni')
+      select case(ishape)
+      case(1) ! 'uni'
         sdf = huge(1._rp)
-      case('zer')
+      case(2) ! 'zer'
         sdf = -huge(1._rp)
-      case('flm')
+      case(3) ! 'flm'
         sdf = z-l(3)/2
-      case('cap-wav-1d')
+      case(4) ! 'cap-wav-1d'
         zfilm_max = 0.01*l(ia)
         eta  =  zfilm_max*cos(2*pi*xyz(ia)/l(ia))
         deta = -zfilm_max*2*pi/l(ia)*sin(2*pi*xyz(ia)/l(ia))
         sdf  = (xyz(ib)-l(ib)/2-eta)/sqrt(1._rp+deta**2)
-      case('zalesak-disk')
+      case(5) ! 'zalesak-disk'
         r   = 0.15 ! (same constants as in `init2fl`)
         xxc = 0.5
         zzc = 0.75
@@ -680,18 +690,16 @@ module mod_two_fluid
         d2 = sqrt(max(xx-sw,0._rp)**2 + max(zz-sl,0._rp)**2) + min(max(xx-sw,zz-sl),0._rp)
         sdf = -max(d1,-d2)
       case default ! spheres, cylinders and films from `spheres.in`
+        !
+        ! the nearest periodic image is found along each direction separately
+        !
         dmin = huge(1._rp)
         do q=1,nspheres
-          do kk=-1,1
-            do jj=-1,1
-              do ii=-1,1
-                dist = sqrt( (x+ii*iperiod(1)*l(1)-spheres(q)%xyz(1))**2*idir(1) + &
-                             (y+jj*iperiod(2)*l(2)-spheres(q)%xyz(2))**2*idir(2) + &
-                             (z+kk*iperiod(3)*l(3)-spheres(q)%xyz(3))**2*idir(3) ) - spheres(q)%r
-                dmin = min(dmin,dist)
-              end do
-            end do
+          dd(:) = huge(1._rp)
+          do ii=-1,1
+            dd(:) = min(dd(:),(xyz(:)+ii*iperiod(:)*l(:)-spheres(q)%xyz(:))**2*idir(:))
           end do
+          dmin = min(dmin,sqrt(dd(1)+dd(2)+dd(3))-spheres(q)%r)
         end do
         sdf = merge(-dmin,dmin,is_swap_pf)
       end select
