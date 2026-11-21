@@ -84,6 +84,12 @@ module mod_sanity
     if(is_poisson_dtdma.and.(ipencil_axis == 3)) then
       if(myid == 0)  print*, 'ERROR: `is_poisson_dtdma = T` requires X/Y-aligned pencils.'; call abortit
     end if
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    if(is_impdiff) then
+      if(myid == 0)  print*, 'ERROR: implicit diffusion is not available yet with the geometric volume-of-fluid method &
+                                     &(`INTERFACE_CAPTURING_SPLIT_VOF=1`).'; call abortit
+    end if
+#endif
   end subroutine test_sanity_input
   !
 #if !defined(_CONSTANT_COEFFS_POISSON)

@@ -1,6 +1,6 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
@@ -10,7 +10,7 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum
+  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum
   contains
   !
   subroutine momx_a(nx,ny,nz,nh_v,nh_g,dxi,dyi,dzfi,u,v,w,dudt)
@@ -404,14 +404,15 @@ module mod_mom
     end do
   end subroutine momz_p
   !
-  subroutine momx_sigma(nx,ny,nz,nh_psi,dxi,sigma,kappa,psi,dudt)
+  subroutine momx_sigma(nx,ny,nz,nh_psi,nh_ifc,dxi,sigma,kappa,psi,dudt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_psi
+    integer , intent(in) :: nh_psi,nh_ifc
     real(rp), intent(in) :: dxi
     real(rp), intent(in) :: sigma
-    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), intent(in   ) :: kappa
     real(rp), dimension( :, :, :), intent(inout) :: dudt
     real(rp) :: kappap
     integer :: i,j,k
@@ -429,14 +430,15 @@ module mod_mom
     end do
   end subroutine momx_sigma
   !
-  subroutine momy_sigma(nx,ny,nz,nh_psi,dyi,sigma,psi,kappa,dvdt)
+  subroutine momy_sigma(nx,ny,nz,nh_psi,nh_ifc,dyi,sigma,psi,kappa,dvdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_psi
+    integer , intent(in) :: nh_psi,nh_ifc
     real(rp), intent(in) :: dyi
     real(rp), intent(in) :: sigma
-    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), intent(in   ) :: kappa
     real(rp), dimension( :, :, :), intent(inout) :: dvdt
     real(rp) :: kappap
     integer :: i,j,k
@@ -454,14 +456,15 @@ module mod_mom
     end do
   end subroutine momy_sigma
   !
-  subroutine momz_sigma(nx,ny,nz,nh_psi,nh_g,dzci,sigma,psi,kappa,dwdt)
+  subroutine momz_sigma(nx,ny,nz,nh_psi,nh_ifc,nh_g,dzci,sigma,psi,kappa,dwdt)
     !
     implicit none
     integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in), dimension(1-nh_g:) :: dzci
     real(rp), intent(in) :: sigma
-    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi,kappa
+    real(rp), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), intent(in   ) :: psi
+    real(rp), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), intent(in   ) :: kappa
     real(rp), dimension( :, :, :), intent(inout) :: dwdt
     real(rp) :: kappap
     integer :: i,j,k
@@ -566,16 +569,16 @@ module mod_mom
     end do
   end subroutine momz_buoy
   !
-  subroutine mom_xyz_ad(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
+  subroutine mom_xyz_ad(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi,dudt,dvdt,dwdt)
     implicit none
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in ), dimension(2) :: rho12,mu12
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta
@@ -704,6 +707,7 @@ module mod_mom
           !
           ! advection
           !
+#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
           !
           ! mass--momentum-consistent flx (the mass fluxes of the staggered control volumes are averages of
           ! those of the cell faces weighted by the overlapped volumes, as their densities are)
@@ -731,6 +735,14 @@ module mod_mom
           wwkp = 0.25*(flx_z_ccc+flx_z_ccp)*(w_ccc+w_ccp)
           wwkm = 0.25*(flx_z_ccc+flx_z_ccm)*(w_ccc+w_ccm)
           dwdt_aux = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
+#else
+          !
+          ! (with the geometric volume-of-fluid method, advection is computed in `mom_xyz_a_cons`)
+          !
+          dudt_aux = 0.
+          dvdt_aux = 0.
+          dwdt_aux = 0.
+#endif
           !
           ! diffusion
           !
@@ -829,7 +841,155 @@ module mod_mom
     end do
   end subroutine mom_xyz_ad
   !
-  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
+  subroutine mom_xyz_a_cons(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psio,psiflx_x,psiflx_y,psiflx_z,ua,va,wa, &
+                            factor1,factor2,factor12,dudt,dvdt,dwdt,dudto,dvdto,dwdto,u,v,w)
+    !
+    ! advection terms in conservative form, consistent with the transport of the geometric volume-of-fluid
+    ! method, integrated in one step (over the time `factor12`), together with the AB2 update of the velocity
+    ! with the other terms (`dudt` and `dudto`, with weights `factor1` and `factor2`), in a single kernel:
+    !   u <- (rho_old*u + factor12*advection + factor1*dudt + factor2*dudto)/rho_new,   dudto <- dudt
+    !
+    ! the cell-face mass fluxes are rho_2*ua + (rho_1-rho_2)*psiflx, with psiflx the (time-averaged) phase-1
+    ! volume fluxes of the volume-of-fluid step and ua its divergence-free advecting velocity, which is also
+    ! the transported one; the mass fluxes of the staggered control volumes are averages of those of the cell
+    ! faces weighted by the overlapped volumes (`wzc` along z), as the staggered densities are averages of
+    ! those of the cells: the discrete continuity equation of the staggered control volumes is then satisfied
+    ! exactly, and the central interpolation of the transported velocity makes the advection operator
+    ! skew-symmetric (kinetic energy conserving)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
+    real(rp), intent(in   ), dimension(2) :: rho12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
+    real(rp), intent(in   ) :: factor1,factor2,factor12
+    real(rp), intent(in   ), dimension(:,:,:) :: dudt,dvdt,dwdt
+    real(rp), intent(inout), dimension(:,:,:) :: dudto,dvdto,dwdto
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    integer :: i,j,k
+    real(rp) :: rho,drho,dxi,dyi,dzci_c,dzfi_c,wgt_c,wgt_p
+    real(rp) :: u_ccm,u_cmc,u_mcc,u_ccc,u_pcc,u_cpc,u_ccp, &
+                v_ccm,v_cmc,v_mcc,v_ccc,v_pcc,v_cpc,v_ccp, &
+                w_ccm,w_cmc,w_mcc,w_ccc,w_pcc,w_cpc,w_ccp, &
+                flx_x_mcc,flx_x_ccc,flx_x_pcc,flx_x_mpc,flx_x_cpc,flx_x_mcp,flx_x_ccp, &
+                flx_y_cmc,flx_y_ccc,flx_y_cpc,flx_y_pmc,flx_y_pcc,flx_y_cmp,flx_y_ccp, &
+                flx_z_ccm,flx_z_ccc,flx_z_ccp,flx_z_pcm,flx_z_pcc,flx_z_cpm,flx_z_cpc
+    real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
+    real(rp) :: rhoxp,rhoyp,rhozp,rhoxo,rhoyo,rhozo,dudt_a,dvdt_a,dwdt_a
+    !
+    rho = rho12(2); drho = rho12(1)-rho12(2)
+    dxi = dli(1)
+    dyi = dli(2)
+    !
+    ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
+    !                                        all scalars should be firstprivate/private
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          u_ccm = ua(i  ,j  ,k-1)
+          u_cmc = ua(i  ,j-1,k  )
+          u_mcc = ua(i-1,j  ,k  )
+          u_ccc = ua(i  ,j  ,k  )
+          u_pcc = ua(i+1,j  ,k  )
+          u_cpc = ua(i  ,j+1,k  )
+          u_ccp = ua(i  ,j  ,k+1)
+          !
+          v_ccm = va(i  ,j  ,k-1)
+          v_cmc = va(i  ,j-1,k  )
+          v_mcc = va(i-1,j  ,k  )
+          v_ccc = va(i  ,j  ,k  )
+          v_pcc = va(i+1,j  ,k  )
+          v_cpc = va(i  ,j+1,k  )
+          v_ccp = va(i  ,j  ,k+1)
+          !
+          w_ccm = wa(i  ,j  ,k-1)
+          w_cmc = wa(i  ,j-1,k  )
+          w_mcc = wa(i-1,j  ,k  )
+          w_ccc = wa(i  ,j  ,k  )
+          w_pcc = wa(i+1,j  ,k  )
+          w_cpc = wa(i  ,j+1,k  )
+          w_ccp = wa(i  ,j  ,k+1)
+          !
+          flx_x_mcc = rho*u_mcc           + drho*psiflx_x(i-1,j  ,k  )
+          flx_x_ccc = rho*u_ccc           + drho*psiflx_x(i  ,j  ,k  )
+          flx_x_pcc = rho*u_pcc           + drho*psiflx_x(i+1,j  ,k  )
+          flx_x_mpc = rho*ua(i-1,j+1,k  ) + drho*psiflx_x(i-1,j+1,k  )
+          flx_x_cpc = rho*u_cpc           + drho*psiflx_x(i  ,j+1,k  )
+          flx_x_mcp = rho*ua(i-1,j  ,k+1) + drho*psiflx_x(i-1,j  ,k+1)
+          flx_x_ccp = rho*u_ccp           + drho*psiflx_x(i  ,j  ,k+1)
+          !
+          flx_y_cmc = rho*v_cmc           + drho*psiflx_y(i  ,j-1,k  )
+          flx_y_ccc = rho*v_ccc           + drho*psiflx_y(i  ,j  ,k  )
+          flx_y_cpc = rho*v_cpc           + drho*psiflx_y(i  ,j+1,k  )
+          flx_y_pmc = rho*va(i+1,j-1,k  ) + drho*psiflx_y(i+1,j-1,k  )
+          flx_y_pcc = rho*v_pcc           + drho*psiflx_y(i+1,j  ,k  )
+          flx_y_cmp = rho*va(i  ,j-1,k+1) + drho*psiflx_y(i  ,j-1,k+1)
+          flx_y_ccp = rho*v_ccp           + drho*psiflx_y(i  ,j  ,k+1)
+          !
+          flx_z_ccm = rho*w_ccm           + drho*psiflx_z(i  ,j  ,k-1)
+          flx_z_ccc = rho*w_ccc           + drho*psiflx_z(i  ,j  ,k  )
+          flx_z_ccp = rho*w_ccp           + drho*psiflx_z(i  ,j  ,k+1)
+          flx_z_pcm = rho*wa(i+1,j  ,k-1) + drho*psiflx_z(i+1,j  ,k-1)
+          flx_z_pcc = rho*w_pcc           + drho*psiflx_z(i+1,j  ,k  )
+          flx_z_cpm = rho*wa(i  ,j+1,k-1) + drho*psiflx_z(i  ,j+1,k-1)
+          flx_z_cpc = rho*w_cpc           + drho*psiflx_z(i  ,j+1,k  )
+          !
+          dzci_c = dzci(k)
+          dzfi_c = dzfi(k)
+          wgt_c  = wzc(k)      ! fractions of the control volume of w within the cells k and k+1
+          wgt_p  = 1.-wzc(k)
+          !
+          uuip = 0.25*(flx_x_pcc+flx_x_ccc)*(u_ccc+u_pcc)
+          uuim = 0.25*(flx_x_mcc+flx_x_ccc)*(u_ccc+u_mcc)
+          vujp = 0.25*(flx_y_pcc+flx_y_ccc)*(u_ccc+u_cpc)
+          vujm = 0.25*(flx_y_pmc+flx_y_cmc)*(u_ccc+u_cmc)
+          wukp = 0.25*(flx_z_pcc+flx_z_ccc)*(u_ccc+u_ccp)
+          wukm = 0.25*(flx_z_pcm+flx_z_ccm)*(u_ccc+u_ccm)
+          !
+          uvip = 0.25*(flx_x_ccc+flx_x_cpc)*(v_ccc+v_pcc)
+          uvim = 0.25*(flx_x_mcc+flx_x_mpc)*(v_ccc+v_mcc)
+          vvjp = 0.25*(flx_y_ccc+flx_y_cpc)*(v_ccc+v_cpc)
+          vvjm = 0.25*(flx_y_ccc+flx_y_cmc)*(v_ccc+v_cmc)
+          wvkp = 0.25*(flx_z_ccc+flx_z_cpc)*(v_ccc+v_ccp)
+          wvkm = 0.25*(flx_z_ccm+flx_z_cpm)*(v_ccc+v_ccm)
+          !
+          uwip = 0.5*(wgt_c*flx_x_ccc+wgt_p*flx_x_ccp)*(w_ccc+w_pcc)
+          uwim = 0.5*(wgt_c*flx_x_mcc+wgt_p*flx_x_mcp)*(w_ccc+w_mcc)
+          vwjp = 0.5*(wgt_c*flx_y_ccc+wgt_p*flx_y_ccp)*(w_ccc+w_cpc)
+          vwjm = 0.5*(wgt_c*flx_y_cmc+wgt_p*flx_y_cmp)*(w_ccc+w_cmc)
+          wwkp = 0.25*(flx_z_ccc+flx_z_ccp)*(w_ccc+w_ccp)
+          wwkm = 0.25*(flx_z_ccc+flx_z_ccm)*(w_ccc+w_ccm)
+          !
+          dudt_a = dxi*( -uuip + uuim ) + dyi*( -vujp + vujm ) + dzfi_c*( -wukp + wukm )
+          dvdt_a = dxi*( -uvip + uvim ) + dyi*( -vvjp + vvjm ) + dzfi_c*( -wvkp + wvkm )
+          dwdt_a = dxi*( -uwip + uwim ) + dyi*( -vwjp + vwjm ) + dzci_c*( -wwkp + wwkm )
+          !
+          ! update, with the densities of the staggered control volumes before and after the volume-of-fluid step
+          !
+          rhoxo = rho + drho*0.5*(psio(i+1,j,k)+psio(i,j,k))
+          rhoyo = rho + drho*0.5*(psio(i,j+1,k)+psio(i,j,k))
+          rhozo = rho + drho*(wgt_c*psio(i,j,k)+wgt_p*psio(i,j,k+1))
+          rhoxp = rho + drho*0.5*(psi( i+1,j,k)+psi( i,j,k))
+          rhoyp = rho + drho*0.5*(psi( i,j+1,k)+psi( i,j,k))
+          rhozp = rho + drho*(wgt_c*psi( i,j,k)+wgt_p*psi( i,j,k+1))
+          u(i,j,k) = (u(i,j,k)*rhoxo + factor12*dudt_a + factor1*dudt(i,j,k) + factor2*dudto(i,j,k))/rhoxp
+          v(i,j,k) = (v(i,j,k)*rhoyo + factor12*dvdt_a + factor1*dvdt(i,j,k) + factor2*dvdto(i,j,k))/rhoyp
+          w(i,j,k) = (w(i,j,k)*rhozo + factor12*dwdt_a + factor1*dwdt(i,j,k) + factor2*dwdto(i,j,k))/rhozp
+          dudto(i,j,k) = dudt(i,j,k)
+          dvdto(i,j,k) = dvdt(i,j,k)
+          dwdto(i,j,k) = dwdt(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine mom_xyz_a_cons
+  !
+  subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
                          p,psi,kappa,s,pn,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -841,7 +1001,7 @@ module mod_mom
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
     real(rp), intent(in   ) :: dt_r
@@ -850,7 +1010,8 @@ module mod_mom
     real(rp), intent(in   ) :: sigma
     real(rp), intent(in   ) :: rho0,rho_av(3)
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:)           :: p
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi,kappa
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)           :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
@@ -1028,7 +1189,7 @@ module mod_mom
     end do
   end subroutine mom_xyz_oth
   !
-  subroutine cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_g,is_cmpt,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
+  subroutine cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_cmpt,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                             rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                             surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
@@ -1040,7 +1201,7 @@ module mod_mom
     !
     implicit none
     integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
     logical , intent(in), dimension(3) :: is_cmpt
     real(rp), intent(in), dimension(3) :: dli
     real(rp), intent(in), dimension(1-nh_g:) :: dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f
@@ -1048,7 +1209,8 @@ module mod_mom
     real(rp), intent(in), dimension(2) :: rho12,beta12
     real(rp), intent(in), dimension(3) :: gacc,rho_av
     real(rp), intent(in) :: sigma,rho0
-    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio,kappa
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
+    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
     real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)

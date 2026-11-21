@@ -1,6 +1,6 @@
 ! -
 !
-! SPDX-FileCopyrightText: Copyright (c) 2024 The CaNS contributors. All rights reserved.
+! SPDX-FileCopyrightText: Pedro Costa and the CaNS contributors
 ! SPDX-License-Identifier: MIT
 !
 ! -
@@ -63,23 +63,23 @@ module mod_acdi
     gam = sqrt(velmax)*gam_factor
   end subroutine acdi_set_gamma
   !
-  subroutine acdi_transport_pf(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt, &
+  subroutine acdi_transport_pf(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidt, &
                                flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the phase field transport equation
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_g
+    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzci,dzfi
     real(rp), intent(in   )                      :: gam,seps
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: normx,normy,normz
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: phi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: flux_x,flux_y,flux_z
+    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: flux_x,flux_y,flux_z
     integer :: i,j,k
     real(rp) :: dxi,dyi
     real(rp) :: adv,diff,sharp,rglr
@@ -229,16 +229,16 @@ module mod_acdi
     end do
   end subroutine acdi_transport_pf
   !
-  subroutine acdi_cmpt_phi(n,nh_psi,seps,psi,phi)
+  subroutine acdi_cmpt_phi(n,nh_psi,nh_ifc,seps,psi,phi)
     !
     ! computes the signed-distance field phi from the smoothed volume fraction field psi
     !
     implicit none
     integer , intent(in ), dimension(3)           :: n
-    integer , intent(in) :: nh_psi
+    integer , intent(in) :: nh_psi,nh_ifc
     real(rp), intent(in )                         :: seps
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: phi
+    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: phi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !

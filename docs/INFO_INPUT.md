@@ -162,6 +162,7 @@ These lines set the initial velocity field.
 * `ant`: three-dimensional Antuono vortex
 * `rot-x`, `rot-y`, `rot-z`: solid-body rotation with angular velocity $2 \pi$ around the axis X, Y or Z
 * `vor-x`, `vor-y`, `vor-z`: two-dimensional, time-dependent serpentine vortex in the plane normal to X, Y or Z
+* `def`: three-dimensional, time-dependent deformation field of LeVeque, with a period of 3
 
 The profile initializers (`zer`, `uni`, `cou`, `poi`, `tbl`, `iop`, `log`, `hcl`, `hcp`, `pdc`, `hdc`) accept `-x`, `-y`, or `-z` suffixes, for example `poi-y`. A bare name always means `-x`.
 
@@ -439,6 +440,8 @@ inipsi            = 'bub3'
 
 The two-dimensional fields (`bub2`, `drp2`, `dis2`, `cap-wav-1d` and `zalesak-disk`) accept the suffixes `-x`, `-y` or `-z`, the direction normal to their plane; e.g., `bub2-x` are bubbles in the Y-Z plane. A bare name means `-y`, the X-Z plane.
 
+With the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF`), these fields are sharp: each cell takes the exact volume fraction of phase 1, instead of a smooth profile.
+
 See `two_fluid.f90` for more details. For the `bub[1-3]`, `drp[1-3]`, and `dis[1-3]` initial fields, the position and size of the films/bubbles/droplets can be specified by a `spheres.in` file, where each line corresponds to an individual spherical/circular/planar bubble/droplet, specifying the cartesian coordinates of its center of mass, and its radius. **Note:** _The recommended way to initialize a dispersed multiphase flow is to use `dis?`, with phase 1 being the dispersed phase, and phase 2 the continuous one. This is important because `inivel` above considers phase 2 as the continuous one._
 For example, the following file introduces in the computational domain two bubbles/droplets, the first centered at `[x,y,z] = [0.3,1.,0.5]` with a radius of `0.25`, and the second centered at `[1.5,0.6,1.]` with radius `0.5`.
 
@@ -513,7 +516,7 @@ psi_thickness_factor = 0.51
 
 This value sets the interface thickness (the higher, the thicker). It corresponds to the non-dimensional epsilon parameter (`eps`) from the ACDI method which, for ACDI, should always be larger than `0.5`; for the THINC/QQ VoF method, a corresponding `beta` parameter is related related to this factor by `beta = 1./(2*eps)`. This parameter controls the interface thickness as given by the hyperbolic tangent function: `h = 0.5*(1.+tanh(r/(2.*eps))) = 0.5*(1.+tanh(r*beta))`, with `r` being the signed distance to the interface in computational space. The recommended default values are `psi_thickness_factor = 0.51` for ACDI (`eps = 0.51`), and `psi_thickness_factor = 0.5` to `0.25` (`beta = 1` to `2`), for the THINC/QQ VoF.
 
-Note: see the compile-time option `INTERFACE_CAPTURING_VOF` in [`docs/INFO_COMPILING.md`](INFO_COMPILING.md) for how to switch to VoF for interface capturing.
+Note: see the compile-time options `INTERFACE_CAPTURING_VOF` and `INTERFACE_CAPTURING_SPLIT_VOF` in [`docs/INFO_COMPILING.md`](INFO_COMPILING.md) for how to switch to VoF for interface capturing. The geometric method of `INTERFACE_CAPTURING_SPLIT_VOF` keeps the interface sharp, and does not use this parameter; every `iout0d` time steps, it appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate.
 
 # About the `&numerics` namelist under `input.nml`
 
@@ -618,6 +621,6 @@ The `hdf5` and `adios2` backends come from *CaNS*, and have not been tested yet 
 is_full_restart = F
 ```
 
-`is_full_restart`, if true, saves in each checkpoint what is needed to **restart the time integration exactly**: the pressure and the right-hand sides of the previous time step (e.g., `fld_po.bin`, `fld_dudtrko.bin`), as one file per field, and the last two time step sizes in `fld_dt.out`. A run restarted from such a checkpoint reproduces an uninterrupted run. By default, or if these files are not found, a restarted run begins with a first-order time step.
+`is_full_restart`, if true, saves in each checkpoint what is needed to **restart the time integration exactly**: the pressure and the right-hand sides of the previous time step (e.g., `fld_po.bin`, `fld_dudtrko.bin`), as one file per field, and the last two time step sizes in `fld_dt.out`. A run restarted from such a checkpoint reproduces an uninterrupted run. By default, or if these files are not found, a restarted run begins with a first-order time step. With the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF`), the velocity and the scalar of the previous time step are saved as well (`fld_uo.bin`, `fld_so.bin`, ...).
 
 If `&io` is not provided, *CaNS-Fizzy* defaults to `io_backend = 'mpiio'`. Note also that selecting `hdf5` or `adios2` requires compiling the code with support for the corresponding library; otherwise, *CaNS-Fizzy* falls back to `mpiio` with a warning at runtime.

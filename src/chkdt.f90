@@ -71,7 +71,7 @@ module mod_chkdt
     !$acc end data
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,dti,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
-#if !defined(_INTERFACE_CAPTURING_VOF)
+#if !defined(_INTERFACE_CAPTURING_VOF) && !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     dtipsi = gam*seps/dlmin**2
     if(dtipsi == 0.) dtipsi = 1.
 #else

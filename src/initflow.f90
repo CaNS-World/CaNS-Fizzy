@@ -50,7 +50,7 @@ module mod_initflow
     idir_s = 1
     if(isuffix == 5) then
       if((ini(isuffix-1:isuffix-1) == '-').and. &
-         (.not.any(ini(1:3) == ['tgv','ant','rot','vor']))) then
+         (.not.any(ini(1:3) == ['tgv','ant','rot','vor','def']))) then
         select case(ini(isuffix:isuffix))
         case('x','y','z')
           idir_s = index('xyz',ini(isuffix:isuffix))
@@ -299,6 +299,23 @@ module mod_initflow
           end do
         end do
       end do
+    case('def') ! 3D deformation field (LeVeque, SIAM J. Numer. Anal. 33 (1996) 627--665), with a period of 3
+      do k=1,n(3)
+        zcc = zc(k)/l(3)
+        zff = zf(k)/l(3)
+        do j=1,n(2)
+          yc = (j+lo(2)-1-.5)*dl(2)/l(2)
+          yf = (j+lo(2)-1-.0)*dl(2)/l(2)
+          do i=1,n(1)
+            xc = (i+lo(1)-1-.5)*dl(1)/l(1)
+            xf = (i+lo(1)-1-.0)*dl(1)/l(1)
+            u(i,j,k) =  2.*sin(pi*xf)**2*sin(2*pi*yc)*sin(2*pi*zcc)*cos(pi*time/3.)
+            v(i,j,k) = -sin(2*pi*xc)*sin(pi*yf)**2*sin(2*pi*zcc)*cos(pi*time/3.)
+            w(i,j,k) = -sin(2*pi*xc)*sin(2*pi*yc)*sin(pi*zff)**2*cos(pi*time/3.)
+            p(i,j,k) = 0.
+          end do
+        end do
+      end do
     case default
       if(myid == 0) print*, 'ERROR: invalid name for initial velocity field'
       if(myid == 0) print*, ''
@@ -307,7 +324,7 @@ module mod_initflow
       call MPI_FINALIZE(ierr)
       error stop
     end select
-    if(.not.any(trim(ini(1:3)) == ['tgv','ant','rot','vor'])) then
+    if(.not.any(trim(ini(1:3)) == ['tgv','ant','rot','vor','def'])) then
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)

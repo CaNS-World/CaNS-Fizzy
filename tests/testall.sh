@@ -21,17 +21,19 @@ LOGDIR=$CANSDIR/run/testall
 #
 # build flags and tests of each variant
 #
-VARIANTS="acdi thinc balanced hypre"
+VARIANTS="acdi thinc balanced hypre plic"
 declare -A FLAGS TESTS_OF
 FLAGS[acdi]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_VOF=0 BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
 FLAGS[thinc]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_VOF=1 BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
 FLAGS[balanced]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_VOF=0 BALANCED_CAPILLARY_PRESSURE_SPLIT=1"
 FLAGS[hypre]="CONSTANT_COEFFS_POISSON=0 INTERFACE_CAPTURING_VOF=0"
+FLAGS[plic]="CONSTANT_COEFFS_POISSON=1 INTERFACE_CAPTURING_SPLIT_VOF=1"
 TESTS_OF[acdi]="lid_driven_cavity differentially_heated_cavity deforming_circle rising_bubble \
                 start_stop restart_two_fluid implicit_diffusion poisson taylor_green_vortex_2d"
 TESTS_OF[thinc]="deforming_circle rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[balanced]="zero_net_acceleration rising_bubble restart_two_fluid"
 TESTS_OF[hypre]="rising_bubble restart_two_fluid implicit_diffusion"
+TESTS_OF[plic]="plic_unit plic_advection rising_bubble restart_two_fluid"
 #
 if [ $# -gt 0 ]; then VARIANTS="$*"; fi
 for variant in $VARIANTS; do

@@ -134,7 +134,12 @@ real(rp), protected, dimension(2) :: hypre_tol = 1.e-6
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
 ! (one layer suffices for CaNS; extensions with wider stencils may increase them here)
 !
-integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_psi = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi)
+#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+integer, parameter :: nh_psi = 1
+#else
+integer, parameter :: nh_psi = 4 ! the height functions of the geometric VoF method use nine-cell columns
+#endif
+integer, parameter :: nh_v = 1, nh_p = 1, nh_s = 1, nh_ifc = 1, nh_g = max(nh_v,nh_p,nh_s,nh_psi,nh_ifc)
 !
 ! i/o backend parameters
 !
@@ -391,7 +396,7 @@ contains
       end if
       cbccur(:,:) = cbcpsi(:,:)
       bccur(:,:) = bcpre(:,:)
-      rho0 = 1.
+      rho0 = 1. ! reference density of the pressure splitting; one with the variable-coefficient solver, where it has no role
 #if defined(_CONSTANT_COEFFS_POISSON)
       rho0 = minval(rho12(:))
 #endif

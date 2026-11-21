@@ -46,7 +46,7 @@
                      ng,[nh_psi,nh_psi,nh_psi],nh_g,lo,hi,[1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      psi,xc_g,yc_g,zc_g,.true.)
   call write_visu_3d(datadir,'cur_fld_'//fldnum//trim(io_ext),'log_visu_3d.out','Kappa', &
-                     ng,[nh_psi,nh_psi,nh_psi],nh_g,lo,hi,[1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                     ng,[nh_ifc,nh_ifc,nh_ifc],nh_g,lo,hi,[1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      kappa,xc_g,yc_g,zc_g,.true.)
   if(nscal > 0) &
   call write_visu_3d(datadir,'sca_fld_'//fldnum//trim(io_ext),'log_visu_3d.out','Temperature', &

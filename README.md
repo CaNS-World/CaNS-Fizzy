@@ -30,7 +30,7 @@ Some features are:
  * GPU acceleration using OpenACC directives
  * A different canonical flow can be simulated just by changing the input files
  * Mass transport-consistent discretization of advection terms that enable simulations at high density contrasts
- * Two options for interface-capturing algorithms: ACDI (diffuse interface method) and THINC/QQ (volume-of-fluid method)
+ * Three options for interface-capturing algorithms: ACDI (diffuse interface method), THINC/QQ (volume-of-fluid method), and a geometric (PLIC) volume-of-fluid method with direction-split advection
 
 ## Motivation
 
