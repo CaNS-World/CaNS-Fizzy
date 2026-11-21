@@ -117,6 +117,11 @@ logical, protected :: is_impdiff = .false., is_impdiff_1d = .false., &
                       is_poisson_dtdma = .false., &
                       is_gridpoint_natural_channel = .false., &
                       is_vof_sweep_transport = .false.
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+logical, protected :: is_visc_limiter = .true.  ! default with the sharp interface of the geometric volume-of-fluid method
+#else
+logical, protected :: is_visc_limiter = .false.
+#endif
 !
 ! HYPRE solver options for the variable-coefficient problems; each input has two entries:
 ! the first for the pressure, the second for the (implicit) diffusion
@@ -202,7 +207,8 @@ contains
                        is_impdiff,is_impdiff_1d, &
                        is_poisson_dtdma, &
                        is_gridpoint_natural_channel, &
-                       is_vof_sweep_transport
+                       is_vof_sweep_transport, &
+                       is_visc_limiter
     namelist /hypre/ &
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
                     hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &

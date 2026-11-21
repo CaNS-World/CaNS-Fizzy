@@ -6,7 +6,7 @@
 ! -
 module mod_mom
   use mpi
-  use mod_param, only: is_boussinesq_buoyancy
+  use mod_param, only: is_boussinesq_buoyancy,is_visc_limiter
   use mod_types
   implicit none
   private
@@ -597,6 +597,7 @@ module mod_mom
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
+    logical  :: is_lim
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
 #if defined(_VISC_HARMONIC_INTERPOLATION)
@@ -606,6 +607,7 @@ module mod_mom
 #endif
     nu1 = mu12(1)/rho12(1)
     nu2 = mu12(2)/rho12(2)
+    is_lim = is_visc_limiter
     dxi = dli(1)
     dyi = dli(2)
     !
@@ -774,17 +776,14 @@ module mod_mom
           muzp = mu+dmu*0.25*(c_ccc+c_pcc+c_ccp+c_pcp)
           muzm = mu+dmu*0.25*(c_ccc+c_pcc+c_ccm+c_pcm)
 #endif
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-          !
-          ! (kinematic viscosity bounded at the sharp interface, see `mu_lim_edge`)
-          !
-          muxp = mu_lim_cell(muxp,c_pcc,rho,drho,nu1,nu2)
-          muxm = mu_lim_cell(muxm,c_ccc,rho,drho,nu1,nu2)
-          muyp = mu_lim_edge(muyp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
-          muym = mu_lim_edge(muym,c_cmc,c_pmc,c_ccc,c_pcc,0.5_rp,rho,drho,nu1,nu2)
-          muzp = mu_lim_edge(muzp,c_ccc,c_pcc,c_ccp,c_pcp,wgt_c ,rho,drho,nu1,nu2)
-          muzm = mu_lim_edge(muzm,c_ccm,c_pcm,c_ccc,c_pcc,wgt_m ,rho,drho,nu1,nu2)
-#endif
+          if(is_lim) then ! kinematic viscosity bounded at the interface, see `mu_lim_edge`
+            muxp = mu_lim_cell(muxp,c_pcc,rho,drho,nu1,nu2)
+            muxm = mu_lim_cell(muxm,c_ccc,rho,drho,nu1,nu2)
+            muyp = mu_lim_edge(muyp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
+            muym = mu_lim_edge(muym,c_cmc,c_pmc,c_ccc,c_pcc,0.5_rp,rho,drho,nu1,nu2)
+            muzp = mu_lim_edge(muzp,c_ccc,c_pcc,c_ccp,c_pcp,wgt_c ,rho,drho,nu1,nu2)
+            muzm = mu_lim_edge(muzm,c_ccm,c_pcm,c_ccc,c_pcc,wgt_m ,rho,drho,nu1,nu2)
+          end if
           dudt_aux = dudt_aux + dxi*(   (dudxp+dudxp)*muxp-(dudxm+dudxm)*muxm) + &
                                 dyi*(   (dudyp+dvdxp)*muyp-(dudym+dvdxm)*muym) + &
                                 dzfi_c*((dudzp+dwdxp)*muzp-(dudzm+dwdxm)*muzm)
@@ -814,14 +813,14 @@ module mod_mom
           muzp = mu+dmu*0.25*(c_ccc+c_cpc+c_cpp+c_ccp)
           muzm = mu+dmu*0.25*(c_ccc+c_cpc+c_cpm+c_ccm)
 #endif
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-          muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
-          muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mpc,c_cpc,0.5_rp,rho,drho,nu1,nu2)
-          muyp = mu_lim_cell(muyp,c_cpc,rho,drho,nu1,nu2)
-          muym = mu_lim_cell(muym,c_ccc,rho,drho,nu1,nu2)
-          muzp = mu_lim_edge(muzp,c_ccc,c_cpc,c_ccp,c_cpp,wgt_c ,rho,drho,nu1,nu2)
-          muzm = mu_lim_edge(muzm,c_ccm,c_cpm,c_ccc,c_cpc,wgt_m ,rho,drho,nu1,nu2)
-#endif
+          if(is_lim) then
+            muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
+            muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mpc,c_cpc,0.5_rp,rho,drho,nu1,nu2)
+            muyp = mu_lim_cell(muyp,c_cpc,rho,drho,nu1,nu2)
+            muym = mu_lim_cell(muym,c_ccc,rho,drho,nu1,nu2)
+            muzp = mu_lim_edge(muzp,c_ccc,c_cpc,c_ccp,c_cpp,wgt_c ,rho,drho,nu1,nu2)
+            muzm = mu_lim_edge(muzm,c_ccm,c_cpm,c_ccc,c_cpc,wgt_m ,rho,drho,nu1,nu2)
+          end if
           dvdt_aux = dvdt_aux + dxi*(   (dvdxp+dudyp)*muxp-(dvdxm+dudym)*muxm) + &
                                 dyi*(   (dvdyp+dvdyp)*muyp-(dvdym+dvdym)*muym) + &
                                 dzfi_c*((dvdzp+dwdyp)*muzp-(dvdzm+dwdym)*muzm)
@@ -851,14 +850,14 @@ module mod_mom
           muzp = mu+dmu*c_ccp
           muzm = mu+dmu*c_ccc
 #endif
-#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-          muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_ccp,c_pcp,wgt_c ,rho,drho,nu1,nu2)
-          muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mcp,c_ccp,wgt_c ,rho,drho,nu1,nu2)
-          muyp = mu_lim_edge(muyp,c_ccc,c_cpc,c_ccp,c_cpp,wgt_c ,rho,drho,nu1,nu2)
-          muym = mu_lim_edge(muym,c_cmc,c_ccc,c_cmp,c_ccp,wgt_c ,rho,drho,nu1,nu2)
-          muzp = mu_lim_cell(muzp,c_ccp,rho,drho,nu1,nu2)
-          muzm = mu_lim_cell(muzm,c_ccc,rho,drho,nu1,nu2)
-#endif
+          if(is_lim) then
+            muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_ccp,c_pcp,wgt_c ,rho,drho,nu1,nu2)
+            muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mcp,c_ccp,wgt_c ,rho,drho,nu1,nu2)
+            muyp = mu_lim_edge(muyp,c_ccc,c_cpc,c_ccp,c_cpp,wgt_c ,rho,drho,nu1,nu2)
+            muym = mu_lim_edge(muym,c_cmc,c_ccc,c_cmp,c_ccp,wgt_c ,rho,drho,nu1,nu2)
+            muzp = mu_lim_cell(muzp,c_ccp,rho,drho,nu1,nu2)
+            muzm = mu_lim_cell(muzm,c_ccc,rho,drho,nu1,nu2)
+          end if
           dwdt_aux = dwdt_aux + dxi*(   (dwdxp+dudzp)*muxp-(dwdxm+dudzm)*muxm) + &
                                 dyi*(   (dwdyp+dvdzp)*muyp-(dwdym+dvdzm)*muym) + &
                                 dzci_c*((dwdzp+dwdzp)*muzp-(dwdzm+dwdzm)*muzm)

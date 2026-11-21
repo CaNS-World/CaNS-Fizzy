@@ -530,6 +530,7 @@ This namelist defines parameters related to the numerical discretization and com
 is_impdiff = F, is_impdiff_1d = F
 is_poisson_dtdma = F
 is_vof_sweep_transport = F
+is_visc_limiter = F
 /
 ```
 
@@ -550,6 +551,8 @@ Note: `is_impdiff` is set to true automatically with `is_impdiff_1d = T`.
 
 * if false (default), in **one step** after the transport of the volume fraction, with its mass fluxes summed over the sweeps and central interpolation of the transported velocity: non-dissipative, but at large density ratios only robust at small CFL numbers (a ratio of 1000 needs a CFL number below about 0.1);
 * if true, **along with the sweeps** of the volume fraction: after each sweep, the momentum is updated with the mass fluxes of that sweep, and the velocity is the new momentum over the new mass, so that mass and momentum stay consistent throughout; the transported velocity is the average over the donor region of a linear reconstruction, limited near the interface and unlimited elsewhere. This is robust at any density ratio (a drop with a density ratio of 1e6 in a uniform flow keeps its velocity to round-off), at the cost of some numerical dissipation near the interface and of a higher cost per time step (about 1.5 times that of the default on GPUs, and 2.5 times on CPUs, in a three-dimensional test). Sub-steps of the volume fraction do not extend the stability of this transport beyond `cfl < 1`.
+
+`is_visc_limiter`, if true, **limits the viscosity next to the interface**: the viscosity interpolated to a cell edge or centre is bounded such that the kinematic viscosity, relative to the lightest momentum control volume around it, does not exceed that of the phase that dominates there. Without it, a sharp interface can pair the viscosity of the heavy fluid with the density of the light one, and explicit diffusion goes unstable at large viscosity and density ratios. It is true by default with the geometric volume-of-fluid method (`INTERFACE_CAPTURING_SPLIT_VOF=1`), whose interface is sharp, and false otherwise.
 
 Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
 
