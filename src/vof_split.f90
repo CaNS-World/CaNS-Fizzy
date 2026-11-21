@@ -32,7 +32,7 @@ module mod_vof_split
   use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature,hf_normal
   implicit none
   private
-  public vof_split_init,vof_split_advance,vof_split_curvature,vof_split_diagnostics
+  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics
   !
   real(rp), parameter :: cfl_max = 0.5_rp    ! maximum CFL number of a sweep
   real(rp), parameter :: f_eps   = 1.e-12_rp ! cells with f_eps < f < 1-f_eps are reconstructed
@@ -42,7 +42,6 @@ module mod_vof_split
   !
   real(rp), allocatable, dimension(:,:,:) :: cc       ! dilatation indicator c_c
   real(rp), allocatable, dimension(:,:,:) :: fl       ! face fluxes of a sweep
-  real(rp), allocatable, dimension(:,:,:) :: ua,va,wa ! advecting velocity, at the middle of the time step
   real(rp), allocatable, dimension(:,:,:) :: uo,vo,wo ! velocity at the previous time step
   real(rp), allocatable, dimension(:,:,:) :: kap      ! work array for the curvature
   integer , allocatable, dimension(:)     :: ilist    ! compacted list of interfacial donor cells (packed indices)
@@ -79,10 +78,10 @@ module mod_vof_split
     !
     is_active(:) = ng(:) > 2
     allocate(cc(0:n(1)+1,0:n(2)+1,0:n(3)+1))
-    allocate(fl,ua,va,wa,uo,vo,wo,kap,mold=cc)
+    allocate(fl,uo,vo,wo,kap,mold=cc)
     allocate(ilist((n(1)+2)*(n(2)+2)*(n(3)+2)))
     nlist(:) = 0
-    !$acc enter data create(cc,fl,ua,va,wa,uo,vo,wo,kap,ilist) copyin(nlist)
+    !$acc enter data create(cc,fl,uo,vo,wo,kap,ilist) copyin(nlist)
     !$acc update device(clip_vol,fmin_raw,fmax_raw)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)+1
@@ -95,11 +94,11 @@ module mod_vof_split
   end subroutine vof_split_init
   !
   subroutine vof_split_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound,u,v,w, &
-                               psi,psiflx_x,psiflx_y,psiflx_z)
+                               psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa)
     !
     ! advances the volume fraction over one time step, with the face velocity extrapolated to the
     ! middle of the time step from the current and previous velocity fields (both divergence free);
-    ! the volume fraction is returned with its halo layers updated
+    ! the volume fraction is returned with its halo layers updated, and the advecting velocity in ua, va, wa
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -115,12 +114,13 @@ module mod_vof_split
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: ua,va,wa
     real(rp) :: dts
     integer  :: i,j,k,isub,nsub,q,idir
     !
     ! advecting velocity, and CFL numbers along each direction
     !
-    call advecting_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,cfl_last)
+    call vof_split_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,ua,va,wa,cfl_last)
     call MPI_ALLREDUCE(MPI_IN_PLACE,cfl_last,3,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
     !
     ! number of sub-steps
@@ -155,11 +155,11 @@ module mod_vof_split
         if(.not.is_active(idir)) cycle
         select case(idir)
         case(1)
-          call sweep(1,n,nh_psi,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi)
+          call sweep(1,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi)
         case(2)
-          call sweep(2,n,nh_psi,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi)
+          call sweep(2,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi)
         case(3)
-          call sweep(3,n,nh_psi,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
+          call sweep(3,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
         end select
         call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
       end do
@@ -167,7 +167,7 @@ module mod_vof_split
     end do
   end subroutine vof_split_advance
   !
-  subroutine advecting_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,cfl)
+  subroutine vof_split_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,ua,va,wa,cfl)
     !
     ! advecting velocity, extrapolated to the middle of the time step from the current and previous
     ! (divergence-free) velocity fields, and its (local) maximum CFL numbers along each direction;
@@ -181,6 +181,7 @@ module mod_vof_split
     real(rp), intent(in ), dimension(1-nh_g:) :: dzfi
     real(rp), intent(in ) :: dt
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
     real(rp), intent(out), dimension(3) :: cfl
     real(rp) :: c1,c2,dtx,dty,cflx,cfly,cflz,uaux,vaux,waux
     integer  :: i,j,k,n1,n2,n3
@@ -221,9 +222,9 @@ module mod_vof_split
     end do
     !$acc wait(1)
     cfl(:) = [cflx,cfly,cflz]
-  end subroutine advecting_velocity
+  end subroutine vof_split_velocity
   !
-  subroutine sweep(idir,n,nh_psi,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi)
+  subroutine sweep(idir,n,nh_v,nh_psi,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi)
     !
     ! one directional sweep: geometric donor-region fluxes, and conservative update with the dilatation term;
     ! the face fluxes, times scl, are stored in psiflx if is_init, and accumulated otherwise; the extrema of
@@ -233,11 +234,11 @@ module mod_vof_split
     implicit none
     integer , intent(in   ) :: idir
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh_psi,nh_g
+    integer , intent(in   )               :: nh_v,nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzf,dzfi
     real(rp), intent(in   ) :: dt
-    real(rp), intent(in   ), dimension(0:,0:,0:) :: vel
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: vel
     logical , intent(in   ) :: is_init
     real(rp), intent(in   ) :: scl
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx,psi

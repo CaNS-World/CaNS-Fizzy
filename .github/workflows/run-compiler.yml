@@ -80,4 +80,4 @@ jobs:
       build_modes: '["opt", "dbg"]'
       variant: "plic"
       variant_flags: "INTERFACE_CAPTURING_SPLIT_VOF=1"
-      tests: '["plic_unit", "plic_advection"]'
+      tests: '["plic_unit", "plic_advection", "rising_bubble"]'

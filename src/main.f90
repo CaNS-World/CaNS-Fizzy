@@ -47,7 +47,8 @@ program cans
   use mod_impdiff            , only: impdiff_vc_mom_updt,impdiff_vc_mom_solve,impdiff_vc_scal_updt,impdiff_vc_scal_solve
 #endif
   use mod_initsolver         , only: initsolver
-  use mod_interface_capturing, only: ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_update_params,ifc_write_log
+  use mod_interface_capturing, only: ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity, &
+                                     ifc_update_params,ifc_write_log
   use mod_load               , only: load_one
   use mod_mom                , only: cmpt_momentum
   use mod_rk                 , only: tm => rk,tm_scal => rk_scal
@@ -157,6 +158,7 @@ program cans
   real(rp), target, allocatable, dimension(:,:,:) :: psi
   real(rp), allocatable, dimension(:,:,:) :: psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z
+  real(rp), allocatable, dimension(:,:,:) :: uadv,vadv,wadv ! advecting velocity of the geometric VoF method
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   real(rp), target, allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                      surfx_o,surfy_o,surfz_o
@@ -286,6 +288,9 @@ program cans
   allocate(phi,mold=psi)
 #endif
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=psi)
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+  allocate(uadv,vadv,wadv,mold=u)
+#endif
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   allocate(surfx_n(n(1),n(2),n(3)),surfy_n(n(1),n(2),n(3)),surfz_n(n(1),n(2),n(3)), &
            surfx_o(n(1),n(2),n(3)),surfy_o(n(1),n(2),n(3)),surfz_o(n(1),n(2),n(3)))
@@ -585,6 +590,9 @@ program cans
   !$acc enter data create(phi) async(1)
 #endif
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+  !$acc enter data create(uadv,vadv,wadv) async(1)
+#endif
   call ifc_init(n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   !
   ! post-process and write initial condition
@@ -662,7 +670,7 @@ program cans
     end do
     if(is_track_interface) then
       call ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
-                       normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
+                       normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko,uadv,vadv,wadv)
     else
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)
@@ -675,10 +683,11 @@ program cans
           end do
         end do
       end do
+      call ifc_advecting_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uadv,vadv,wadv)
     end if
     if(nscal > 0) then
       call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
-                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
+                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,uadv,vadv,wadv)
       if(is_impdiff) then
         if(is_impdiff_1d) then
           call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
@@ -717,7 +726,8 @@ program cans
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-              psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance)
+              psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
+              uadv,vadv,wadv)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
       end if

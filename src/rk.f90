@@ -10,7 +10,7 @@ module mod_rk
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
-  use mod_mom    , only: mom_xyz_ad,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
+  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
   use mod_param  , only: is_impdiff,is_impdiff_1d,visc0,alpha0
   use mod_types
   implicit none
@@ -23,12 +23,17 @@ module mod_rk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance)
+                psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
+                uadv,vadv,wadv)
     !
     ! AB2 scheme for time integration of the momentum equations
     !
     ! `is_first` is true in the first time step of a run without the terms of the previous step
     ! (`d?dtrko` and `wall_force_old`), which are then set to those of the present one
+    !
+    ! with the geometric volume-of-fluid method, the advection terms are integrated in one step, consistently
+    ! with the transport of the volume fraction: they use its phase fluxes and its advecting velocity `uadv`,
+    ! `vadv`, `wadv` (extrapolated to the middle of the time step), which is also the transported velocity
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
@@ -57,6 +62,7 @@ module mod_rk
     real(rp), intent(inout), dimension(:,:,:)               :: dudtrko,dvdtrko,dwdtrko
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)           :: u,v,w
     real(rp), intent(out  ), dimension(3,6)                 :: force_balance
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
     real(rp), allocatable, dimension(:,:,:), save :: dudtrk,dvdtrk,dwdtrk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
@@ -170,6 +176,13 @@ module mod_rk
         end do
       end do
     end do
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    !
+    ! advection terms
+    !
+    call mom_xyz_a_cons(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,wzc,rho12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,factor12, &
+                        u,v,w)
+#endif
     !
     ! pressure, surface tension, and buoyancy terms
     !
@@ -182,10 +195,14 @@ module mod_rk
   end subroutine rk
   !
   subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
-                     psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s)
-    use mod_scal, only: scal_ad
+                     psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,uadv,vadv,wadv)
+    use mod_scal, only: scal_ad,scal_a_cons
     !
     ! AB2 scheme for time integration of the scalar field
+    !
+    ! with the geometric volume-of-fluid method, the advection term is integrated in one step, consistently
+    ! with the transport of the volume fraction (see `rk`), with the transported scalar extrapolated to the
+    ! middle of the time step
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
@@ -202,6 +219,11 @@ module mod_rk
     logical , intent(in   )                   :: is_first
     real(rp), intent(inout), dimension(:,:,:) :: dsdtrko
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    real(rp), allocatable, dimension(:,:,:), save :: sadv,so ! transported scalar, and scalar at the previous time step
+    real(rp) :: c1,c2
+#endif
     real(rp), allocatable, dimension(:,:,:), save :: dsdtrk
     real(rp), dimension(2), save :: rhocp12
     real(rp) :: rhocp,drhocp,rhocp_n,rhocp_p
@@ -215,8 +237,30 @@ module mod_rk
       allocate(dsdtrk(n(1),n(2),n(3)))
       !$acc enter data create(dsdtrk) async(1)
       rhocp12(:) = rho12(:)*cp12(:)
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+      allocate(sadv,so,mold=s)
+      !$acc enter data create(sadv,so) async(1)
+#endif
       !$acc wait(1)
     end if
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    c1 = rkpar(1)
+    c2 = rkpar(2)
+    if(is_first) then
+      c1 = 1.
+      c2 = 0.
+    end if
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1-nh_s,n(3)+nh_s
+      do j=1-nh_s,n(2)+nh_s
+        do i=1-nh_s,n(1)+nh_s
+          if(is_first) so(i,j,k) = s(i,j,k)
+          sadv(i,j,k) = c1*s(i,j,k)+c2*so(i,j,k)
+          so(i,j,k) = s(i,j,k)
+        end do
+      end do
+    end do
+#endif
     call scal_ad(n(1),n(2),n(3),nh_v,nh_s,nh_psi,nh_g,dli(1),dli(2),dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z, &
                  psi,u,v,w,s,dsdtrk)
     if(is_impdiff) then
@@ -256,6 +300,9 @@ module mod_rk
         end do
       end do
     end do
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,sadv,factor12,s)
+#endif
   end subroutine rk_scal
   !
   subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &

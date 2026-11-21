@@ -33,7 +33,7 @@ TESTS_OF[acdi]="lid_driven_cavity differentially_heated_cavity deforming_circle 
 TESTS_OF[thinc]="deforming_circle rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[balanced]="zero_net_acceleration rising_bubble restart_two_fluid"
 TESTS_OF[hypre]="rising_bubble restart_two_fluid implicit_diffusion"
-TESTS_OF[plic]="plic_unit plic_advection"
+TESTS_OF[plic]="plic_unit plic_advection rising_bubble"
 #
 if [ $# -gt 0 ]; then VARIANTS="$*"; fi
 for variant in $VARIANTS; do

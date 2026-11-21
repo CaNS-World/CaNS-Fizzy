@@ -17,7 +17,9 @@ module mod_interface_capturing
   !   ifc_init_field    -> initial phase indicator
   !   ifc_init          -> initialization from the initial (or loaded) phase indicator
   !   ifc_advance       -> one time step of the phase indicator, returning the (volumetric) phase fluxes
-  !                        used for the mass-consistent transport of momentum and scalars
+  !                        used for the mass-consistent transport of momentum and scalars, and, for the
+  !                        geometric volume-of-fluid method, the advecting velocity of the time step
+  !                        (ifc_advecting_velocity returns the latter when the interface is not tracked)
   !   ifc_update_params -> update of the method parameters after each time step
   !   ifc_write_log     -> log file of the method
   !
@@ -31,7 +33,8 @@ module mod_interface_capturing
   use mod_rk        , only: rk_2fl
   use mod_acdi      , only: acdi_set_epsilon
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
-  use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_curvature,vof_split_diagnostics
+  use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature, &
+                            vof_split_diagnostics
 #elif !defined(_INTERFACE_CAPTURING_VOF)
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
 #elif defined(_SDF_NORMALS)
@@ -39,7 +42,7 @@ module mod_interface_capturing
 #endif
   implicit none
   private
-  public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_update_params,ifc_write_log
+  public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity,ifc_update_params,ifc_write_log
 #if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
   real(rp) :: vol0 ! initial volume of phase 1
 #endif
@@ -111,7 +114,7 @@ module mod_interface_capturing
   end subroutine ifc_init
   !
   subroutine ifc_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,dt,gam,seps,u,v,w, &
-                         normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
+                         normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko,uadv,vadv,wadv)
     !
     ! advances the phase indicator over one time step, returns the phase fluxes (with their boundary
     ! conditions), and updates the interface normals and curvature
@@ -128,6 +131,7 @@ module mod_interface_capturing
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   ) :: is_first
     real(rp), intent(inout), dimension(:,:,:) :: dpsidtrko
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
     !
 #if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
     call rk_2fl(tm_coeff,n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
@@ -136,11 +140,31 @@ module mod_interface_capturing
     call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
 #else
     call vof_split_advance(tm_coeff,n,nh_v,nh_psi,nh_g,dl,dzc,dzf,dzfi,dt,cbcpsi,bcpsi,nb,is_bound,u,v,w, &
-                           psi,psiflx_x,psiflx_y,psiflx_z)
+                           psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv)
     call bounduvw(cbcvel,n,nh_psi,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
 #endif
     call ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
   end subroutine ifc_advance
+  !
+  subroutine ifc_advecting_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uadv,vadv,wadv)
+    !
+    ! advecting velocity of a time step in which the interface is not tracked
+    ! (geometric volume-of-fluid method only)
+    !
+    implicit none
+    real(rp), intent(in   ), dimension(2) :: tm_coeff
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzfi
+    real(rp), intent(in   ) :: dt
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
+#if defined(_INTERFACE_CAPTURING_SPLIT_VOF)
+    real(rp), dimension(3) :: cfl
+    call vof_split_velocity(tm_coeff,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uadv,vadv,wadv,cfl)
+#endif
+  end subroutine ifc_advecting_velocity
   !
   subroutine ifc_geometry(n,nh_psi,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
     !

@@ -8,7 +8,7 @@ module mod_scal
   use mod_types
   implicit none
   private
-  public scal_ad,cmpt_scalflux,scalar
+  public scal_ad,scal_a_cons,cmpt_scalflux,scalar
   !
   ! scalar derived type, as in CaNS (not used yet: there is a single scalar field;
   ! declared for the checkpoint routines of `load.f90`, which are those of CaNS)
@@ -50,12 +50,21 @@ module mod_scal
     do k=1,nz
       do j=1,ny
         do i=1,nx
+#if !defined(_INTERFACE_CAPTURING_SPLIT_VOF)
           usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
           usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
           vsjp = 0.5*(rhocp*v(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(s(i,j+1,k)+s(i,j,k))
           vsjm = 0.5*(rhocp*v(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(s(i,j-1,k)+s(i,j,k))
           wskp = 0.5*(rhocp*w(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(s(i,j,k+1)+s(i,j,k))
           wskm = 0.5*(rhocp*w(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(s(i,j,k-1)+s(i,j,k))
+#else
+          !
+          ! (with the geometric volume-of-fluid method, advection is computed in `scal_a_cons`)
+          !
+          usip = 0.; usim = 0.
+          vsjp = 0.; vsjm = 0.
+          wskp = 0.; wskm = 0.
+#endif
           !
           psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
           psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
@@ -96,6 +105,48 @@ module mod_scal
       end do
     end do
   end subroutine scal_ad
+  !
+  subroutine scal_a_cons(n,nh_v,nh_s,nh_psi,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,sa,factor,s)
+    !
+    ! advection term of the scalar in conservative form, consistent with the transport of the geometric
+    ! volume-of-fluid method: integrated over the time `factor` and added to the scalar, divided by rho*cp
+    !
+    ! the face fluxes of rho*cp are rhocp_2*ua + (rhocp_1-rhocp_2)*psiflx, with psiflx the (time-averaged)
+    ! phase-1 volume fluxes of the volume-of-fluid step and ua its advecting velocity; sa is the transported
+    ! scalar, interpolated centrally to the faces
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   ) :: nh_v,nh_s,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzfi
+    real(rp), intent(in   ), dimension(2) :: rhocp12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: sa
+    real(rp), intent(in   ) :: factor
+    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm,rhocp,drhocp,dxi,dyi
+    integer :: i,j,k
+    !
+    rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    dxi = dli(1)
+    dyi = dli(2)
+    !$acc parallel loop collapse(3) default(present) private(usip,usim,vsjp,vsjm,wskp,wskm) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          usip = 0.5*(rhocp*ua(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(sa(i+1,j,k)+sa(i,j,k))
+          usim = 0.5*(rhocp*ua(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(sa(i-1,j,k)+sa(i,j,k))
+          vsjp = 0.5*(rhocp*va(i,j  ,k)+drhocp*psiflx_y(i,j  ,k))*(sa(i,j+1,k)+sa(i,j,k))
+          vsjm = 0.5*(rhocp*va(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(sa(i,j-1,k)+sa(i,j,k))
+          wskp = 0.5*(rhocp*wa(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(sa(i,j,k+1)+sa(i,j,k))
+          wskm = 0.5*(rhocp*wa(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(sa(i,j,k-1)+sa(i,j,k))
+          s(i,j,k) = s(i,j,k) + factor*(dxi*(-usip+usim) + dyi*(-vsjp+vsjm) + dzfi(k)*(-wskp+wskm))/(rhocp+drhocp*psi(i,j,k))
+        end do
+      end do
+    end do
+  end subroutine scal_a_cons
   !
   subroutine cmpt_scalflux(n,nh_s,nh_psi,nh_g,is_bound,l,dli,dzci,dzfi,ka12,psi,s,flux)
     use mpi
