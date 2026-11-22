@@ -16,8 +16,13 @@ cd $RUNDIR
 mkdir -p data
 #
 cp $TESTDIR/input-*.nml $TESTDIR/spheres-*.in $RUNDIR
+#
+# the case 3d with height-function normals
+#
+sed "/^&two_fluid/a is_hf_normals = T" input-3d.nml > input-3d-hf.nml
+cp spheres-3d.in spheres-3d-hf.in
 
-for name in 2d 3d 2d-thinc; do
+for name in 2d 3d 2d-thinc 3d-hf; do
   echo "INFO: Running CaNS, case $name"
   mv input-${name}.nml input.nml
   mv spheres-${name}.in spheres.in

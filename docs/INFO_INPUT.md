@@ -56,7 +56,7 @@ cp12(1:2)         =  1., 1.
 beta12(1:2)       =  0., 0.
 psi_thickness_factor = 0.51
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
-is_sdf_normals = T
+is_sdf_normals = T, is_hf_normals = F
 is_brackbill_normalization = T
 /
 ```
@@ -539,7 +539,7 @@ Note: the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`, see b
 
 ```fortran
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
-is_sdf_normals = T
+is_sdf_normals = T, is_hf_normals = F
 is_brackbill_normalization = T
 ```
 
@@ -574,6 +574,8 @@ The valid combinations are:
 Any other one stops the run with a message. Implicit diffusion (`is_impdiff`) is not available yet with `ifc_advection = 'split'`.
 
 `is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
+
+`is_hf_normals`, if true, takes the interface normals of the `plic` reconstruction from height functions (nine-cell columns) wherever these are valid, and from the default mixed Youngs-centred scheme elsewhere; if false (default), from the latter everywhere. The height-function normals are second-order accurate and exact for a plane, but in our tests they do not change the advection errors systematically, and they widen the halo of the volume fraction from four to five layers (six with `ifc_transport = 'sweeps'`). It is only available with `plic`.
 
 `is_brackbill_normalization`, if true (default), scales the surface tension force with the local density over the mean density of the two phases (Brackbill et al., *J. Comput. Phys.* 100 (1992) 335–354), which spreads the acceleration evenly across the interface; if false, the force is not scaled.
 

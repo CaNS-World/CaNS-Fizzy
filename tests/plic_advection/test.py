@@ -7,10 +7,11 @@ def test_plic_advection():
     #   2d      : circle in the serpentine vortex (period 4), 64^2 cells, geometric (PLIC) reconstruction
     #   3d      : sphere in the deformation field of LeVeque (period 3), 32^3 cells, geometric reconstruction
     #   2d-thinc: the case 2d with the THINC reconstruction
+    #   3d-hf   : the case 3d with the normals of the reconstruction from height functions
     # the interface must return to its initial shape, with the volume conserved and the volume fraction bounded
     # to round-off; the tolerances of the shape error (L1 norm) are about 1.3 times the errors of the method
     #
-    cases = {"2d": (1024,3.0e-3), "3d": (768,1.0e-2), "2d-thinc": (1024,5.8e-3)}
+    cases = {"2d": (1024,3.0e-3), "3d": (768,1.0e-2), "2d-thinc": (1024,5.8e-3), "3d-hf": (768,1.0e-2)}
     for case,(nstep,err_max) in cases.items():
         psi_beg = np.fromfile("data-"+case+"/psi_fld_0000000.bin")
         psi_end = np.fromfile("data-"+case+f"/psi_fld_{nstep:07d}.bin")

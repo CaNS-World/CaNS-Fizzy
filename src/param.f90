@@ -103,6 +103,7 @@ real(rp), protected               :: psi_thickness_factor
 character(len=10), protected :: ifc_reconstruction,ifc_advection,ifc_transport
 logical , protected :: is_sdf_normals ! normals (and THINC/QQ reconstruction) from a signed-distance function
 logical , protected :: is_brackbill_normalization ! density-based scaling of the surface tension force (Brackbill et al.)
+logical , protected :: is_hf_normals  ! normals of the geometric reconstruction from height functions
 logical , protected :: is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_vof_sweep_transport ! not inputs
 real(rp), protected               :: rho0 ! not an input
 real(rp), protected               :: visc0,alpha0 ! reference diffusivities of the constant-coefficient implicit diffusion; not inputs
@@ -217,7 +218,7 @@ contains
                         ka12,cp12,beta12, &
                         psi_thickness_factor, &
                         ifc_reconstruction,ifc_advection,ifc_transport, &
-                        is_sdf_normals, &
+                        is_sdf_normals,is_hf_normals, &
                         is_brackbill_normalization
     namelist /numerics/ &
                        is_impdiff,is_impdiff_1d, &
@@ -268,7 +269,7 @@ contains
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
-    is_sdf_normals = .true.
+    is_sdf_normals = .true.; is_hf_normals = .false.
     is_brackbill_normalization = .true.
     !
     ! use a custom input file if one was provided on the command line
@@ -451,6 +452,11 @@ contains
       if(psi_thickness_factor < 0.) psi_thickness_factor = merge(0.51,0.50,is_ifc_acdi) ! 0.25?
       if(is_ifc_split) nh_psi = 4 ! nine-cell columns of the height functions (geometric reconstruction), and
                                   ! interface band of the transport along with the sweeps
+      !
+      ! height-function normals: the columns of the donor cells in the halo, one layer, or two with the
+      ! transport along with the sweeps
+      !
+      if(is_ifc_split .and. is_hf_normals) nh_psi = nh_psi + merge(2,1,is_vof_sweep_transport)
       nh_g = max(nh_v,nh_p,nh_s,nh_psi,nh_ifc)
       is_visc_limiter = is_ifc_plic
       !

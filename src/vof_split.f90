@@ -40,7 +40,7 @@ module mod_vof_split
   use, intrinsic :: iso_fortran_env, only: int8
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
-  use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature
+  use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature,hf_normal
   use mod_thinc     , only: thinc_intercept,thinc_slab
   implicit none
   private
@@ -63,6 +63,8 @@ module mod_vof_split
   integer , dimension(1) :: nlist                     ! number of entries of ilist
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
   logical  :: is_thinc   = .false.                    ! THINC reconstruction instead of the geometric one
+  logical  :: is_hf      = .false.                    ! normals of the reconstruction from height functions
+  real(rp), allocatable, dimension(:,:,:) :: mxs,mys,mzs ! these normals, in the donor cells of a sweep
   real(rp) :: thinc_beta = 1._rp                      ! its sharpness
   !
   ! contact angles at walls, with the geometric reconstruction (see `vof_split_contact_angle`)
@@ -97,17 +99,18 @@ module mod_vof_split
                                                 ! from neighbouring height functions, and without estimate
   !$acc declare create(kappa_stats)
   contains
-  subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_sweep_transport,is_scalar,theta_c)
+  subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_hf_normals,is_sweep_transport,is_scalar,theta_c)
     !
     ! allocates the work arrays; `is_thinc_reconstruction` selects the THINC reconstruction, of sharpness
-    ! `beta`, instead of the geometric one, and `is_sweep_transport` the transport of momentum (and of the
+    ! `beta`, instead of the geometric one, `is_hf_normals` the normals of the geometric reconstruction from
+    ! height functions, and `is_sweep_transport` the transport of momentum (and of the
     ! scalar, if `is_scalar`) along with the sweeps; `theta_c` are the contact angles at the walls (in degrees,
     ! measured through phase 1), imposed here with the geometric reconstruction
     !
     implicit none
     integer , intent(in), dimension(3) :: ng,n
     integer , intent(in)               :: nh_psi
-    logical , intent(in)               :: is_thinc_reconstruction,is_sweep_transport,is_scalar
+    logical , intent(in)               :: is_thinc_reconstruction,is_hf_normals,is_sweep_transport,is_scalar
     real(rp), intent(in)               :: beta
     real(rp), intent(in), dimension(0:1,3) :: theta_c
     integer :: i,j,k
@@ -128,6 +131,20 @@ module mod_vof_split
     allocate(ilist((n(1)+2+ncc)*(n(2)+2+ncc)*(n(3)+2+ncc)))
     nlist(:) = 0
     !$acc enter data create(cc,fl,kap,ilist) copyin(nlist)
+    !
+    ! height-function normals: the columns of the donor cells in the halo layers need a wider halo (the
+    ! arrays of the normals are otherwise not used, and allocated with one element)
+    !
+    is_hf = is_hf_normals
+    if(is_hf) then
+      if(nh_psi < nq_hf+1+ncc) error stop 'ERROR: the halo width of the volume fraction is too small for the &
+                                          &height-function normals.'
+      allocate(mxs(0:n(1)+1+ncc,0:n(2)+1+ncc,0:n(3)+1+ncc))
+    else
+      allocate(mxs(1,1,1))
+    end if
+    allocate(mys,mzs,mold=mxs)
+    !$acc enter data create(mxs,mys,mzs)
     if(is_sweep) then
       allocate(f_prev(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
       allocate(bflag( 1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
@@ -467,7 +484,7 @@ module mod_vof_split
     real(rp), dimension(-1:1,-1:1,-1:1) :: c
     real(rp), dimension(-1:1) :: dz3
     logical , dimension(3) :: act
-    logical  :: is_own_p,is_own_m,is_act1,is_act2,is_act3,is_flx,is_th
+    logical  :: is_own_p,is_own_m,is_act1,is_act2,is_act3,is_flx,is_th,is_hfn
     real(rp) :: dx,dy,dxi,dyi,h,rh,fc,vp,vm,cfl_p,cfl_m,frac_p,frac_m,fnew,fcl,mx,my,mz,beta
     integer  :: i,j,k,di,dj,dk,ii,nd,ndf,ilo,jlo,klo,ihi,jhi,khi,ni,nj,il,lin
     !
@@ -485,6 +502,7 @@ module mod_vof_split
     ndf = nd+ncc
     is_flx = .not.is_sweep
     is_th  = is_thinc
+    is_hfn = is_hf
     beta   = thinc_beta
     ilo = 1-di; ihi = n(1)+di+ncc
     jlo = 1-dj; jhi = n(2)+dj+ncc
@@ -527,6 +545,10 @@ module mod_vof_split
       end do
     end do
     !
+    ! normals of the listed donor cells from height functions, where valid
+    !
+    if(is_hfn) call hf_list(ilo,jlo,klo,ni,nj,nh_psi,nh_ifc,nh_g,dl,dzf,psi)
+    !
     ! (the number of listed cells is read from the device copy of nlist, without a host synchronization)
     !
     !$acc parallel loop default(present) private(c,dz3,act) async(1)
@@ -549,9 +571,13 @@ module mod_vof_split
       if(is_own_p) cfl_p =  vp*dt/h
       if(is_own_m) cfl_m = -vm*dt/h
       act(:) = [is_act1,is_act2,is_act3]
-      c(:,:,:) = psi(i-1:i+1,j-1:j+1,k-1:k+1)
-      dz3(:) = dzf(k-1:k+1)
-      call plic_normal_myc(c,dx,dy,dz3,act,mx,my,mz)
+      if(is_hfn) then
+        mx = mxs(i,j,k); my = mys(i,j,k); mz = mzs(i,j,k)
+      else
+        c(:,:,:) = psi(i-1:i+1,j-1:j+1,k-1:k+1)
+        dz3(:) = dzf(k-1:k+1)
+        call plic_normal_myc(c,dx,dy,dz3,act,mx,my,mz)
+      end if
       call donor_fractions(mx,my,mz,fc,idir,is_th,beta,cfl_p,cfl_m,frac_p,frac_m)
       if(is_own_p) fl(i,j,k) = frac_p*vp*dt
       if(is_own_m) fl(i-di,j-dj,k-dk) = frac_m*vm*dt
@@ -1159,7 +1185,7 @@ module mod_vof_split
           end do
         end do
       end do
-      call hf_list(n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
+      call hf_list(1,1,1,n(1),n(2),nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     case(2)
       !
       ! (only the listed interfacial cells are visited; the few of them without height-function curvature
@@ -1243,47 +1269,48 @@ module mod_vof_split
     end select
   end subroutine vof_split_curvature
   !
-  subroutine hf_list(n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
+  subroutine hf_list(ilo,jlo,klo,ni,nj,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     !
-    ! height-function curvature of the cells of the compacted list ilist (packed interior indices): MYC
-    ! normal, and height functions (nine-cell columns) along the directions in decreasing order of the MYC
-    ! normal components (cell-scaled), until valid ones are found; the curvature is stored in kappa
-    ! (kappa_undef where the heights are not valid), and the cells with valid heights are counted in
-    ! kappa_stats(1); the number of listed cells is read from the device copy of nlist, and the count is
-    ! kept on the device, without host synchronizations
+    ! height-function geometry of the cells of the compacted list ilist (packed indices, with offsets ilo,
+    ! jlo, klo and dimensions ni, nj): MYC normal, and height functions (nine-cell columns) along the
+    ! directions in decreasing order of the MYC normal components (cell-scaled), until valid ones are found;
+    ! with `kappa`, the curvature is stored in it (kappa_undef where the heights are not valid), and the cells
+    ! with valid heights are counted in kappa_stats(1); without it, the normal in cell-scaled coordinates
+    ! pointing out of phase 1 (|mx|+|my|+|mz| = 1), for the geometric reconstruction, is stored in mxs, mys
+    ! and mzs: that of the height functions if valid, and the MYC one otherwise; the number of listed cells is
+    ! read from the device copy of nlist, and the count is kept on the device, without host synchronizations
     !
     ! (a single kernel: calling a device routine per cell, with the volume fraction as argument, is several
     ! times slower on GPUs)
     !
     implicit none
-    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: ilo,jlo,klo,ni,nj
     integer , intent(in   )               :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzf
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: kappa
     real(rp), dimension(-1:1,-1:1,-1:1) :: c3
     real(rp), dimension(-1:1) :: dz3
     real(rp), dimension(-1:1,-1:1) :: hgt
-    real(rp), dimension(3) :: dm,dp,m
+    real(rp), dimension(3) :: dm,dp,m,h,nrm
     logical , dimension(3) :: act
-    logical  :: is_valid,is_act1,is_act2,is_act3
-    real(rp) :: dx,dy,kap_c,sgn,lo,hi,dqq,vol,fq,f0,f1
-    integer  :: i,j,k,q,il,lin,a,b,r,d,d1,d2,d3,ia,ib,itmp,ic,jc,kc,n1,n2
+    logical  :: is_valid,is_act1,is_act2,is_act3,is_curv
+    real(rp) :: dx,dy,kap_c,sgn,lo,hi,dqq,vol,fq,f0,f1,na,nb,nq,s
+    integer  :: i,j,k,q,il,lin,a,b,r,d,d1,d2,d3,ia,ib,itmp,ic,jc,kc
     !
+    is_curv = present(kappa)
     dx = dl(1)
     dy = dl(2)
-    n1 = n(1)
-    n2 = n(2)
     is_act1 = is_active(1)
     is_act2 = is_active(2)
     is_act3 = is_active(3)
-    !$acc parallel loop default(present) private(m,act,c3,dz3,hgt,dm,dp) async(1)
+    !$acc parallel loop default(present) private(m,act,c3,dz3,hgt,dm,dp,h,nrm) async(1)
     do il=1,nlist(1)
       lin = ilist(il)
-      i = 1+mod(lin,n1)
-      j = 1+mod(lin/n1,n2)
-      k = 1+lin/(n1*n2)
+      i = ilo+mod(lin,ni)
+      j = jlo+mod(lin/ni,nj)
+      k = klo+lin/(ni*nj)
       act(:) = [is_act1,is_act2,is_act3]
       do kc=-1,1
         do jc=-1,1
@@ -1352,16 +1379,36 @@ module mod_vof_split
           end do
         end do
         if(is_valid) then
-          kap_c = hf_curvature(hgt,sgn,dm(ia),dp(ia),dm(ib),dp(ib),act(ia),act(ib))
+          if(is_curv) then
+            kap_c = hf_curvature(hgt,sgn,dm(ia),dp(ia),dm(ib),dp(ib),act(ia),act(ib))
+          else
+            call hf_normal(hgt,sgn,dm(ia),dp(ia),dm(ib),dp(ib),act(ia),act(ib),na,nb,nq)
+            nrm(ia) = na; nrm(ib) = nb; nrm(d) = nq
+          end if
           exit
         end if
       end do
-      if(is_valid) then
-        kappa(i,j,k) = kap_c
-        !$acc atomic update
-        kappa_stats(1) = kappa_stats(1) + 1._rp
+      if(is_curv) then
+        if(is_valid) then
+          kappa(i,j,k) = kap_c
+          !$acc atomic update
+          kappa_stats(1) = kappa_stats(1) + 1._rp
+        else
+          kappa(i,j,k) = kappa_undef
+        end if
       else
-        kappa(i,j,k) = kappa_undef
+        if(is_valid) then
+          !
+          ! (norm stored in a scalar: with m(1:3) on both sides, nvfortran allocates a temporary on the device heap)
+          !
+          h(:) = [dx,dy,dz3(0)]
+          m(:) = nrm(:)*h(:)
+          s = abs(m(1))+abs(m(2))+abs(m(3))
+          m(:) = m(:)/s
+        end if
+        mxs(i,j,k) = m(1)
+        mys(i,j,k) = m(2)
+        mzs(i,j,k) = m(3)
       end if
     end do
   end subroutine hf_list

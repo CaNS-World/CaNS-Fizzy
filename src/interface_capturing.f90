@@ -28,7 +28,8 @@ module mod_interface_capturing
                             cbccur,bccur,contact_angle, &
                             acdi_gam_factor,acdi_gam_min,vof_thinc_beta, &
                             rho12,cp12,nscal,cbcsca,bcsca, &
-                            is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_sdf_normals,is_vof_sweep_transport
+                            is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_sdf_normals,is_vof_sweep_transport, &
+                            is_hf_normals
   use mod_bound     , only: boundp,bounduvw
   use mod_output    , only: out0d
   use mod_two_fluid , only: init2fl,init2fl_sharp,cmpt_norm_curv => cmpt_norm_curv_youngs
@@ -97,7 +98,7 @@ module mod_interface_capturing
     call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
     !$acc wait
     if(is_ifc_split) then
-      call vof_split_init(ng,n,nh_psi,is_ifc_thinc,vof_thinc_beta,is_vof_sweep_transport,nscal > 0,contact_angle)
+      call vof_split_init(ng,n,nh_psi,is_ifc_thinc,vof_thinc_beta,is_hf_normals,is_vof_sweep_transport,nscal > 0,contact_angle)
       call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
       call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub,kstats)
       if(myid == 0) print*, 'Direction-split advection. Initial volume of phase 1: ', vol0
