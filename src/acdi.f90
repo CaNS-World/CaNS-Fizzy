@@ -176,36 +176,69 @@ module mod_acdi
           dpsidzm = gam*seps*(psi_ccc-psi_ccm)*dzci_m
           dpsidzp = gam*seps*(psi_ccp-psi_ccc)*dzci_c
           !
-          ! sharpening term; the normals are multiplied by the reciprocal of their magnitude:
-          ! away from the interface they vanish, and a division with a zero numerator is slow on GPUs
+          ! sharpening term; the normals are multiplied by the reciprocal of their magnitude; away from the
+          ! interface the normals vanish and so does this term: it is computed only where they do not, which
+          ! saves the square roots, divisions and hyperbolic tangents in most of the domain
           !
-          rn_01 = normx_xm*(1._rp/(sqrt(normx_xm**2+normy_xm**2+normz_xm**2)+eps))
-          rn_11 = normx_xp*(1._rp/(sqrt(normx_xp**2+normy_xp**2+normz_xp**2)+eps))
-          rn_02 = normy_ym*(1._rp/(sqrt(normx_ym**2+normy_ym**2+normz_ym**2)+eps))
-          rn_12 = normy_yp*(1._rp/(sqrt(normx_yp**2+normy_yp**2+normz_yp**2)+eps))
-          rn_03 = normz_zm*(1._rp/(sqrt(normx_zm**2+normy_zm**2+normz_zm**2)+eps))
-          rn_13 = normz_zp*(1._rp/(sqrt(normx_zp**2+normy_zp**2+normz_zp**2)+eps))
-          !
-          if(.not.is_sdf) then
-            psi_xm = 0.5*(psi_ccc+psi_mcc)
-            psi_xp = 0.5*(psi_pcc+psi_ccc)
-            psi_ym = 0.5*(psi_ccc+psi_cmc)
-            psi_yp = 0.5*(psi_cpc+psi_ccc)
-            psi_zm = 0.5*(psi_ccc+psi_ccm)
-            psi_zp = 0.5*(psi_ccp+psi_ccc)
-            sharpxm = gam*psi_xm*(1.-psi_xm)*rn_01
-            sharpxp = gam*psi_xp*(1.-psi_xp)*rn_11
-            sharpym = gam*psi_ym*(1.-psi_ym)*rn_02
-            sharpyp = gam*psi_yp*(1.-psi_yp)*rn_12
-            sharpzm = gam*psi_zm*(1.-psi_zm)*rn_03
-            sharpzp = gam*psi_zp*(1.-psi_zp)*rn_13
-          else
-            sharpxm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_mcc)/seps))**2)*rn_01)
-            sharpxp = 0.25*gam*((1.-(tanh(0.25*(phi_pcc+phi_ccc)/seps))**2)*rn_11)
-            sharpym = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_cmc)/seps))**2)*rn_02)
-            sharpyp = 0.25*gam*((1.-(tanh(0.25*(phi_cpc+phi_ccc)/seps))**2)*rn_12)
-            sharpzm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_ccm)/seps))**2)*rn_03)
-            sharpzp = 0.25*gam*((1.-(tanh(0.25*(phi_ccp+phi_ccc)/seps))**2)*rn_13)
+          sharpxm = 0._rp
+          if(normx_xm /= 0._rp) then
+            rn_01 = normx_xm*(1._rp/(sqrt(normx_xm**2+normy_xm**2+normz_xm**2)+eps))
+            if(.not.is_sdf) then
+              psi_xm  = 0.5*(psi_ccc+psi_mcc)
+              sharpxm = gam*psi_xm*(1.-psi_xm)*rn_01
+            else
+              sharpxm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_mcc)/seps))**2)*rn_01)
+            end if
+          end if
+          sharpxp = 0._rp
+          if(normx_xp /= 0._rp) then
+            rn_11 = normx_xp*(1._rp/(sqrt(normx_xp**2+normy_xp**2+normz_xp**2)+eps))
+            if(.not.is_sdf) then
+              psi_xp  = 0.5*(psi_pcc+psi_ccc)
+              sharpxp = gam*psi_xp*(1.-psi_xp)*rn_11
+            else
+              sharpxp = 0.25*gam*((1.-(tanh(0.25*(phi_pcc+phi_ccc)/seps))**2)*rn_11)
+            end if
+          end if
+          sharpym = 0._rp
+          if(normy_ym /= 0._rp) then
+            rn_02 = normy_ym*(1._rp/(sqrt(normx_ym**2+normy_ym**2+normz_ym**2)+eps))
+            if(.not.is_sdf) then
+              psi_ym  = 0.5*(psi_ccc+psi_cmc)
+              sharpym = gam*psi_ym*(1.-psi_ym)*rn_02
+            else
+              sharpym = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_cmc)/seps))**2)*rn_02)
+            end if
+          end if
+          sharpyp = 0._rp
+          if(normy_yp /= 0._rp) then
+            rn_12 = normy_yp*(1._rp/(sqrt(normx_yp**2+normy_yp**2+normz_yp**2)+eps))
+            if(.not.is_sdf) then
+              psi_yp  = 0.5*(psi_cpc+psi_ccc)
+              sharpyp = gam*psi_yp*(1.-psi_yp)*rn_12
+            else
+              sharpyp = 0.25*gam*((1.-(tanh(0.25*(phi_cpc+phi_ccc)/seps))**2)*rn_12)
+            end if
+          end if
+          sharpzm = 0._rp
+          if(normz_zm /= 0._rp) then
+            rn_03 = normz_zm*(1._rp/(sqrt(normx_zm**2+normy_zm**2+normz_zm**2)+eps))
+            if(.not.is_sdf) then
+              psi_zm  = 0.5*(psi_ccc+psi_ccm)
+              sharpzm = gam*psi_zm*(1.-psi_zm)*rn_03
+            else
+              sharpzm = 0.25*gam*((1.-(tanh(0.25*(phi_ccc+phi_ccm)/seps))**2)*rn_03)
+            end if
+          end if
+          sharpzp = 0._rp
+          if(normz_zp /= 0._rp) then
+            rn_13 = normz_zp*(1._rp/(sqrt(normx_zp**2+normy_zp**2+normz_zp**2)+eps))
+            if(.not.is_sdf) then
+              psi_zp  = 0.5*(psi_ccp+psi_ccc)
+              sharpzp = gam*psi_zp*(1.-psi_zp)*rn_13
+            else
+              sharpzp = 0.25*gam*((1.-(tanh(0.25*(phi_ccp+phi_ccc)/seps))**2)*rn_13)
+            end if
           end if
           !
           ! transport

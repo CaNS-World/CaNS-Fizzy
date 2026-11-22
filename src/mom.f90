@@ -601,7 +601,9 @@ module mod_mom
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
     real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
-    logical  :: is_adv,is_harm,is_lim
+    logical  :: is_adv,is_harm,is_lim,is_lim_c
+    real(rp) :: c_min,c_max
+    real(rp), parameter :: c_eps = 1.e-12_rp ! full and empty cells for the viscosity limiter (as for the reconstruction)
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     is_harm = is_harmonic_interpolation
@@ -683,6 +685,16 @@ module mod_mom
           c_cpp = psi(i  ,j+1,k+1)
           c_ppc = psi(i+1,j+1,k  )
           c_pcp = psi(i+1,j  ,k+1)
+          !
+          ! the viscosity limiter only matters where the two phases meet: it is skipped where all the cells of
+          ! the stencil are full, or all empty, to the tolerance `c_eps`
+          !
+          is_lim_c = is_lim
+          if(is_lim) then
+            c_min = min(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
+            c_max = max(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
+            is_lim_c = c_min < 1._rp-c_eps .and. c_max > c_eps
+          end if
           !
           flx_x_mcc = rho*u_mcc + drho*psiflx_x(i-1,j  ,k  )
           flx_x_ccc = rho*u_ccc + drho*psiflx_x(i  ,j  ,k  )
@@ -781,7 +793,7 @@ module mod_mom
             muzp = 1._rp/muzp
             muzm = 1._rp/muzm
           end if
-          if(is_lim) then ! kinematic viscosity bounded at the interface, see `mu_lim_edge`
+          if(is_lim_c) then ! kinematic viscosity bounded at the interface, see `mu_lim_edge`
             muxp = mu_lim_cell(muxp,c_pcc,rho,drho,nu1,nu2)
             muxm = mu_lim_cell(muxm,c_ccc,rho,drho,nu1,nu2)
             muyp = mu_lim_edge(muyp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
@@ -817,7 +829,7 @@ module mod_mom
             muzp = 1._rp/muzp
             muzm = 1._rp/muzm
           end if
-          if(is_lim) then
+          if(is_lim_c) then
             muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_cpc,c_ppc,0.5_rp,rho,drho,nu1,nu2)
             muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mpc,c_cpc,0.5_rp,rho,drho,nu1,nu2)
             muyp = mu_lim_cell(muyp,c_cpc,rho,drho,nu1,nu2)
@@ -853,7 +865,7 @@ module mod_mom
             muzp = 1._rp/muzp
             muzm = 1._rp/muzm
           end if
-          if(is_lim) then
+          if(is_lim_c) then
             muxp = mu_lim_edge(muxp,c_ccc,c_pcc,c_ccp,c_pcp,wgt_c ,rho,drho,nu1,nu2)
             muxm = mu_lim_edge(muxm,c_mcc,c_ccc,c_mcp,c_ccp,wgt_c ,rho,drho,nu1,nu2)
             muyp = mu_lim_edge(muyp,c_ccc,c_cpc,c_ccp,c_cpp,wgt_c ,rho,drho,nu1,nu2)
