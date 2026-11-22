@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# needs a build with BALANCED_CAPILLARY_PRESSURE_SPLIT=1
+# needs a build with BALANCED_CAPILLARY_PRESSURE_SPLIT=1 (the default with the pressure splitting)
 #
 set -e # exit immediately if any command fails
 #
