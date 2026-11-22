@@ -11,7 +11,7 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum
+  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum
   contains
   !
   subroutine momx_a(nx,ny,nz,nh_v,nh_g,dxi,dyi,dzfi,u,v,w,dudt)
@@ -1733,4 +1733,96 @@ module mod_mom
     tauy(:) = tau(:,2)
     tauz(:) = tau(:,3)
   end subroutine cmpt_wallshear
+  !
+  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,is_brack,psi,kappa,s, &
+                               factor,u,v,w)
+    !
+    ! capillary force of the variation of the surface tension with the first scalar,
+    ! sigma(s) = sigma + dsigma*(s-s_ref), integrated over the time `factor` and added to the velocity, divided
+    ! by the face density; it complements the force of the constant part, sigma, of `mom_xyz_oth`:
+    !  - normal force of the variation, (sigma(s)-sigma)*kappa*grad(psi), with the density weighting of the
+    !    constant part if `is_brack`;
+    !  - tangential (Marangoni) force, (grad(sigma) - n (n.grad(sigma)))*|grad(psi)|, with the gradient of psi
+    !    at the faces: the difference across the face along its normal, and the average of the centred
+    !    differences of the two cells along the other directions; this force is weighted with the local
+    !    viscosity over the mean one: it is balanced by viscous stresses, and an even split between the two
+    !    fluids makes the less viscous one slip at the interface (the analogue, for the tangential force,
+    !    of the density weighting of the normal force)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   ) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
+    real(rp), intent(in   ), dimension(2) :: rho12,mu12
+    real(rp), intent(in   ) :: dsigma,s_ref
+    logical , intent(in   ) :: is_brack
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp), intent(in   ) :: factor
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp) :: rho,drho,mu,dmu,bfac,mfac,dxi,dyi,hz_c
+    real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif
+    integer  :: i,j,k
+    !
+    rho = rho12(2); drho = rho12(1)-rho12(2)
+    mu  = mu12(2) ; dmu  = mu12(1) -mu12(2)
+    bfac = 2._rp/(rho12(1)+rho12(2))
+    mfac = 2._rp/(mu12(1) +mu12(2) )
+    dxi = dli(1); dyi = dli(2)
+    !$acc parallel loop collapse(3) default(present) private(hz_c,fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          hz_c = dzci(k)*dzci(k-1)/(dzci(k)+dzci(k-1)) ! (factor of the centred difference along z)
+          !
+          ! x face
+          !
+          psif = 0.5*(psi(i+1,j,k)+psi(i,j,k))
+          ga = (psi(i+1,j,k)-psi(i,j,k))*dxi
+          gb = 0.25*((psi(i,j+1,k)-psi(i,j-1,k))+(psi(i+1,j+1,k)-psi(i+1,j-1,k)))*dyi
+          gc = 0.5*((psi(i,j,k+1)-psi(i,j,k-1))+(psi(i+1,j,k+1)-psi(i+1,j,k-1)))*hz_c
+          sa = (s(i+1,j,k)-s(i,j,k))*dxi
+          sb = 0.25*((s(i,j+1,k)-s(i,j-1,k))+(s(i+1,j+1,k)-s(i+1,j-1,k)))*dyi
+          sc = 0.5*((s(i,j,k+1)-s(i,j,k-1))+(s(i+1,j,k+1)-s(i+1,j,k-1)))*hz_c
+          gm2 = ga**2+gb**2+gc**2
+          fx = dsigma*(0.5*(s(i+1,j,k)+s(i,j,k))-s_ref)*0.5*(kappa(i+1,j,k)+kappa(i,j,k))*ga
+          if(is_brack) fx = fx*(rho+drho*psif)*bfac
+          if(gm2 > 0._rp) fx = fx + dsigma*(sa*gm2-ga*(ga*sa+gb*sb+gc*sc))/sqrt(gm2)*(mu+dmu*psif)*mfac
+          u(i,j,k) = u(i,j,k) + factor*fx/(rho+drho*psif)
+          !
+          ! y face
+          !
+          psif = 0.5*(psi(i,j+1,k)+psi(i,j,k))
+          ga = (psi(i,j+1,k)-psi(i,j,k))*dyi
+          gb = 0.25*((psi(i+1,j,k)-psi(i-1,j,k))+(psi(i+1,j+1,k)-psi(i-1,j+1,k)))*dxi
+          gc = 0.5*((psi(i,j,k+1)-psi(i,j,k-1))+(psi(i,j+1,k+1)-psi(i,j+1,k-1)))*hz_c
+          sa = (s(i,j+1,k)-s(i,j,k))*dyi
+          sb = 0.25*((s(i+1,j,k)-s(i-1,j,k))+(s(i+1,j+1,k)-s(i-1,j+1,k)))*dxi
+          sc = 0.5*((s(i,j,k+1)-s(i,j,k-1))+(s(i,j+1,k+1)-s(i,j+1,k-1)))*hz_c
+          gm2 = ga**2+gb**2+gc**2
+          fy = dsigma*(0.5*(s(i,j+1,k)+s(i,j,k))-s_ref)*0.5*(kappa(i,j+1,k)+kappa(i,j,k))*ga
+          if(is_brack) fy = fy*(rho+drho*psif)*bfac
+          if(gm2 > 0._rp) fy = fy + dsigma*(sa*gm2-ga*(ga*sa+gb*sb+gc*sc))/sqrt(gm2)*(mu+dmu*psif)*mfac
+          v(i,j,k) = v(i,j,k) + factor*fy/(rho+drho*psif)
+          !
+          ! z face
+          !
+          psif = (wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1))
+          ga = (psi(i,j,k+1)-psi(i,j,k))*dzci(k)
+          gb = 0.25*((psi(i+1,j,k)-psi(i-1,j,k))+(psi(i+1,j,k+1)-psi(i-1,j,k+1)))*dxi
+          gc = 0.25*((psi(i,j+1,k)-psi(i,j-1,k))+(psi(i,j+1,k+1)-psi(i,j-1,k+1)))*dyi
+          sa = (s(i,j,k+1)-s(i,j,k))*dzci(k)
+          sb = 0.25*((s(i+1,j,k)-s(i-1,j,k))+(s(i+1,j,k+1)-s(i-1,j,k+1)))*dxi
+          sc = 0.25*((s(i,j+1,k)-s(i,j-1,k))+(s(i,j+1,k+1)-s(i,j-1,k+1)))*dyi
+          gm2 = ga**2+gb**2+gc**2
+          fz = dsigma*(0.5*(s(i,j,k+1)+s(i,j,k))-s_ref)*0.5*(kappa(i,j,k+1)+kappa(i,j,k))*ga
+          if(is_brack) fz = fz*(rho+drho*psif)*bfac
+          if(gm2 > 0._rp) fz = fz + dsigma*(sa*gm2-ga*(ga*sa+gb*sb+gc*sc))/sqrt(gm2)*(mu+dmu*psif)*mfac
+          w(i,j,k) = w(i,j,k) + factor*fz/(rho+drho*psif)
+        end do
+      end do
+    end do
+  end subroutine mom_xyz_marangoni
 end module mod_mom

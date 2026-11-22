@@ -86,6 +86,7 @@ character(len=1), protected, dimension(0:1,3,3) ::  cbcnor
 real(rp)        , protected, dimension(0:1,3,3) ::   bcnor
 real(rp)        , protected, dimension(0:1,3)   :: contact_angle ! static contact angle at walls, in degrees through phase 1
 real(rp), protected               :: sigma
+real(rp), protected               :: dsigma_ds,s_ref ! surface tension linear in the first scalar: sigma+dsigma_ds*(s-s_ref)
 real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, allocatable, dimension(:,:) :: ka12,cp12 ! size (2,nscal): conductivity and heat capacity of each scalar
 real(rp), protected, dimension(2) :: beta12
@@ -216,7 +217,7 @@ contains
     namelist /two_fluid/ &
                         inipsi, &
                         cbcpsi,bcpsi,contact_angle, &
-                        sigma,rho12,mu12, &
+                        sigma,dsigma_ds,s_ref,rho12,mu12, &
                         ka12,cp12,beta12, &
                         psi_thickness_factor, &
                         ifc_reconstruction,ifc_advection,ifc_transport, &
@@ -263,7 +264,7 @@ contains
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     cbccur(:,:) = 'P'; bccur(:,:) = 0.
     contact_angle(:,:) = 90.
-    sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
+    sigma = 0.; dsigma_ds = 0.; s_ref = 0.; rho12(:) = 1.; mu12(:) = 0.01
     beta12(:) = 1.
     psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''

@@ -481,6 +481,8 @@ module mod_initflow
       s1d(:) = bcsca(0,3)*(s1d(:)) + bcsca(1,3)*(1.-s1d(:))
     case('uni')
       s1d(:) = sref
+    case('cos') ! one cosine wave along x (or along y, with the suffix -x)
+      s1d(:) = 0._rp
     case('zer')
       s1d(:) = 0._rp
     case default
@@ -498,6 +500,17 @@ module mod_initflow
         end do
       end do
     end do
+    if(trim(ini) == 'cos') then
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            ii = merge(i,j,ia == 1)+lo(ia)-1
+            xx = (ii-0.5)*dl(ia)/l(ia)
+            s(i,j,k) = cos(2._rp*acos(-1._rp)*xx)
+          end do
+        end do
+      end do
+    end if
     if(trim(ini) == 'dhc') then
       do k=1,n(3)
         do j=1,n(2)
