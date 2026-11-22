@@ -239,9 +239,10 @@ module mod_interface_capturing
         else
           call thinc_cmpt_phi(n,nh_psi,nh_ifc,vof_thinc_beta,psi,phi)
         end if
-        call cmpt_norm_curv(n,nh_ifc,nh_ifc,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa) ! (halo width of phi)
+        call cmpt_norm_curv(n,nh_ifc,nh_ifc,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa,is_bound,contact_angle) ! (halo
+                                                                                                    ! width of phi)
       else
-        call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+        call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa,is_bound,contact_angle)
       end if
       call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
       call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)

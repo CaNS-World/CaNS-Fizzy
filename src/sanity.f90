@@ -109,10 +109,6 @@ module mod_sanity
       if(myid == 0)  print*, 'ERROR: a contact angle other than 90 degrees requires a wall (homogeneous Neumann condition &
                                      &for the volume fraction) along a direction with more than two grid cells.'; call abortit
     end if
-    if(any(abs(contact_angle(:,:)-90.) > 1.e-10) .and. trim(ifc_reconstruction) /= 'plic') then
-      if(myid == 0)  print*, 'ERROR: contact angles other than 90 degrees are only available with &
-                                     &`ifc_reconstruction = plic`.'; call abortit
-    end if
     if(trim(ifc_reconstruction) == 'plic' .and. .not.is_ifc_split) then
       if(myid == 0)  print*, 'ERROR: the geometric reconstruction (`ifc_reconstruction = plic`) needs the direction-split &
                                      &advection (`ifc_advection = split`).'; call abortit
