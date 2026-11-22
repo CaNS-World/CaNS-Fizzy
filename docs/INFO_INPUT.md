@@ -47,6 +47,7 @@ is_boussinesq_buoyancy = F
 inipsi            = 'bub3'
 cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'N','N'
 bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
+contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
 sigma             =  1.
 rho12(1:2)        =  1., 1.
 mu12(1:2)         =  0.01, 0.01
@@ -479,6 +480,19 @@ The corresponding BC **values** (dummy for a periodic direction) are set in `bcp
 The conditions of the interface normal and of the curvature follow from these: periodic where the volume fraction is periodic, and, at a boundary with a Neumann condition for the volume fraction, zero wall-normal component of the interface normal and zero gradient of its other two components (the interface meets the wall at 90 degrees).
 
 Note: to conserve mass in the domain, a solid wall boundary requires a homogeneous Neumann BC for the volume fraction.
+
+---
+
+```fortran
+contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
+```
+
+This optional line sets a **static contact angle** on each boundary, in degrees and measured through phase 1, in the order `X0 X1  Y0 Y1  Z0 Z1` (default: `90.`). An angle other than 90 degrees requires a wall (homogeneous Neumann BC for the volume fraction) along a direction with more than two grid cells. The volume fraction keeps its condition at the wall, so that the volume is conserved; the angle enters through the geometry of the interface next to the wall:
+
+* with `ifc_reconstruction = 'plic'`, the ghost cells of the wall take the volume fractions of the interface extended into the wall at that angle (Afkhami & Bussmann, *Int. J. Numer. Methods Fluids* 57 (2008) 453–472 and 61 (2009) 827–847), which the interface reconstruction and the height-function curvature next to the wall then see;
+* with `acdi` and `thinc`, the interface normal at the wall is rotated to that angle (the wall adhesion of Brackbill et al., *J. Comput. Phys.* 100 (1992) 335–354), which the normals and the curvature of the cells next to the wall then see.
+
+The contact line moves with the flow next to the wall.
 
 ---
 
