@@ -8,7 +8,9 @@ module mod_vof_split
   !
   ! conservative direction-split advection of the volume fraction, following
   !   G.D. Weymouth & D.K.-P. Yue, J. Comput. Phys. 229 (2010) 2853--2865,
-  ! with geometric donor-region fluxes from a PLIC reconstruction (see `mod_plic`)
+  ! with geometric donor-region fluxes from a PLIC reconstruction (see `mod_plic`), or with those of a THINC
+  ! (hyperbolic-tangent) reconstruction along the direction of the sweep (see `mod_thinc`), also exactly
+  ! conservative and bounded
   !
   ! each sweep along direction d updates
   !   f <- f - (F_{+} - F_{-})/h_d + c_c*dt*(u_{+} - u_{-})/h_d,
@@ -39,6 +41,7 @@ module mod_vof_split
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
   use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature
+  use mod_thinc     , only: thinc_intercept,thinc_slab
   implicit none
   private
   public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics
@@ -58,6 +61,8 @@ module mod_vof_split
   integer , allocatable, dimension(:)     :: ilist    ! compacted list of interfacial donor cells (packed indices)
   integer , dimension(1) :: nlist                     ! number of entries of ilist
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
+  logical  :: is_thinc   = .false.                    ! THINC reconstruction instead of the geometric one
+  real(rp) :: thinc_beta = 1._rp                      ! its sharpness
   !
   ! transport of momentum (and scalar) along with the sweeps
   !
@@ -83,17 +88,21 @@ module mod_vof_split
                                                 ! from neighbouring height functions, and without estimate
   !$acc declare create(kappa_stats)
   contains
-  subroutine vof_split_init(ng,n,nh_psi,is_sweep_transport,is_scalar)
+  subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_sweep_transport,is_scalar)
     !
-    ! allocates the work arrays; `is_sweep_transport` selects the transport of momentum (and of the scalar,
-    ! if `is_scalar`) along with the sweeps
+    ! allocates the work arrays; `is_thinc_reconstruction` selects the THINC reconstruction, of sharpness
+    ! `beta`, instead of the geometric one, and `is_sweep_transport` the transport of momentum (and of the
+    ! scalar, if `is_scalar`) along with the sweeps
     !
     implicit none
     integer , intent(in), dimension(3) :: ng,n
     integer , intent(in)               :: nh_psi
-    logical , intent(in)               :: is_sweep_transport,is_scalar
+    logical , intent(in)               :: is_thinc_reconstruction,is_sweep_transport,is_scalar
+    real(rp), intent(in)               :: beta
     integer :: i,j,k
     !
+    is_thinc   = is_thinc_reconstruction
+    thinc_beta = beta
     if(nh_psi < nq_hf) error stop 'ERROR: the halo width of the volume fraction is smaller than the height-function columns.'
     !
     ! directions with one or two grid cells are taken as invariant (2D runs): no sweeps,
@@ -433,8 +442,8 @@ module mod_vof_split
     real(rp), dimension(-1:1,-1:1,-1:1) :: c
     real(rp), dimension(-1:1) :: dz3
     logical , dimension(3) :: act
-    logical  :: is_own_p,is_own_m,is_act1,is_act2,is_act3,is_flx
-    real(rp) :: dx,dy,dxi,dyi,h,rh,fc,vp,vm,cfl_p,cfl_m,frac_p,frac_m,fnew,fcl,mx,my,mz
+    logical  :: is_own_p,is_own_m,is_act1,is_act2,is_act3,is_flx,is_th
+    real(rp) :: dx,dy,dxi,dyi,h,rh,fc,vp,vm,cfl_p,cfl_m,frac_p,frac_m,fnew,fcl,mx,my,mz,beta
     integer  :: i,j,k,di,dj,dk,ii,nd,ndf,ilo,jlo,klo,ihi,jhi,khi,ni,nj,il,lin
     !
     di = merge(1,0,idir == 1)
@@ -450,6 +459,8 @@ module mod_vof_split
     is_act3 = is_active(3)
     ndf = nd+ncc
     is_flx = .not.is_sweep
+    is_th  = is_thinc
+    beta   = thinc_beta
     ilo = 1-di; ihi = n(1)+di+ncc
     jlo = 1-dj; jhi = n(2)+dj+ncc
     klo = 1-dk; khi = n(3)+dk+ncc
@@ -516,7 +527,7 @@ module mod_vof_split
       c(:,:,:) = psi(i-1:i+1,j-1:j+1,k-1:k+1)
       dz3(:) = dzf(k-1:k+1)
       call plic_normal_myc(c,dx,dy,dz3,act,mx,my,mz)
-      call donor_fractions(mx,my,mz,fc,idir,cfl_p,cfl_m,frac_p,frac_m)
+      call donor_fractions(mx,my,mz,fc,idir,is_th,beta,cfl_p,cfl_m,frac_p,frac_m)
       if(is_own_p) fl(i,j,k) = frac_p*vp*dt
       if(is_own_m) fl(i-di,j-dj,k-dk) = frac_m*vm*dt
     end do
@@ -871,33 +882,57 @@ module mod_vof_split
     end if
   end function donor_value
   !
-  pure subroutine donor_fractions(mx,my,mz,vol,idir,cfl_p,cfl_m,frac_p,frac_m)
+  pure subroutine donor_fractions(mx,my,mz,vol,idir,is_thinc_rec,beta,cfl_p,cfl_m,frac_p,frac_m)
     !
     ! fractions of the donor slabs of an interfacial cell occupied by phase 1, for the slab [1-cfl_p,1]
     ! adjacent to its upper face and the slab [0,cfl_m] adjacent to its lower face along direction idir
     ! (in cell-scaled coordinates), for an interface with normal (mx,my,mz) (cell-scaled, pointing out of
-    ! phase 1) and volume fraction vol: exact slab volumes cut by the plane
+    ! phase 1) and volume fraction vol:
+    !  - geometric reconstruction: exact slab volumes cut by the plane;
+    !  - THINC reconstruction (`is_thinc_rec`): slab averages of the hyperbolic-tangent profile along idir
+    !    with sharpness beta, through the cell centre (the transverse integrals are approximated by the
+    !    midpoint rule, as in the THINC/QQ method), whose cell average is vol; the slab fractions lie in
+    !    [0,1] and are bounded by the content of the cell, as required by the bounded split advection
     !
     implicit none
     real(rp), intent(in ) :: mx,my,mz,vol
     integer , intent(in ) :: idir
+    logical , intent(in ) :: is_thinc_rec
+    real(rp), intent(in ) :: beta
     real(rp), intent(in ) :: cfl_p,cfl_m
     real(rp), intent(out) :: frac_p,frac_m
+    real(rp), parameter :: a_min = 1.e-12_rp
     real(rp), dimension(3) :: o,s
-    real(rp) :: alpha
+    real(rp) :: alpha,a,d
     !$acc routine seq
-    alpha = plic_alpha(mx,my,mz,vol)
-    frac_p = 0._rp
-    frac_m = 0._rp
-    if(cfl_p > 0._rp) then
-      o(:) = 0._rp; s(:) = 1._rp
-      o(idir) = 1._rp-cfl_p; s(idir) = cfl_p
-      frac_p = plic_volume_box(mx,my,mz,alpha,o(1),o(2),o(3),s(1),s(2),s(3))
-    end if
-    if(cfl_m > 0._rp) then
-      o(:) = 0._rp; s(:) = 1._rp
-      s(idir) = cfl_m
-      frac_m = plic_volume_box(mx,my,mz,alpha,o(1),o(2),o(3),s(1),s(2),s(3))
+    if(.not.is_thinc_rec) then
+      alpha = plic_alpha(mx,my,mz,vol)
+      frac_p = 0._rp
+      frac_m = 0._rp
+      if(cfl_p > 0._rp) then
+        o(:) = 0._rp; s(:) = 1._rp
+        o(idir) = 1._rp-cfl_p; s(idir) = cfl_p
+        frac_p = plic_volume_box(mx,my,mz,alpha,o(1),o(2),o(3),s(1),s(2),s(3))
+      end if
+      if(cfl_m > 0._rp) then
+        o(:) = 0._rp; s(:) = 1._rp
+        s(idir) = cfl_m
+        frac_m = plic_volume_box(mx,my,mz,alpha,o(1),o(2),o(3),s(1),s(2),s(3))
+      end if
+    else
+      a = merge(mx,merge(my,mz,idir == 2),idir == 1)/max(sqrt(mx**2+my**2+mz**2),tiny(1._rp))
+      frac_p = vol
+      frac_m = vol
+      if(abs(a) > a_min) then
+        d = thinc_intercept(abs(a),vol,beta)
+        if(a > 0._rp) then
+          if(cfl_p > 0._rp) frac_p = thinc_slab(a,d,beta,0.5_rp-cfl_p,0.5_rp)
+          if(cfl_m > 0._rp) frac_m = thinc_slab(a,d,beta,-0.5_rp,-0.5_rp+cfl_m)
+        else ! mirrored profile, s -> -s
+          if(cfl_p > 0._rp) frac_p = thinc_slab(-a,d,beta,-0.5_rp,-0.5_rp+cfl_p)
+          if(cfl_m > 0._rp) frac_m = thinc_slab(-a,d,beta,0.5_rp-cfl_m,0.5_rp)
+        end if
+      end if
     end if
   end subroutine donor_fractions
   !

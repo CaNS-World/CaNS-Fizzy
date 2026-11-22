@@ -17,7 +17,7 @@ mkdir -p data
 #
 cp $TESTDIR/input-*.nml $TESTDIR/spheres-*.in $RUNDIR
 
-for name in drop restart-one-step restart-two-step-1 restart-two-step-2; do
+for name in drop drop-thinc restart-one-step restart-two-step-1 restart-two-step-2; do
   echo "INFO: Running CaNS, case $name"
   mv input-${name}.nml input.nml
   cp spheres-$(echo $name | sed 's/-.*//g').in spheres.in

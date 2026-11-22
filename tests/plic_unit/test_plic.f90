@@ -17,6 +17,7 @@ program test_plic
   !
   use mod_types
   use mod_plic
+  use mod_thinc
   implicit none
   integer , parameter :: qp = max(selected_real_kind(30),selected_real_kind(15)) ! quadruple precision, if available
   real(rp), parameter :: pi = acos(-1._rp)
@@ -25,6 +26,7 @@ program test_plic
   passed = .true.
   call random_seed_fixed()
   call test_volume(passed)
+  call test_thinc(passed)
   call test_alpha(passed)
   call test_additivity(passed)
   call test_normals_planes(passed)
@@ -199,6 +201,47 @@ contains
       passed = .false.
     end if
   end subroutine test_volume
+  !
+  subroutine test_thinc(passed)
+    logical, intent(inout) :: passed
+    integer , parameter :: nsamples = 20000, nsimp = 20000
+    real(rp), parameter :: tol = 1.e-12_rp
+    real(rp) :: a,f,beta,d,s,h,href,ds,x,err_cell,err_slab,err_bound,r(4)
+    integer :: n,q
+    err_cell = 0._rp; err_slab = 0._rp; err_bound = 0._rp
+    do n=1,nsamples
+      call random_number(r)
+      a    = 10._rp**(-8._rp*r(1))         ! component of the unit normal along the direction, in (1e-8,1]
+      f    = 1.e-10_rp+(1._rp-2.e-10_rp)*r(2)
+      beta = 0.5_rp+3.5_rp*r(3)
+      s    = max(1.e-4_rp,0.5_rp*r(4))      ! slab width (CFL number of the sweep)
+      d = thinc_intercept(a,f,beta)
+      err_cell = max(err_cell,abs(thinc_slab(a,d,beta,-0.5_rp,0.5_rp)-f))
+      !
+      ! slab adjacent to the upper face: composite Simpson reference
+      !
+      h = thinc_slab(a,d,beta,0.5_rp-s,0.5_rp)
+      ds = s/nsimp
+      href = 0._rp
+      do q=0,nsimp
+        x = 0.5_rp-s+q*ds
+        href = href+merge(1._rp,merge(4._rp,2._rp,mod(q,2) == 1),q == 0 .or. q == nsimp)/(1._rp+exp(2._rp*beta*(a*x-d)))
+      end do
+      href = href*ds/3._rp/s
+      err_slab = max(err_slab,abs(h-href))
+      !
+      ! the slab contents must not exceed those of the cell, for both phases
+      !
+      err_bound = max(err_bound,s*h-f,s*(1._rp-h)-(1._rp-f))
+      h = thinc_slab(a,d,beta,-0.5_rp,-0.5_rp+s)
+      err_bound = max(err_bound,s*h-f,s*(1._rp-h)-(1._rp-f))
+    end do
+    print '(a,3es10.2)', ' thinc : max |cell average - f|, |slab - quadrature|, bound excess: ',err_cell,err_slab,err_bound
+    if(err_cell > tol .or. err_slab > tol .or. err_bound > tol) then
+      print*, '  FAILED: THINC error above ', tol
+      passed = .false.
+    end if
+  end subroutine test_thinc
   !
   subroutine test_alpha(passed)
     logical, intent(inout) :: passed

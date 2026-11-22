@@ -101,9 +101,6 @@ module mod_sanity
       if(myid == 0)  print*, 'ERROR: the ACDI phase field (`ifc_reconstruction = acdi`) is advected with `ifc_advection = ab2`: &
                                      &the direction-split advection needs a volume fraction.'; call abortit
     end if
-    if(trim(ifc_reconstruction) == 'thinc' .and. is_ifc_split) then
-      if(myid == 0)  print*, 'ERROR: the THINC reconstruction is not available yet with `ifc_advection = split`.'; call abortit
-    end if
     if(trim(ifc_reconstruction) == 'plic' .and. .not.is_ifc_split) then
       if(myid == 0)  print*, 'ERROR: the geometric reconstruction (`ifc_reconstruction = plic`) needs the direction-split &
                                      &advection (`ifc_advection = split`).'; call abortit

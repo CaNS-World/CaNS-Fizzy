@@ -535,13 +535,13 @@ These lines select the **interface-capturing method**, at run time. Three indepe
 `ifc_reconstruction` sets how the interface is described:
 
 * `acdi` (default): the phase field of the ACDI diffuse-interface method;
-* `thinc`: the volume fraction of the THINC/QQ volume-of-fluid method, with a hyperbolic-tangent profile;
+* `thinc`: the volume fraction of an algebraic volume-of-fluid method, with a hyperbolic-tangent (THINC) profile across the interface: the THINC/QQ method with `ifc_advection = 'ab2'`, and a hyperbolic-tangent profile along the direction of each sweep with `ifc_advection = 'split'`;
 * `plic`: the volume fraction of the geometric volume-of-fluid method, with a piecewise-linear (PLIC) interface in each cut cell, and the curvature computed from height functions.
 
 `ifc_advection` sets how the phase indicator is advected:
 
 * `ab2` (default of `acdi` and `thinc`): with the AB2 scheme, as the other terms;
-* `split` (default of `plic`): with a conservative direction-split scheme, which conserves the volume and keeps the volume fraction bounded to round-off, with sub-steps when the CFL number along a direction exceeds 1/2.
+* `split` (default of `plic`, also available with `thinc`): with a conservative direction-split scheme, which conserves the volume and keeps the volume fraction bounded to round-off, with sub-steps when the CFL number along a direction exceeds 1/2. The fluxes are the volumes of the reconstructed interface that cross each cell face: exact for the planes of `plic`, and integrated analytically along the sweep direction for the profile of `thinc` (of steepness `vof_thinc_beta` times the component along the sweep of the unit interface normal, computed from the volume fraction as for `plic`).
 
 `ifc_transport` sets how the momentum and the scalar are transported, consistently with the mass in all cases:
 
@@ -555,13 +555,14 @@ The valid combinations are:
 |---|---|---|
 | `acdi` | `ab2` | `ab2` |
 | `thinc` | `ab2` | `ab2` |
+| `thinc` | `split` | `one-step` or `sweeps` |
 | `plic` | `split` | `one-step` or `sweeps` |
 
 Any other one stops the run with a message. Implicit diffusion (`is_impdiff`) is not available yet with `ifc_advection = 'split'`.
 
 `is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
 
-With `ifc_advection = 'split'`, every `iout0d` time steps the code appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate.
+With `ifc_advection = 'split'`, every `iout0d` time steps the code appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate (zero with `thinc`, whose normals and curvature are computed as with `ifc_advection = 'ab2'`).
 
 # About the `&numerics` namelist under `input.nml`
 
