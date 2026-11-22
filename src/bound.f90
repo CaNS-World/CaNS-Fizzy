@@ -280,6 +280,8 @@ module mod_bound
     ! - Dirichlet: p(ghost) = 2*rvalue - p(mirror); p(boundary node) = rvalue;
     ! - Neumann  : p(ghost) = p(mirror) -/+ dr*rvalue at the lower/upper boundary;
     !              p(boundary node) = p(adjacent node) -/+ dr(0)*rvalue;
+    ! - Robin ('R', centered variables): p(ghost) = p(mirror)*(2*rvalue-dr)/(2*rvalue+dr),
+    !              i.e., p = rvalue*dp/dn at the boundary;
     !
     ! dr(dh) -> distance between ghost layer `dh` and its mirror point (see `bc_dist`)
     !
@@ -321,7 +323,7 @@ module mod_bound
         else
           ig = n+1+dh; im = 1+dh
         end if
-      case('D','N')
+      case('D','N','R')
         l = dh ! layer of the distance `dr`
         if(centered) then
           if(ibound == 0) then
@@ -346,6 +348,15 @@ module mod_bound
           end if
           factor_b = rvalue
           sgn_b    = 0.
+        else if(ctype == 'R') then
+          !
+          ! Robin condition of a centered variable, p = rvalue*dp/dn at the boundary, with n the normal
+          ! pointing into the domain (e.g., Navier slip at a wall at rest, with slip length `rvalue`)
+          !
+          factor = 0.
+          sgn    = (2.*rvalue-dr(l))/(2.*rvalue+dr(l))
+          factor_b = 0.
+          sgn_b    = 1.
         else
           if(ibound == 0) factor = -dr(l)*rvalue
           if(ibound == 1) factor =  dr(l)*rvalue

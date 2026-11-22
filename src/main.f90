@@ -64,7 +64,7 @@ program cans
                                      restart,is_overwrite_save,nsaves_max, &
                                      icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                      tout0d,tout1d,tout2d,tout3d,tsave, &
-                                     cbcvel,bcvel,cbcpre,bcpre, &
+                                     cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpre,bcpre, &
                                      cbcsca,bcsca, &
                                      is_forced,bforce,ssource, &
                                      gacc,nscal, &
@@ -608,13 +608,13 @@ program cans
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
-  call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
+  call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
   call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
   if(is_ifc_split) then
     !$acc enter data copyin(uo,vo,wo,uadv,vadv,wadv)
     if(.not.is_first) then
-      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,uo,vo,wo,restart)
-      if(is_vof_sweep_transport) call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv,.false.)
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uo,vo,wo,restart)
+      if(is_vof_sweep_transport) call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv,.false.)
     end if
   end if
 #if defined(_CONSTANT_COEFFS_POISSON)
@@ -769,7 +769,7 @@ program cans
                     bforce,is_wallturb,time,u,v,w,p)
       !$acc wait(1)
       !$acc update device(u,v,w,p) async(1)
-      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
     else
       rho_av(:) = 0.
       is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
@@ -818,7 +818,7 @@ program cans
 #if !defined(_CONSTANT_COEFFS_POISSON)
         else
           call impdiff_vc_mom_updt(n,nh_v,nh_psi,nh_g,wzc,0.5_rp*dtrk,rho12,psi,u,v,w)
-          call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
+          call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
           call impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbcvel,cbcpre,is_bound,dli,dzci,dzfi,wzc,0.5_rp*dtrk, &
                                     rho12,mu12,psi,u,v,w)
 #endif
@@ -834,7 +834,7 @@ program cans
           force_balance(:,5) = force_balance(:,5) + (wall_force_imp(:)+momentum(:))*dtrki
         end if
       end if
-      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w,.false.,-1)
       call fillps(n,nh_v,nh_p,nh_g,dli,dzfi,dtrki*rho0,u,v,w,pp)
 #if defined(_CONSTANT_COEFFS_POISSON)
       call updt_rhs_b(['c','c','c'],cbcpre,n,nh_p,is_bound,rhsbp%x,rhsbp%y,rhsbp%z,pp)
@@ -845,7 +845,7 @@ program cans
 #endif
       call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,pp)
       call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,wzc,rho12,dtrk/rho0,pp,psi,u,v,w)
-      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w,.true.,1,0)
       if(any(is_forced(:))) then
         call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
         where(is_forced(:)) force_balance(:,6) = (momentum(:)-force_balance(:,6))/dt

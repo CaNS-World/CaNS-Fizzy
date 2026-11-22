@@ -54,6 +54,9 @@ integer, dimension(0:1,3) :: nb
 logical, dimension(0:1,3) :: is_bound
 character(len=1), protected, dimension(0:1,3,3) ::  cbcvel
 real(rp)        , protected, dimension(0:1,3,3) ::   bcvel
+real(rp)        , protected, dimension(0:1,3)   ::  slip_length ! Navier slip length of the walls (zero: no slip)
+character(len=1), protected, dimension(0:1,3,3) ::  cbcvel_halo ! (not inputs: conditions imposed on the halo cells of the
+real(rp)        , protected, dimension(0:1,3,3) ::   bcvel_halo !  velocity, with the Navier slip of the walls that have it)
 character(len=1), protected, dimension(0:1,3)   ::  cbcpre
 real(rp)        , protected, dimension(0:1,3)   ::   bcpre
 !
@@ -186,6 +189,7 @@ contains
                   icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                   tout0d,tout1d,tout2d,tout3d,tsave, &
                   cbcvel,cbcpre,bcvel,bcpre, &
+                  slip_length, &
                   bforce, &
                   is_forced, &
                   gacc, &
@@ -244,6 +248,7 @@ contains
     icheck = 10; iout0d = 10; iout1d = 100; iout2d = 1000; iout3d = 500; isave = 1000
     tout0d = 0.; tout1d = 0.; tout2d = 0.; tout3d = 0.; tsave = 0.
     cbcvel(:,:,:) = 'P'; cbcpre(:,:) = 'P'; bcvel(:,:,:) = 0.; bcpre(:,:) = 0.
+    slip_length(:,:) = 0.
     bforce(:) = 0.; is_forced(:) = .false.
     gacc(:) = 0.
     nscal = 0
@@ -294,6 +299,23 @@ contains
       !
       dl(:) = l(:)/(1.*ng(:))
       dli(:) = dl(:)**(-1)
+      !
+      ! conditions imposed on the halo cells of the velocity: Navier slip (Robin condition, type 'R', with the
+      ! slip length as its value) for the wall-tangential components at the walls with a positive slip length
+      ! (see `mod_sanity` for the requirements)
+      !
+      cbcvel_halo(:,:,:) = cbcvel(:,:,:)
+      bcvel_halo(:,:,:)  = bcvel(:,:,:)
+      do idir=1,3
+        do ib=0,1
+          if(slip_length(ib,idir) > 0.) then
+            cbcvel_halo(ib,idir,:) = 'R'
+            bcvel_halo(ib,idir,:)  = slip_length(ib,idir)
+            cbcvel_halo(ib,idir,idir) = cbcvel(ib,idir,idir)
+            bcvel_halo(ib,idir,idir)  = bcvel(ib,idir,idir)
+          end if
+        end do
+      end do
       if(all([1,2,3] /= ipencil_axis)) then
         ipencil_axis = 1 ! default to one
         if(myid == 0) print*, 'Warning: prescribed value of `ipencil_axis` is different from 1/2/3.'
