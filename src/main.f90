@@ -823,6 +823,12 @@ program cans
         call bulk_mean_12_stag(n,nh_psi,nh_g,2,grid_vol_ratio_f,wzc,psi,rho12,rho_av(2))
       if(is_cmpt_rho_av(3)) &
         call bulk_mean_12_stag(n,nh_psi,nh_g,3,grid_vol_ratio_c,wzc,psi,rho12,rho_av(3))
+      !
+      ! (between walls any uniform density would do: the mean one is rounded to single precision there, such
+      ! that the round-off of the global sum, which depends on the domain decomposition, does not reach the
+      ! flow, and runs with different numbers of tasks stay identical)
+      !
+      where(is_cmpt_rho_av(:) .and. cbcpre(0,:)//cbcpre(1,:) == 'NN') rho_av(:) = real(real(rho_av(:),sp),rp)
       call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
               grid_vol_ratio_c,grid_vol_ratio_f, &
               dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,scalars(1)%val, &
