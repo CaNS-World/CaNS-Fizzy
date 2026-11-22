@@ -67,12 +67,12 @@ real(rp), protected, dimension(3) :: dl,dli
 !
 ! scalar input parameters
 !
-integer , protected :: nscal ! number of transported scalars (0 or 1)
+integer , protected :: nscal ! number of transported scalars
 real(rp), protected, dimension(3) :: gacc
-character(len=100), protected                 :: inisca
-character(len=1)  , protected, dimension(0:1,3) :: cbcsca
-real(rp)          , protected, dimension(0:1,3) ::  bcsca
-real(rp), protected :: ssource
+character(len=100), protected, allocatable, dimension(:)     :: iniscal
+character(len=1)  , protected, allocatable, dimension(:,:,:) :: cbcscal ! size (0:1,3,nscal)
+real(rp)          , protected, allocatable, dimension(:,:,:) ::  bcscal ! size (0:1,3,nscal)
+real(rp), protected, allocatable, dimension(:) :: ssource
 logical , protected :: is_boussinesq_buoyancy = .false.
 !
 ! two-fluid input parameters
@@ -87,7 +87,8 @@ real(rp)        , protected, dimension(0:1,3,3) ::   bcnor
 real(rp)        , protected, dimension(0:1,3)   :: contact_angle ! static contact angle at walls, in degrees through phase 1
 real(rp), protected               :: sigma
 real(rp), protected, dimension(2) :: rho12,mu12
-real(rp), protected, dimension(2) :: ka12,cp12,beta12
+real(rp), protected, allocatable, dimension(:,:) :: ka12,cp12 ! size (2,nscal): conductivity and heat capacity of each scalar
+real(rp), protected, dimension(2) :: beta12
 real(rp), protected               :: acdi_gam_factor,acdi_gam_min,vof_thinc_beta
 real(rp), protected               :: psi_thickness_factor
 !
@@ -206,8 +207,8 @@ contains
                        cudecomp_h_comm_backend,cudecomp_is_h_enable_nccl,cudecomp_is_h_enable_nvshmem
 #endif
     namelist /scalar/ &
-                     inisca, &
-                     cbcsca,bcsca, &
+                     iniscal, &
+                     cbcscal,bcscal, &
                      ssource, &
                      is_boussinesq_buoyancy
     namelist /two_fluid/ &
@@ -256,16 +257,12 @@ contains
     nscal = 0
     dims(:) = 0
     !
-    inisca = 'zer'
-    cbcsca(:,:) = 'P'; bcsca(:,:) = 0.
-    ssource = 0.
-    !
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     cbccur(:,:) = 'P'; bccur(:,:) = 0.
     contact_angle(:,:) = 90.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
-    ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
+    beta12(:) = 1.
     psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
     is_sdf_normals = .true.
@@ -403,6 +400,19 @@ contains
       !
       if(nscal > 0) then
         !
+        ! allocate memory
+        !
+        allocate(iniscal(nscal), &
+                 cbcscal(0:1,3,nscal),bcscal(0:1,3,nscal), &
+                 ssource(nscal))
+        !
+        ! set default values
+        !
+        iniscal(:)     = 'zer'
+        cbcscal(:,:,:) = 'P'
+        bcscal(:,:,:)  = 0.
+        ssource(:)     = 0.
+        !
         ! read `scalar` namelist
         !
         rewind(iunit)
@@ -426,8 +436,11 @@ contains
         end if
       end if
       !
-      ! reading two-fluid parameters, if these are set
+      ! reading two-fluid parameters, if these are set; the properties of the scalars are per scalar (and
+      ! allocated for one scalar if there is none, such that the input files may always set them)
       !
+      allocate(ka12(2,max(nscal,1)),cp12(2,max(nscal,1)))
+      ka12(:,:) = 0.01; cp12(:,:) = 1.
       rewind(iunit)
       read(iunit,nml=two_fluid,iostat=ierr,iomsg=c_iomsg)
       if(ierr /= 0 .and. ierr /= iostat_end) then
@@ -479,7 +492,7 @@ contains
 #endif
       visc0  = maxval(mu12(:)/rho12(:))
       alpha0 = 0.
-      if(nscal > 0) alpha0 = maxval(ka12(:)/(rho12(:)*cp12(:)))
+      if(nscal > 0) alpha0 = maxval(ka12(:,1)/(rho12(:)*cp12(:,1)))
       vof_thinc_beta = 1._rp/(2._rp*psi_thickness_factor)
       !
       ! read `numerics` namelist

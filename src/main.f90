@@ -58,14 +58,14 @@ program cans
                                      gtype,gr, &
                                      cfl,dtmax,dt_f, &
                                      is_solve_ns,is_track_interface, &
-                                     inivel,inisca,inipsi, &
+                                     inivel,iniscal,inipsi, &
                                      is_wallturb,is_forced_hit, &
                                      nstep,time_max,tw_max,stop_type, &
                                      restart,is_overwrite_save,nsaves_max, &
                                      icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                      tout0d,tout1d,tout2d,tout3d,tsave, &
                                      cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpre,bcpre, &
-                                     cbcsca,bcsca, &
+                                     cbcscal,bcscal, &
                                      is_forced,bforce,ssource, &
                                      gacc,nscal, &
                                      rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
@@ -403,7 +403,7 @@ program cans
     !$acc enter data copyin(rhsbv,rhsbv%x,rhsbv%y,rhsbv%z) async
     !$acc enter data copyin(rhsbw,rhsbw%x,rhsbw%y,rhsbw%z) async
     if(nscal > 0) then
-      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcsca,bcsca, &
+      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcscal(:,:,1),bcscal(:,:,1), &
                       lambdaxys,['c','c','c'],as,bs,cs,arrplans,normffts,rhsbs%x,rhsbs%y,rhsbs%z)
       !$acc enter data copyin(lambdaxys,as,bs,cs) async
       !$acc enter data copyin(rhsbs,rhsbs%x,rhsbs%y,rhsbs%z) async
@@ -554,7 +554,7 @@ program cans
     time = 0.
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                   bforce,is_wallturb,time,u,v,w,p)
-    if(nscal > 0) call initscal(inisca,bcsca,ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
+    if(nscal > 0) call initscal(iniscal(1),bcscal(:,:,1),ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
     call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
     if(myid == 0) print*, '*** Initial condition successfully set ***'
   else
@@ -632,14 +632,14 @@ program cans
 #endif
   if(nscal > 0) then
     !$acc enter data copyin(s,dsdtrko) async(1)
-    call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+    call boundp(cbcscal(:,:,1),n,nh_s,nh_g,bcscal(:,:,1),nb,is_bound,dl,dzc,s)
     if(is_ifc_split) then
       !$acc enter data copyin(so,sadv) async(1)
       if(.not.is_first) then
         if(is_vof_sweep_transport) then
-          call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,sadv)
+          call boundp(cbcscal(:,:,1),n,nh_s,nh_g,bcscal(:,:,1),nb,is_bound,dl,dzc,sadv)
         else
-          call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,so)
+          call boundp(cbcscal(:,:,1),n,nh_s,nh_g,bcscal(:,:,1),nb,is_bound,dl,dzc,so)
         end if
       end if
     end if
@@ -669,7 +669,8 @@ program cans
     include 'out3d.h90'
   end if
   !
-  call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+  call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps, &
+             ka12(:,1),cp12(:,1))
   dt = min(cfl*dt_cfl,dtmax)
   if(dt_f > 0.) then
     if(dt_f > dt) then
@@ -744,25 +745,27 @@ program cans
                                   u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,s,sadv)
     end if
     if(nscal > 0) then
-      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
+      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource(1),rho12,ka12(:,1),cp12(:,1), &
+                   psi,u,v,w, &
                    psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,sadv,uadv,vadv,wadv)
       if(is_impdiff) then
         if(is_impdiff_1d) then
-          call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
+          call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcscal(:,:,1),bcscal(:,:,1),dzc,dzci,dzfi,0.5_rp*dt, &
+                                    rho12*cp12(:,1),ka12(:,1),psi,s)
         else if(is_impdiff_cc) then
           call impdiff_cc_scal_updt(n,nh_s,0.5_rp*dt,s)
           call solve_helmholtz(n,nh_s,ng,hi,arrplans,normffts,-0.5*alpha0*dt, &
-                               lambdaxys,as,bs,cs,rhsbs%x,rhsbs%y,rhsbs%z,is_bound,cbcsca,['c','c','c'],s)
+                               lambdaxys,as,bs,cs,rhsbs%x,rhsbs%y,rhsbs%z,is_bound,cbcscal(:,:,1),['c','c','c'],s)
 #if !defined(_CONSTANT_COEFFS_POISSON)
         else
-          call impdiff_vc_scal_updt(n,nh_s,nh_psi,0.5_rp*dt,rho12*cp12,psi,s)
-          call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
-          call impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbcsca,cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dt, &
-                                     rho12*cp12,ka12,psi,s)
+          call impdiff_vc_scal_updt(n,nh_s,nh_psi,0.5_rp*dt,rho12*cp12(:,1),psi,s)
+          call boundp(cbcscal(:,:,1),n,nh_s,nh_g,bcscal(:,:,1),nb,is_bound,dl,dzc,s)
+          call impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbcscal(:,:,1),cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dt, &
+                                     rho12*cp12(:,1),ka12(:,1),psi,s)
 #endif
         end if
       end if
-      call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+      call boundp(cbcscal(:,:,1),n,nh_s,nh_g,bcscal(:,:,1),nb,is_bound,dl,dzc,s)
     end if
     if(.not.is_solve_ns) then
       call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
@@ -884,7 +887,8 @@ program cans
     call ifc_update_params(n,nh_v,u,v,w,gam)
     if(icheck > 0.and.mod(istep,max(icheck,1)) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+      call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps, &
+             ka12(:,1),cp12(:,1))
       dt = min(cfl*dt_cfl,dtmax)
       if(dt_f > 0.) then
         if(dt_f > dt) then

@@ -36,10 +36,10 @@ In addition, the `&two_fluid` namelist contains the physical and transport prope
 
 ```fortran
 &scalar
-inisca          = 'cou'
-cbcsca(0:1,1:3) = 'P','P',  'P','P',  'D','D'
-bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   1.,0.
-ssource         = 0.
+iniscal(1)         = 'cou'
+cbcscal(0:1,1:3,1) = 'P','P',  'P','P',  'D','D'
+bcscal(0:1,1:3,1)  =  0.,0. ,   0.,0. ,   1.,0.
+ssource(1)         = 0.
 is_boussinesq_buoyancy = F
 /
 
@@ -51,8 +51,8 @@ contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
 sigma             =  1.
 rho12(1:2)        =  1., 1.
 mu12(1:2)         =  0.01, 0.01
-ka12(1:2)         =  0.01, 0.01
-cp12(1:2)         =  1., 1.
+ka12(1:2,1)       =  0.01, 0.01
+cp12(1:2,1)       =  1., 1.
 beta12(1:2)       =  0., 0.
 psi_thickness_factor = 0.51
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
@@ -101,7 +101,7 @@ The admissible MPI process grids depend on the homogeneous direction:
 
 With `ng(3)=1`, use `is_poisson_dtdma = F`, and use a uniform Z grid.
 
-Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `inisca` and `inipsi` below).
+Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `iniscal` and `inipsi` below).
 
 `gtype` and `gr` are the **grid stretching type** and **grid stretching parameter** that tweak the non-uniform grid in the third direction; zero `gr` implies no stretching. See `initgrid.f90` for more details. The following options are available for `gtype`:
 
@@ -355,7 +355,7 @@ nscal = 1
 /
 ```
 
-The default value of `nscal` is zero, and at most one scalar is supported.
+The default value of `nscal` is zero, and at most one scalar is supported for now. The entries of this namelist, and the conductivity `ka12` and heat capacity `cp12` of the `&two_fluid` namelist, carry the index of the scalar as their last subscript, as in CaNS.
 
 ---
 
@@ -363,10 +363,10 @@ The following example namelist defines the parameters needed for the differentia
 
 ```fortran
 &scalar
-inisca          = 'dhc-x'
-cbcsca(0:1,1:3) = 'P','P',  'D','D',  'N','N'
-bcsca(0:1,1:3)  =  0.,0.,   -0.5,0.5,   0.,0.
-ssource         = 0.
+iniscal(1)         = 'dhc-x'
+cbcscal(0:1,1:3,1) = 'P','P',  'D','D',  'N','N'
+bcscal(0:1,1:3,1)  =  0.,0.,   -0.5,0.5,   0.,0.
+ssource(1)         = 0.
 is_boussinesq_buoyancy = T
 /
 ```
@@ -374,7 +374,7 @@ is_boussinesq_buoyancy = T
 ---
 
 ```fortran
-inisca          = 'dhc-x'
+iniscal(1)         = 'dhc-x'
 ```
 
 This line sets the **initial scalar field**. The following options are available:
@@ -389,8 +389,8 @@ See `initflow.f90` for more details.
 ---
 
 ```fortran
-cbcsca(0:1,1:3) = 'P','P',  'D','D',  'N','N'
-bcsca(0:1,1:3)  =  0.,0.,   -0.5,0.5,   0.,0.
+cbcscal(0:1,1:3,1) = 'P','P',  'D','D',  'N','N'
+bcscal(0:1,1:3,1)  =  0.,0.,   -0.5,0.5,   0.,0.
 ```
 
 These lines set the **boundary conditions** for the scalar, just like for the pressure.
@@ -398,7 +398,7 @@ These lines set the **boundary conditions** for the scalar, just like for the pr
 ---
 
 ```fortran
-ssource         = 0.
+ssource(1)         = 0.
 ```
 
 `ssource` is a **uniform volumetric source term** added to the right-hand side of the scalar equation.
@@ -509,8 +509,8 @@ The contact line moves with the flow next to the wall.
 sigma           = 1.
 rho12(1:2)      = 10., 1.
 mu12(1:2)       = 1.e-2, 1.e-3
-ka12(1:2)       = 0., 0.
-cp12(1:2)       = 0., 0.
+ka12(1:2,1)     = 0., 0.
+cp12(1:2,1)     = 0., 0.
 beta12(1:2)     = 0., 0.
 ```
 
