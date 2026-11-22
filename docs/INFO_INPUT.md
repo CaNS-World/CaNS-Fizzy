@@ -586,7 +586,7 @@ The valid combinations are:
 | `thinc` | `split` | `one-step` or `sweeps` |
 | `plic` | `split` | `one-step` or `sweeps` |
 
-Any other one stops the run with a message. Implicit diffusion (`is_impdiff`) is not available yet with `ifc_advection = 'split'`.
+Any other one stops the run with a message.
 
 `is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
 
@@ -622,7 +622,7 @@ Note: `is_impdiff` is set to true automatically with `is_impdiff_1d = T`.
 
 `is_harmonic_interpolation`, if true, interpolates the viscosity and the thermal conductivity between the two fluids **harmonically** instead of arithmetically (care should be taken if one of the conductivities is zero).
 
-`is_visc_limiter`, if true, **limits the viscosity next to the interface**: the viscosity interpolated to a cell edge or centre is bounded such that the kinematic viscosity, relative to the lightest momentum control volume around it, does not exceed that of the phase that dominates there. Without it, a sharp interface can pair the viscosity of the heavy fluid with the density of the light one, and explicit diffusion goes unstable at large viscosity and density ratios. It is true by default with the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`), whose interface is sharp, and false otherwise.
+`is_visc_limiter`, if true, **limits the viscosity next to the interface**: the viscosity interpolated to a cell edge or centre is bounded such that the kinematic viscosity, relative to the lightest momentum control volume around it, does not exceed that of the phase that dominates there. Without it, a sharp interface can pair the viscosity of the heavy fluid with the density of the light one, and explicit diffusion goes unstable at large viscosity and density ratios. It is true by default with the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`), whose interface is sharp, and false otherwise. With implicit diffusion, the limiter acts on the terms that are integrated explicitly: the implicit operators of `is_impdiff_1d = T` and of the variable-coefficient solver keep the viscosity as interpolated.
 
 Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
 
