@@ -58,8 +58,6 @@ def main():
             updates[f'cbcvel(0:1,1:3,{component})'] = ', '.join(repr(c) for pair in bc for c in INVERSE[pair])
         # interface fields: periodic where the pressure is, zero gradient elsewhere
         updates['cbcpsi(0:1,1:3)'] = ', '.join(repr('P' if c == 'P' else 'N') for pair in bc for c in pair)
-        for component in range(1, 4):
-            updates[f'cbcnor(0:1,1:3,{component})'] = updates['cbcpsi(0:1,1:3)']
         for key, value in updates.items():
             text = re.sub(r'^'+re.escape(key)+r'\s*=.*$', key+' = '+value, text, flags=re.M)
         (case/'input.nml').write_text(text)
