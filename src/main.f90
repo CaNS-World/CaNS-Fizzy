@@ -771,8 +771,14 @@ program cans
       !$acc update device(u,v,w,p) async(1)
       call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
     else
+      !
+      ! the weight of the mean density is left out of the gravity term along the periodic directions, where the
+      ! net weight has nothing to balance it, and along those between walls (zero pressure gradient at both
+      ! ends), where it only changes the pressure by the hydrostatic one of the mean density: the pressure that
+      ! is solved for then varies less in space and time, which the pressure splitting benefits from
+      !
       rho_av(:) = 0.
-      is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. cbcpre(0,:)//cbcpre(1,:) == 'PP'
+      is_cmpt_rho_av(:) = (abs(gacc(:)) > 0.) .and. (cbcpre(0,:)//cbcpre(1,:) == 'PP' .or. cbcpre(0,:)//cbcpre(1,:) == 'NN')
       if(is_cmpt_rho_av(1)) &
         call bulk_mean_12_stag(n,nh_psi,nh_g,1,grid_vol_ratio_f,wzc,psi,rho12,rho_av(1))
       if(is_cmpt_rho_av(2)) &
