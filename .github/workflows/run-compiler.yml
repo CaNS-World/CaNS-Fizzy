@@ -22,7 +22,7 @@ on:
       variants:
         description: "JSON array of the variants to build and test"
         type: string
-        default: '["default", "balanced"]'
+        default: '["default", "unbalanced"]'
       tests_default:
         description: "JSON array of the tests of the default variant; a suffix -thinc, -plic or -thincsplit selects that interface method"
         type: string
@@ -39,17 +39,17 @@ jobs:
       variant: "default"
       tests: ${{ inputs.tests_default }}
 
-  balanced:
-    if: ${{ contains(fromJSON(inputs.variants), 'balanced') }}
+  unbalanced:
+    if: ${{ contains(fromJSON(inputs.variants), 'unbalanced') }}
     uses: ./.github/workflows/run-one.yml
     with:
       compiler: ${{ inputs.compiler }}
       cpu_target: ${{ inputs.cpu_target }}
       test_modes: ${{ inputs.test_modes }}
       build_modes: '["opt", "dbg"]'
-      variant: "balanced"
-      variant_flags: "BALANCED_CAPILLARY_PRESSURE_SPLIT=1"
-      tests: '["zero_net_acceleration", "rising_bubble", "restart_two_fluid"]'
+      variant: "unbalanced"
+      variant_flags: "BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
+      tests: '["rising_bubble", "restart_two_fluid"]'
 
   hypre:
     if: ${{ contains(fromJSON(inputs.variants), 'hypre') }}

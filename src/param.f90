@@ -102,6 +102,7 @@ real(rp), protected               :: psi_thickness_factor
 !
 character(len=10), protected :: ifc_reconstruction,ifc_advection,ifc_transport
 logical , protected :: is_sdf_normals ! normals (and THINC/QQ reconstruction) from a signed-distance function
+logical , protected :: is_brackbill_normalization ! density-based scaling of the surface tension force (Brackbill et al.)
 logical , protected :: is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_vof_sweep_transport ! not inputs
 real(rp), protected               :: rho0 ! not an input
 real(rp), protected               :: visc0,alpha0 ! reference diffusivities of the constant-coefficient implicit diffusion; not inputs
@@ -216,7 +217,8 @@ contains
                         ka12,cp12,beta12, &
                         psi_thickness_factor, &
                         ifc_reconstruction,ifc_advection,ifc_transport, &
-                        is_sdf_normals
+                        is_sdf_normals, &
+                        is_brackbill_normalization
     namelist /numerics/ &
                        is_impdiff,is_impdiff_1d, &
                        is_poisson_dtdma, &
@@ -267,6 +269,7 @@ contains
     psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
     is_sdf_normals = .true.
+    is_brackbill_normalization = .true.
     !
     ! use a custom input file if one was provided on the command line
     !

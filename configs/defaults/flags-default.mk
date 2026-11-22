@@ -128,12 +128,15 @@ endif
 #
 # CaNS-Fizzy: two-fluid options
 #
-CAPILLARY_BRACKBILL_NORMALIZATION ?= 1
-CUSTOM_DEFINES_2FL = CONSTANT_COEFFS_POISSON \
-                     CAPILLARY_BRACKBILL_NORMALIZATION
+CUSTOM_DEFINES_2FL = CONSTANT_COEFFS_POISSON
 
 DEFINES += $(foreach var,$(CUSTOM_DEFINES_2FL),$(if $(filter 1,$(strip $($(var)))), -D_$(var)))
 
+#
+# the balanced capillary split (see P. Cifani, J. Comput. Phys. 398 (2019) 108904) belongs to the pressure
+# splitting of the constant-coefficient Poisson solver, and is used with it unless explicitly switched off
+#
+BALANCED_CAPILLARY_PRESSURE_SPLIT ?= 1
 ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),1)
 ifeq ($(strip $(BALANCED_CAPILLARY_PRESSURE_SPLIT)),1)
 DEFINES += -D_BALANCED_CAPILLARY_PRESSURE_SPLIT

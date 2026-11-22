@@ -23,22 +23,23 @@ LOGDIR=$CANSDIR/run/testall
 # `two_fluid` namelist, which the tests shared by several methods add to their input files), so the variants
 # that differ only in it share a build
 #
-VARIANTS="acdi thinc thincsplit plic balanced hypre"
+VARIANTS="acdi thinc thincsplit plic unbalanced hypre"
 declare -A FLAGS METHOD TESTS_OF
-FLAGS[acdi]="CONSTANT_COEFFS_POISSON=1 BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
+FLAGS[acdi]="CONSTANT_COEFFS_POISSON=1"
 FLAGS[thinc]=${FLAGS[acdi]}
 FLAGS[plic]=${FLAGS[acdi]}
 FLAGS[thincsplit]=${FLAGS[acdi]}
-FLAGS[balanced]="CONSTANT_COEFFS_POISSON=1 BALANCED_CAPILLARY_PRESSURE_SPLIT=1"
+FLAGS[unbalanced]="CONSTANT_COEFFS_POISSON=1 BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
 FLAGS[hypre]="CONSTANT_COEFFS_POISSON=0"
 METHOD[thinc]="ifc_reconstruction = 'thinc'"
 METHOD[plic]="ifc_reconstruction = 'plic'"
 METHOD[thincsplit]="ifc_reconstruction = 'thinc', ifc_advection = 'split'"
 TESTS_OF[acdi]="lid_driven_cavity differentially_heated_cavity deforming_circle rising_bubble \
-                start_stop restart_two_fluid implicit_diffusion poisson taylor_green_vortex_2d navier_slip"
+                start_stop restart_two_fluid implicit_diffusion poisson taylor_green_vortex_2d navier_slip \
+                zero_net_acceleration"
 TESTS_OF[thinc]="deforming_circle rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[thincsplit]="rising_bubble restart_two_fluid"
-TESTS_OF[balanced]="zero_net_acceleration rising_bubble restart_two_fluid"
+TESTS_OF[unbalanced]="rising_bubble restart_two_fluid"
 TESTS_OF[hypre]="rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[plic]="plic_unit plic_advection plic_momentum viscosity_limiter contact_angle rising_bubble restart_two_fluid"
 #
