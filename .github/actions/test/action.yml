@@ -7,6 +7,10 @@ inputs:
   compiler:
     description: "Compiler environment used by the CaNS executable"
     required: true
+  mode:
+    description: "Build mode of the executable (opt, dbg, opt-omp)"
+    required: false
+    default: "opt"
   test_name:
     description: "Test case name; a suffix selects the interface method: -thinc, -plic, or -thincsplit (THINC in the split advection)"
     required: true
@@ -31,6 +35,11 @@ runs:
       run: |
         source ".github/actions/build/scripts/setenv-${{ inputs.compiler }}.sh"
         chmod +x ./run/cans
+        #
+        # short versions of the long cases (see their `testit.sh`) where the run is slow and only meant to catch
+        # run-time errors: debug builds, and the CPU builds of the NVIDIA compiler
+        #
+        if [ "${{ inputs.mode }}" = "dbg" ] || [ "${{ inputs.compiler }}" = "NVIDIA" ]; then export TEST_SHORT=1; fi
         test_name="${{ inputs.test_name }}"
         case "$test_name" in
           *-thincsplit) export TEST_TWO_FLUID_INPUT="ifc_reconstruction = 'thinc', ifc_advection = 'split'";;
