@@ -14,7 +14,7 @@ def test_implicit_diffusion():
         return data[:-2] # the last two entries are the time and the time step number
     vel_scale = max(np.max(np.abs(load("explicit",field))) for field in ["u","v","w"])
     assert vel_scale > 0.
-    tols = {"u": 2.e-3*vel_scale, "v": 2.e-3*vel_scale, "w": 2.e-3*vel_scale, "psi": 1.e-5, "s": 1.e-4}
+    tols = {"u": 2.e-3*vel_scale, "v": 2.e-3*vel_scale, "w": 2.e-3*vel_scale, "psi": 1.e-5, "s_001": 1.e-4}
     for case in ["implicit-z","implicit-3d"]:
         for field,tol in tols.items():
             err = np.max(np.abs(load(case,field)-load("explicit",field)))

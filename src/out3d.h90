@@ -48,7 +48,9 @@
   call write_visu_3d(datadir,'cur_fld_'//fldnum//trim(io_ext),'log_visu_3d.out','Kappa', &
                      ng,[nh_ifc,nh_ifc,nh_ifc],nh_g,lo,hi,[1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
                      kappa,xc_g,yc_g,zc_g,.true.)
-  if(nscal > 0) &
-  call write_visu_3d(datadir,'sca_fld_'//fldnum//trim(io_ext),'log_visu_3d.out','Temperature', &
-                     ng,[nh_s,nh_s,nh_s],nh_g,lo,hi,[1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
-                     s,xc_g,yc_g,zc_g,.true.)
+  do iscal=1,nscal
+    write(scalnum,'(i3.3)') iscal
+    call write_visu_3d(datadir,'sca_'//scalnum//'_fld_'//fldnum//trim(io_ext),'log_visu_3d.out','Scalar_S'//scalnum, &
+                       ng,[nh_s,nh_s,nh_s],nh_g,lo,hi,[1,1,1],[ng(1),ng(2),ng(3)],[1,1,1],time,istep, &
+                       scalars(iscal)%val,xc_g,yc_g,zc_g,.true.)
+  end do

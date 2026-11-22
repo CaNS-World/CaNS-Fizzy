@@ -106,7 +106,8 @@ logical , protected :: is_sdf_normals ! normals (and THINC/QQ reconstruction) fr
 logical , protected :: is_brackbill_normalization ! density-based scaling of the surface tension force (Brackbill et al.)
 logical , protected :: is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_vof_sweep_transport ! not inputs
 real(rp), protected               :: rho0 ! not an input
-real(rp), protected               :: visc0,alpha0 ! reference diffusivities of the constant-coefficient implicit diffusion; not inputs
+real(rp), protected               :: visc0 ! reference diffusivities of the constant-coefficient implicit diffusion
+real(rp), protected, allocatable, dimension(:) :: alpha0 ! (momentum, and each scalar); not inputs
 !
 #if defined(_OPENACC)
 !
@@ -174,7 +175,7 @@ contains
     implicit none
     character(len=255) :: input_file,filename
     integer, intent(in) :: myid
-    integer :: iunit,ierr,numarg,idir,ib
+    integer :: iunit,ierr,numarg,idir,ib,is
     character(len=1024) :: c_iomsg
     logical :: is_io_fallback
     namelist /dns/ &
@@ -491,8 +492,11 @@ contains
       rho0 = minval(rho12(:))
 #endif
       visc0  = maxval(mu12(:)/rho12(:))
-      alpha0 = 0.
-      if(nscal > 0) alpha0 = maxval(ka12(:,1)/(rho12(:)*cp12(:,1)))
+      allocate(alpha0(max(nscal,1)))
+      alpha0(:) = 0.
+      do is=1,nscal
+        alpha0(is) = maxval(ka12(:,is)/(rho12(:)*cp12(:,is)))
+      end do
       vof_thinc_beta = 1._rp/(2._rp*psi_thickness_factor)
       !
       ! read `numerics` namelist
