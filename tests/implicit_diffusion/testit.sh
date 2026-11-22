@@ -20,6 +20,13 @@ cp $TESTDIR/input-*.nml $TESTDIR/spheres.in $RUNDIR
 # interface method of the variant under test, if set (see `tests/testall.sh`): a line for the `two_fluid` namelist
 #
 if [ -n "$TEST_TWO_FLUID_INPUT" ]; then sed -i "/^&two_fluid/a $TEST_TWO_FLUID_INPUT" input*.nml; fi
+#
+# the direction-split advection has four halo layers of the volume fraction, and needs as many cells per task
+# along the directions that are decomposed: two tasks along x, instead of 2 x 2 with one cell each along y
+#
+case "$TEST_TWO_FLUID_INPUT" in
+  *plic*|*split*) MPIRUN="mpirun -n 2 $MPIRUN_OPTIONS"; sed -i "s/^dims(1:2).*/dims(1:2) = 2, 1, ipencil_axis = 3/" input*.nml;;
+esac
 
 NAME_EXP="explicit"
 NAME_IMP_Z="implicit-z"
