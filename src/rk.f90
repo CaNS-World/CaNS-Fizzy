@@ -10,8 +10,9 @@ module mod_rk
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
-  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
-  use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0
+  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce
+  use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0, &
+                         dsigma_ds,s_ref,is_brackbill_normalization
   use mod_types
   implicit none
   private
@@ -220,6 +221,13 @@ module mod_rk
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
                      factor12,u,v,w)
+    !
+    ! surface tension that varies with the first scalar
+    !
+    if(dsigma_ds /= 0._rp) then
+      call mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma_ds,s_ref, &
+                             is_brackbill_normalization,psi,kappa,s,factor12,u,v,w)
+    end if
   end subroutine rk
   !
   subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,alpha0,psi,u,v,w, &

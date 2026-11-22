@@ -49,6 +49,7 @@ cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'N','N'
 bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
 contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
 sigma             =  1.
+dsigma_ds         =  0., s_ref = 0.
 rho12(1:2)        =  1., 1.
 mu12(1:2)         =  0.01, 0.01
 ka12(1:2,1)       =  0.01, 0.01
@@ -397,6 +398,7 @@ This line sets the **initial scalar field**. The following options are available
 * `zer`: uniform scalar field equal to zero
 * `uni`: uniform scalar field equal to `sref`, the mean of the boundary values along Z
 * `cou`: linearly varying scalar field from bottom (`z = 0`) to top   (`z = l(3)`)
+* `cos`: one cosine wave of unit amplitude along X (along Y with the suffix `-x`), uniform along the other directions
 * `dhc`: linearly varying scalar field from left   (`x = 0`) to right (`x = l(1)`); with the suffix `-x`, i.e., `dhc-x`, the field varies along Y instead, for a cavity in the Y-Z plane
 
 See `initflow.f90` for more details.
@@ -522,6 +524,7 @@ The contact line moves with the flow next to the wall.
 
 ```fortran
 sigma           = 1.
+dsigma_ds       = 0., s_ref = 0.
 rho12(1:2)      = 10., 1.
 mu12(1:2)       = 1.e-2, 1.e-3
 ka12(1:2,1)     = 0., 0.
@@ -532,11 +535,14 @@ beta12(1:2)     = 0., 0.
 These lines specify the physical and transport properties of the two-phase system.
 
 * `sigma` sets the value of the surface tension coefficient at the two-phase interface.
+* `dsigma_ds` and `s_ref` make the surface tension vary linearly with the first scalar (e.g., the temperature): `sigma + dsigma_ds*(s - s_ref)`; the default, `dsigma_ds = 0.`, is a constant surface tension. It requires `nscal > 0` (see below).
 * `rho12` sets the value of the density of each phase. (Note: the initial conditions assume `rho12(1)` as the densest phase)
 * `mu12` sets the value of the dynamic viscosity of each phase.
 * `ka12` sets the value of the thermal conductivity of each phase, for each scalar (last subscript).
 * `cp12` sets the value of the constant pressure specfic heat capacity of each phase, for each scalar (last subscript).
 * `beta12` sets the value of the thermal expansion coeffcient of each phase.
+
+With `dsigma_ds /= 0.`, the gradient of the surface tension along the interface drives a flow (Marangoni or thermocapillary effect): the normal and tangential forces of the variation of the surface tension are added to the force of `sigma`, the tangential one weighted with the local viscosity over the mean viscosity of the two phases. Choose `s_ref` close to the mean value of the scalar at the interface. See the examples `thermocapillary_migration_2d` and `thermocapillary_migration_3d`.
 
 By default, viscosity and thermal conductivity are interpolated arithmetically between the two phases. The input `is_harmonic_interpolation = T` (`&numerics` namelist, see below) switches both properties to harmonic phase interpolation.
 
