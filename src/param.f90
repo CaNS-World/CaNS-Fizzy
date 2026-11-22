@@ -81,6 +81,7 @@ character(len=1), protected, dimension(0:1,3)   ::  cbccur ! (not inputs: the co
 real(rp)        , protected, dimension(0:1,3)   ::   bccur !  interface normals follow from the others)
 character(len=1), protected, dimension(0:1,3,3) ::  cbcnor
 real(rp)        , protected, dimension(0:1,3,3) ::   bcnor
+real(rp)        , protected, dimension(0:1,3)   :: contact_angle ! static contact angle at walls, in degrees through phase 1
 real(rp), protected               :: sigma
 real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, dimension(2) :: ka12,cp12,beta12
@@ -206,7 +207,7 @@ contains
                      is_boussinesq_buoyancy
     namelist /two_fluid/ &
                         inipsi, &
-                        cbcpsi,bcpsi, &
+                        cbcpsi,bcpsi,contact_angle, &
                         sigma,rho12,mu12, &
                         ka12,cp12,beta12, &
                         psi_thickness_factor, &
@@ -255,6 +256,7 @@ contains
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     cbccur(:,:) = 'P'; bccur(:,:) = 0.
+    contact_angle(:,:) = 90.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)

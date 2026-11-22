@@ -19,7 +19,7 @@ module mod_sanity
   use mod_initmpi   , only: initmpi
   use mod_initsolver, only: initsolver
   use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
-                            ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split
+                            ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split,cbcpsi,bcpsi,contact_angle
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -100,6 +100,18 @@ module mod_sanity
     if(trim(ifc_reconstruction) == 'acdi' .and. is_ifc_split) then
       if(myid == 0)  print*, 'ERROR: the ACDI phase field (`ifc_reconstruction = acdi`) is advected with `ifc_advection = ab2`: &
                                      &the direction-split advection needs a volume fraction.'; call abortit
+    end if
+    if(any(contact_angle(:,:) <= 0. .or. contact_angle(:,:) >= 180.)) then
+      if(myid == 0)  print*, 'ERROR: contact angles must be between 0 and 180 degrees (exclusive).'; call abortit
+    end if
+    if(any(abs(contact_angle(:,:)-90.) > 1.e-10 .and. &
+           (cbcpsi(:,:) /= 'N' .or. bcpsi(:,:) /= 0. .or. spread(ng(:) <= 2,1,2)))) then
+      if(myid == 0)  print*, 'ERROR: a contact angle other than 90 degrees requires a wall (homogeneous Neumann condition &
+                                     &for the volume fraction) along a direction with more than two grid cells.'; call abortit
+    end if
+    if(any(abs(contact_angle(:,:)-90.) > 1.e-10) .and. trim(ifc_reconstruction) /= 'plic') then
+      if(myid == 0)  print*, 'ERROR: contact angles other than 90 degrees are only available with &
+                                     &`ifc_reconstruction = plic`.'; call abortit
     end if
     if(trim(ifc_reconstruction) == 'plic' .and. .not.is_ifc_split) then
       if(myid == 0)  print*, 'ERROR: the geometric reconstruction (`ifc_reconstruction = plic`) needs the direction-split &
