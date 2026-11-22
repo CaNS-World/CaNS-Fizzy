@@ -43,7 +43,7 @@ TESTS_OF[thinc]="deforming_circle rising_bubble restart_two_fluid implicit_diffu
 TESTS_OF[thincsplit]="rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[unbalanced]="rising_bubble restart_two_fluid"
 TESTS_OF[hypre]="rising_bubble restart_two_fluid implicit_diffusion"
-TESTS_OF[plic]="plic_unit plic_advection plic_momentum viscosity_limiter contact_angle rising_bubble restart_two_fluid implicit_diffusion"
+TESTS_OF[plic]="plic_unit plic_advection plic_momentum viscosity_limiter contact_angle rising_bubble restart_two_fluid implicit_diffusion marangoni_layer"
 #
 if [ $# -gt 0 ]; then VARIANTS="$*"; fi
 for variant in $VARIANTS; do

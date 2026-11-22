@@ -20,7 +20,7 @@ module mod_sanity
   use mod_initsolver, only: initsolver
   use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
                             ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split,cbcpsi,bcpsi,contact_angle, &
-                            slip_length,is_hf_normals
+                            slip_length,is_hf_normals,dsigma_ds,nscal
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -131,6 +131,10 @@ module mod_sanity
     if(is_hf_normals .and. trim(ifc_reconstruction) /= 'plic') then
       if(myid == 0)  print*, 'ERROR: height-function normals (`is_hf_normals = T`) need the geometric reconstruction &
                                      &(`ifc_reconstruction = plic`).'; call abortit
+    end if
+    if(dsigma_ds /= 0. .and. nscal == 0) then
+      if(myid == 0)  print*, 'ERROR: a surface tension that varies with the scalar (`dsigma_ds`) requires &
+                                     &`nscal > 0`.'; call abortit
     end if
     if(is_ifc_split .neqv. trim(ifc_transport) /= 'ab2') then
       if(myid == 0)  print*, 'ERROR: `ifc_transport = ab2` goes with `ifc_advection = ab2`, and `one-step` or `sweeps` &
