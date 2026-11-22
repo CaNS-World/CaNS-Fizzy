@@ -84,4 +84,5 @@ jobs:
       with:
         name: ${{ inputs.compiler }}-${{ inputs.variant }}-${{ matrix.mode }}-${{ matrix.test-name }}
         compiler: ${{ inputs.compiler }}
+        mode: ${{ matrix.mode }}
         test_name: ${{ matrix.test-name }}

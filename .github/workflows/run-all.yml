@@ -14,6 +14,13 @@ on:
     - synchronize
     - ready_for_review
 
+#
+# a new push to a branch cancels the run of its previous commit (never on main)
+#
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   GNU:
     uses: ./.github/workflows/run-compiler.yml
