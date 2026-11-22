@@ -63,9 +63,9 @@ module mod_vof_split
   integer , dimension(1) :: nlist                     ! number of entries of ilist
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
   logical  :: is_thinc   = .false.                    ! THINC reconstruction instead of the geometric one
-  real(rp), allocatable, dimension(:,:,:) :: mxs,mys,mzs ! normals of the reconstruction from height functions, in the
-                                                         ! donor cells of a sweep (allocated if these normals are used)
   real(rp) :: thinc_beta = 1._rp                      ! its sharpness
+  real(rp), allocatable, dimension(:,:,:) :: mxs,mys,mzs ! normals of the geometric reconstruction from height functions,
+                                                         ! in the donor cells of a sweep (allocated if they are used)
   !
   ! contact angles at walls, with the geometric reconstruction (see `vof_split_contact_angle`)
   !
@@ -131,11 +131,11 @@ module mod_vof_split
     allocate(ilist((n(1)+2+ncc)*(n(2)+2+ncc)*(n(3)+2+ncc)))
     nlist(:) = 0
     !$acc enter data create(cc,fl,kap,ilist) copyin(nlist)
-    !
-    ! height-function normals: the columns of the donor cells in the halo layers need a wider halo (the
-    ! arrays of the normals are otherwise not allocated, and absent arguments of the routines that take them)
-    !
     if(is_hf_normals) then
+      !
+      ! height-function normals: the columns of the donor cells in the halo layers need a wider halo (the
+      ! arrays of the normals are otherwise not allocated, and absent arguments of the routines that take them)
+      !
       if(nh_psi < nq_hf+1+ncc) error stop 'ERROR: the halo width of the volume fraction is too small for the &
                                           &height-function normals.'
       allocate(mxs(0:n(1)+1+ncc,0:n(2)+1+ncc,0:n(3)+1+ncc))
