@@ -38,7 +38,7 @@ This numerical tool serves as an efficient base Navier-Stokes solver for high-re
 
 ## Method
 
-The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a staggered grid arrangement. The interface between the two fluid phases is represented by a diffuse interface of specified thickness, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme, with several possible options concerning the discretiation of the advective terms. A pressure splitting technique may be used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS. See the references above for details.
+The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a staggered grid arrangement. The interface between the two fluid phases is represented by a diffuse interface of specified thickness, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme, with several possible options concerning the discretiation of the advective terms. A pressure splitting technique may be used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS; by default, the residual between the pressure gradient and the surface tension force is split, rather than the pressure gradient alone. See the references above for details.
 
 ## Usage
 

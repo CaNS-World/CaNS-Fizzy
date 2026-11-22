@@ -57,6 +57,7 @@ beta12(1:2)       =  0., 0.
 psi_thickness_factor = 0.51
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
 is_sdf_normals = T
+is_brackbill_normalization = T
 /
 ```
 <details>
@@ -539,6 +540,7 @@ Note: the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`, see b
 ```fortran
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
 is_sdf_normals = T
+is_brackbill_normalization = T
 ```
 
 These lines select the **interface-capturing method**, at run time. Three independent entries describe it; `ifc_advection` and `ifc_transport` may be left out, and then take the default of the reconstruction.
@@ -572,6 +574,8 @@ The valid combinations are:
 Any other one stops the run with a message. Implicit diffusion (`is_impdiff`) is not available yet with `ifc_advection = 'split'`.
 
 `is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
+
+`is_brackbill_normalization`, if true (default), scales the surface tension force with the local density over the mean density of the two phases (Brackbill et al., *J. Comput. Phys.* 100 (1992) 335–354), which spreads the acceleration evenly across the interface; if false, the force is not scaled.
 
 With `ifc_advection = 'split'`, every `iout0d` time steps the code appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate (zero with `thinc`, whose normals and curvature are computed as with `ifc_advection = 'ab2'`).
 

@@ -24,6 +24,7 @@ USE_ADIOS2=0       # ADIOS2 I/O support
 # two-fluid options
 #
 CONSTANT_COEFFS_POISSON=1 # constant-coefficient (FFT-based) pressure solver with pressure splitting
+BALANCED_CAPILLARY_PRESSURE_SPLIT=1 # balanced residual of pressure gradient and surface tension in the pressure splitting
 ```
 
 In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA` (`nvfortran`), or `CRAY` (`ftn`); the predefined profiles for compiler options can be selected by choosing one of the `FFLAGS_*` options; finer control of the compiler flags may be achieved by building with, e.g., `make FFLAGS+=[OTHER_FLAGS]`, or by tweaking the profiles directly under `configs/flags.mk`. Similarly, the library paths (e.g., for *FFTW*) may need to be adapted in the `Makefile` (`LIBS` variable) or by building with `make LIBS+='-L[PATH_TO_LIB] -l[NAME_OF_LIB]'`. Finally, the following pre-processing options are available:
@@ -37,8 +38,7 @@ In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA
 and the following ones select the two-fluid method (the interface-capturing method itself, ACDI, THINC/QQ or geometric volume of fluid, is selected at run time: see `ifc_reconstruction` in [`INFO_INPUT.md`](INFO_INPUT.md)):
 
  * `CONSTANT_COEFFS_POISSON`          : uses the direct FFT-based solver for the pressure Poisson equation, with a pressure-splitting method (default); if set to `0`, the variable-coefficient Poisson equation is solved with an iterative multigrid solver of the HYPRE library (CPU builds only; see below)
- * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method
- * `CAPILLARY_BRACKBILL_NORMALIZATION`: enables density-based Brackbill scaling of the surface-tension force (default); setting it to `0` disables the scaling
+ * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method, instead of the pressure gradient alone, which jumps across the interface (see P. Cifani, *Journal of Computational Physics* 398 (2019): 108904); it is used by default with `CONSTANT_COEFFS_POISSON=1` (set it to `0` to extrapolate the pressure gradient alone), and has no role with `CONSTANT_COEFFS_POISSON=0`
 
 The transport of a scalar and the Boussinesq buoyancy term are selected in the input file (`nscal` and `is_boussinesq_buoyancy`; see [`INFO_INPUT.md`](INFO_INPUT.md)), and so are the pencil orientation, the debugging checks and the timing of each step.
 

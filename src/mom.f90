@@ -6,7 +6,8 @@
 ! -
 module mod_mom
   use mpi
-  use mod_param, only: is_boussinesq_buoyancy,is_harmonic_interpolation,is_ifc_split,is_visc_limiter
+  use mod_param, only: is_boussinesq_buoyancy,is_harmonic_interpolation,is_ifc_split,is_visc_limiter, &
+                       is_brackbill_normalization
   use mod_types
   implicit none
   private
@@ -1102,19 +1103,17 @@ module mod_mom
 #endif
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     real(rp) :: surf_factor
-    logical  :: is_buoyant
+    logical  :: is_buoyant,is_brack
     !
     is_buoyant = is_boussinesq_buoyancy.and.present(s)
+    is_brack = is_brackbill_normalization
     rho     = rho12(2); drho = rho12(1)-rho12(2)
     rho0i   = 1._rp/rho0
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)- rho12(2)*beta12(2)
     dxi = dli(1)
     dyi = dli(2)
-#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
-    surf_factor = sigma*2._rp/(rho12(1)+rho12(2))
-#else
     surf_factor = sigma
-#endif
+    if(is_brack) surf_factor = sigma*2._rp/(rho12(1)+rho12(2)) ! density-based scaling of Brackbill et al.
     rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
     !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
@@ -1182,17 +1181,18 @@ module mod_mom
           skappaxp = 0.5*(k_pcc+k_ccc)*surf_factor
           skappayp = 0.5*(k_cpc+k_ccc)*surf_factor
           skappazp = 0.5*(k_ccp+k_ccc)*surf_factor
-#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
-          skappaxp = skappaxp*rhoxp
-          skappayp = skappayp*rhoyp
-          skappazp = skappazp*rhozp
-#endif
+          if(is_brack) then
+            skappaxp = skappaxp*rhoxp
+            skappayp = skappayp*rhoyp
+            skappazp = skappazp*rhozp
+          end if
           surfx = skappaxp*(c_pcc-c_ccc)*dxi
           surfy = skappayp*(c_cpc-c_ccc)*dyi
           surfz = skappazp*(c_ccp-c_ccc)*dzci_c
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
           !
-          ! split and extrapolate the balanced residual grad(p)-f_sigma.
+          ! split and extrapolate the balanced residual grad(p)-f_sigma, instead of grad(p) alone, which jumps
+          ! across the interface (see P. Cifani, J. Comput. Phys. 398 (2019) 108904)
           !
           surfx_e = (1._rp+dt_r)*surfx_n(i,j,k)-dt_r*surfx_o(i,j,k)
           surfy_e = (1._rp+dt_r)*surfy_n(i,j,k)-dt_r*surfy_o(i,j,k)
@@ -1295,10 +1295,11 @@ module mod_mom
     real(rp) :: gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz
     real(rp) :: momx,momy,momz,force(3,4)
     logical :: is_cmptx,is_cmpty,is_cmptz
-    logical :: is_buoyant
+    logical :: is_buoyant,is_brack
     integer :: i,j,k,ierr
     !
     is_buoyant = is_boussinesq_buoyancy.and.present(s)
+    is_brack = is_brackbill_normalization
     rho = rho12(2); drho = rho12(1)-rho12(2)
     rho0i = 1._rp/rho0
     rhobeta = rho12(2)*beta12(2)
@@ -1307,11 +1308,8 @@ module mod_mom
     gaccx = gacc(1); gaccy = gacc(2); gaccz = gacc(3)
     rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
     is_cmptx = is_cmpt(1); is_cmpty = is_cmpt(2); is_cmptz = is_cmpt(3)
-#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
-    surf_factor = sigma*2._rp/(rho12(1)+rho12(2))
-#else
     surf_factor = sigma
-#endif
+    if(is_brack) surf_factor = sigma*2._rp/(rho12(1)+rho12(2)) ! density-based scaling of Brackbill et al.
     gravx = 0._rp; gravy = 0._rp; gravz = 0._rp
     surfsumx = 0._rp; surfsumy = 0._rp; surfsumz = 0._rp
     buoyx = 0._rp; buoyy = 0._rp; buoyz = 0._rp
@@ -1352,11 +1350,11 @@ module mod_mom
           skappaxp = 0.5_rp*(k_pcc+k_ccc)*surf_factor
           skappayp = 0.5_rp*(k_cpc+k_ccc)*surf_factor
           skappazp = 0.5_rp*(k_ccp+k_ccc)*surf_factor
-#if defined(_CAPILLARY_BRACKBILL_NORMALIZATION)
-          skappaxp = skappaxp*rhoxp
-          skappayp = skappayp*rhoyp
-          skappazp = skappazp*rhozp
-#endif
+          if(is_brack) then
+            skappaxp = skappaxp*rhoxp
+            skappayp = skappayp*rhoyp
+            skappazp = skappazp*rhozp
+          end if
           surfx = skappaxp*(c_pcc-c_ccc)*dxi
           surfy = skappayp*(c_cpc-c_ccc)*dyi
           surfz = skappazp*(c_ccp-c_ccc)*dzci_c
