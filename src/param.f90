@@ -422,7 +422,8 @@ contains
       is_vof_sweep_transport = ifc_transport == 'sweeps'
       if(is_ifc_plic) is_sdf_normals = .false. ! no signed-distance function with the geometric reconstruction
       if(psi_thickness_factor < 0.) psi_thickness_factor = merge(0.51,0.50,is_ifc_acdi) ! 0.25?
-      if(is_ifc_plic) nh_psi = 4 ! the height functions of the geometric reconstruction use nine-cell columns
+      if(is_ifc_split) nh_psi = 4 ! nine-cell columns of the height functions (geometric reconstruction), and
+                                  ! interface band of the transport along with the sweeps
       nh_g = max(nh_v,nh_p,nh_s,nh_psi,nh_ifc)
       is_visc_limiter = is_ifc_plic
       !

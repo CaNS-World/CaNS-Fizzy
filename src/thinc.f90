@@ -6,7 +6,19 @@
 ! -
 module mod_thinc
   !
-  ! this module implements the THINC/QQ method from Bin & Xiao. J. of Comput. Phys 349 (2017): 415-440.
+  ! THINC (hyperbolic-tangent) reconstruction of the interface from the volume fraction:
+  !
+  !  - the THINC/QQ method from Bin & Xiao. J. of Comput. Phys 349 (2017): 415-440, for the transport of the
+  !    volume fraction with the AB2 scheme (`thinc_transport_psi`), and the signed-distance function that
+  !    follows from the profile (`thinc_cmpt_phi`);
+  !
+  !  - the kernels of the reconstruction along one direction of a cell, for the direction-split advection of
+  !    the volume fraction (see `mod_vof_split`): in cell-scaled coordinates, with s in [-1/2,1/2] along the
+  !    direction, the volume fraction of phase 1 is
+  !      H(s) = 1/(1+exp(2*beta*(a*s-d))),
+  !    with beta the sharpness of the profile, a the component along the direction of the unit normal to the
+  !    interface (pointing out of phase 1), and d the offset that gives the cell its volume fraction
+  !    (`thinc_intercept`, `thinc_slab`)
   !
   ! Acknowledgements: We are grateful for the discussions with Dr. Naoki Hori, which gave valuable advise
   !                   on the practical implementation of THINC/QQ for multiphase flow simulations,
@@ -19,7 +31,7 @@ module mod_thinc
   use mod_param, only: eps,is_sdf_normals
   implicit none
   private
-  public thinc_transport_psi,thinc_cmpt_phi
+  public thinc_transport_psi,thinc_cmpt_phi,thinc_intercept,thinc_slab
   !
   ! constants relate to Gaussian quadrature
   !
@@ -359,4 +371,85 @@ module mod_thinc
     h = 1._rp/(1._rp + exp(-2._rp*beta*(nx*x + ny*y + nz*z + d)))
     !h = 0.5_rp*(1._rp+tanh(beta*(nx*x+ny*y+nz*z+d)))
   end function smooth_step_tanh
+  !
+  pure real(rp) function thinc_intercept(a,f,beta) result(d)
+    !
+    ! offset d of the THINC reconstruction H(s) = 1/(1+exp(2*beta*(a*s-d))) whose integral over s in [-1/2,1/2]
+    ! is f, for a > 0 (closed form; the profile for a < 0 follows by symmetry, s -> -s)
+    !
+    implicit none
+    real(rp), intent(in) :: a,f,beta
+    !$acc routine seq
+    d = (beta*a-log(expm1_(2._rp*beta*a*(1._rp-f)))+log(-expm1_(-2._rp*beta*a*f)))/(2._rp*beta)
+  end function thinc_intercept
+  !
+  pure real(rp) function thinc_slab(a,d,beta,s0,s1) result(h)
+    !
+    ! average of the THINC reconstruction H(s) = 1/(1+exp(2*beta*(a*s-d))) over [s0,s1], from the difference of
+    ! softplus functions, or Simpson's rule for thin intervals (avoiding cancellation)
+    !
+    implicit none
+    real(rp), intent(in) :: a,d,beta,s0,s1
+    real(rp) :: x0,x1
+    !$acc routine seq
+    x0 = 2._rp*beta*(a*s0-d)
+    x1 = 2._rp*beta*(a*s1-d)
+    if(abs(x1-x0) < 1.e-2_rp) then
+      h = 1._rp-(sigmoid(x0)+4._rp*sigmoid(0.5_rp*(x0+x1))+sigmoid(x1))/6._rp
+    else
+      h = 1._rp-(softplus(x1)-softplus(x0))/(x1-x0)
+    end if
+    h = min(max(h,0._rp),1._rp)
+  end function thinc_slab
+  !
+  pure real(rp) function sigmoid(x)
+    implicit none
+    real(rp), intent(in) :: x
+    !$acc routine seq
+    sigmoid = 0.5_rp*(1._rp+tanh(0.5_rp*x))
+  end function sigmoid
+  !
+  pure real(rp) function softplus(x)
+    !
+    ! log(1+exp(x)), without overflow
+    !
+    implicit none
+    real(rp), intent(in) :: x
+    !$acc routine seq
+    softplus = max(x,0._rp)+log1p_(exp(-abs(x)))
+  end function softplus
+  !
+  pure real(rp) function expm1_(x)
+    !
+    ! exp(x)-1, accurate for small |x| (W. Kahan's method)
+    !
+    implicit none
+    real(rp), intent(in) :: x
+    real(rp) :: u
+    !$acc routine seq
+    u = exp(x)
+    if(u == 1._rp) then
+      expm1_ = x
+    else if(u-1._rp == -1._rp) then
+      expm1_ = -1._rp
+    else
+      expm1_ = (u-1._rp)*x/log(u)
+    end if
+  end function expm1_
+  !
+  pure real(rp) function log1p_(y)
+    !
+    ! log(1+y), accurate for small |y| (D. Goldberg's method)
+    !
+    implicit none
+    real(rp), intent(in) :: y
+    real(rp) :: u
+    !$acc routine seq
+    u = 1._rp+y
+    if(u == 1._rp) then
+      log1p_ = y
+    else
+      log1p_ = log(u)*y/(u-1._rp)
+    end if
+  end function log1p_
 end module mod_thinc
