@@ -63,8 +63,8 @@ module mod_vof_split
   integer , dimension(1) :: nlist                     ! number of entries of ilist
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
   logical  :: is_thinc   = .false.                    ! THINC reconstruction instead of the geometric one
-  logical  :: is_hf      = .false.                    ! normals of the reconstruction from height functions
-  real(rp), allocatable, dimension(:,:,:) :: mxs,mys,mzs ! these normals, in the donor cells of a sweep
+  real(rp), allocatable, dimension(:,:,:) :: mxs,mys,mzs ! normals of the reconstruction from height functions, in the
+                                                         ! donor cells of a sweep (allocated if these normals are used)
   real(rp) :: thinc_beta = 1._rp                      ! its sharpness
   !
   ! contact angles at walls, with the geometric reconstruction (see `vof_split_contact_angle`)
@@ -133,18 +133,15 @@ module mod_vof_split
     !$acc enter data create(cc,fl,kap,ilist) copyin(nlist)
     !
     ! height-function normals: the columns of the donor cells in the halo layers need a wider halo (the
-    ! arrays of the normals are otherwise not used, and allocated with one element)
+    ! arrays of the normals are otherwise not allocated, and absent arguments of the routines that take them)
     !
-    is_hf = is_hf_normals
-    if(is_hf) then
+    if(is_hf_normals) then
       if(nh_psi < nq_hf+1+ncc) error stop 'ERROR: the halo width of the volume fraction is too small for the &
                                           &height-function normals.'
       allocate(mxs(0:n(1)+1+ncc,0:n(2)+1+ncc,0:n(3)+1+ncc))
-    else
-      allocate(mxs(1,1,1))
+      allocate(mys,mzs,mold=mxs)
+      !$acc enter data create(mxs,mys,mzs)
     end if
-    allocate(mys,mzs,mold=mxs)
-    !$acc enter data create(mxs,mys,mzs)
     if(is_sweep) then
       allocate(f_prev(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
       allocate(bflag( 1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
@@ -352,11 +349,14 @@ module mod_vof_split
         if(is_track) then
           select case(idir)
           case(1)
-            call sweep(1,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi)
+            call sweep(1,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi, &
+                       mxs,mys,mzs)
           case(2)
-            call sweep(2,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi)
+            call sweep(2,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi, &
+                       mxs,mys,mzs)
           case(3)
-            call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
+            call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi, &
+                       mxs,mys,mzs)
           end select
           call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
           call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
@@ -462,12 +462,12 @@ module mod_vof_split
     cfl(:) = [cflx,cfly,cflz]
   end subroutine vof_split_velocity
   !
-  subroutine sweep(idir,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi)
+  subroutine sweep(idir,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi,mx_hf,my_hf,mz_hf)
     !
     ! one directional sweep: geometric donor-region fluxes, and conservative update with the dilatation term;
     ! the face fluxes, times scl, are stored in psiflx if is_init, and accumulated otherwise; the extrema of
     ! the volume fraction before clipping and the clipped volume are accumulated in fmin_raw, fmax_raw and
-    ! clip_vol
+    ! clip_vol; mx_hf, my_hf, mz_hf are the work arrays of the height-function normals, present if these are used
     !
     implicit none
     integer , intent(in   ) :: idir
@@ -481,6 +481,7 @@ module mod_vof_split
     real(rp), intent(in   ) :: scl
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx
+    real(rp), intent(inout), dimension(0:,0:,0:), optional :: mx_hf,my_hf,mz_hf
     real(rp), dimension(-1:1,-1:1,-1:1) :: c
     real(rp), dimension(-1:1) :: dz3
     logical , dimension(3) :: act
@@ -502,7 +503,7 @@ module mod_vof_split
     ndf = nd+ncc
     is_flx = .not.is_sweep
     is_th  = is_thinc
-    is_hfn = is_hf
+    is_hfn = present(mx_hf)
     beta   = thinc_beta
     ilo = 1-di; ihi = n(1)+di+ncc
     jlo = 1-dj; jhi = n(2)+dj+ncc
@@ -547,7 +548,7 @@ module mod_vof_split
     !
     ! normals of the listed donor cells from height functions, where valid
     !
-    if(is_hfn) call hf_list(ilo,jlo,klo,ni,nj,nh_psi,nh_ifc,nh_g,dl,dzf,psi)
+    if(is_hfn) call hf_list(ilo,jlo,klo,ni,nj,nh_psi,nh_ifc,nh_g,dl,dzf,psi,mx=mx_hf,my=my_hf,mz=mz_hf)
     !
     ! (the number of listed cells is read from the device copy of nlist, without a host synchronization)
     !
@@ -572,7 +573,7 @@ module mod_vof_split
       if(is_own_m) cfl_m = -vm*dt/h
       act(:) = [is_act1,is_act2,is_act3]
       if(is_hfn) then
-        mx = mxs(i,j,k); my = mys(i,j,k); mz = mzs(i,j,k)
+        mx = mx_hf(i,j,k); my = my_hf(i,j,k); mz = mz_hf(i,j,k)
       else
         c(:,:,:) = psi(i-1:i+1,j-1:j+1,k-1:k+1)
         dz3(:) = dzf(k-1:k+1)
@@ -1269,15 +1270,15 @@ module mod_vof_split
     end select
   end subroutine vof_split_curvature
   !
-  subroutine hf_list(ilo,jlo,klo,ni,nj,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
+  subroutine hf_list(ilo,jlo,klo,ni,nj,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa,mx,my,mz)
     !
     ! height-function geometry of the cells of the compacted list ilist (packed indices, with offsets ilo,
     ! jlo, klo and dimensions ni, nj): MYC normal, and height functions (nine-cell columns) along the
     ! directions in decreasing order of the MYC normal components (cell-scaled), until valid ones are found;
     ! with `kappa`, the curvature is stored in it (kappa_undef where the heights are not valid), and the cells
     ! with valid heights are counted in kappa_stats(1); without it, the normal in cell-scaled coordinates
-    ! pointing out of phase 1 (|mx|+|my|+|mz| = 1), for the geometric reconstruction, is stored in mxs, mys
-    ! and mzs: that of the height functions if valid, and the MYC one otherwise; the number of listed cells is
+    ! pointing out of phase 1 (|mx|+|my|+|mz| = 1), for the geometric reconstruction, is stored in mx, my
+    ! and mz: that of the height functions if valid, and the MYC one otherwise; the number of listed cells is
     ! read from the device copy of nlist, and the count is kept on the device, without host synchronizations
     !
     ! (a single kernel: calling a device routine per cell, with the volume fraction as argument, is several
@@ -1290,6 +1291,7 @@ module mod_vof_split
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzf
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: kappa
+    real(rp), intent(inout), dimension(0:,0:,0:), optional :: mx,my,mz
     real(rp), dimension(-1:1,-1:1,-1:1) :: c3
     real(rp), dimension(-1:1) :: dz3
     real(rp), dimension(-1:1,-1:1) :: hgt
@@ -1406,9 +1408,9 @@ module mod_vof_split
           s = abs(m(1))+abs(m(2))+abs(m(3))
           m(:) = m(:)/s
         end if
-        mxs(i,j,k) = m(1)
-        mys(i,j,k) = m(2)
-        mzs(i,j,k) = m(3)
+        mx(i,j,k) = m(1)
+        my(i,j,k) = m(2)
+        mz(i,j,k) = m(3)
       end if
     end do
   end subroutine hf_list
