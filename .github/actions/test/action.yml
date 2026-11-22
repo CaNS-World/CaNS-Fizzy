@@ -8,7 +8,7 @@ inputs:
     description: "Compiler environment used by the CaNS executable"
     required: true
   test_name:
-    description: "Test case name; a suffix -<method> selects that interface method (e.g., rising_bubble-thinc)"
+    description: "Test case name; a suffix selects the interface method: -thinc, -plic, or -thincsplit (THINC in the split advection)"
     required: true
 
 runs:
@@ -33,8 +33,10 @@ runs:
         chmod +x ./run/cans
         test_name="${{ inputs.test_name }}"
         case "$test_name" in
-          *-*) export TEST_TWO_FLUID_INPUT="ifc_reconstruction = '${test_name#*-}'"; test_name="${test_name%%-*}";;
+          *-thincsplit) export TEST_TWO_FLUID_INPUT="ifc_reconstruction = 'thinc', ifc_advection = 'split'";;
+          *-*)          export TEST_TWO_FLUID_INPUT="ifc_reconstruction = '${test_name#*-}'";;
         esac
+        test_name="${test_name%%-*}"
         cd "tests/$test_name" || exit 1
         bash ./testit.sh
 

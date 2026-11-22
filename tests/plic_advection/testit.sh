@@ -17,7 +17,7 @@ mkdir -p data
 #
 cp $TESTDIR/input-*.nml $TESTDIR/spheres-*.in $RUNDIR
 
-for name in 2d 3d; do
+for name in 2d 3d 2d-thinc; do
   echo "INFO: Running CaNS, case $name"
   mv input-${name}.nml input.nml
   mv spheres-${name}.in spheres.in
