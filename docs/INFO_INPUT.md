@@ -32,14 +32,14 @@ dims(1:2) = 2, 2, ipencil_axis = 1
 /
 ```
 
-In addition, the `&two_fluid` namelist contains the physical and transport properties of the two phases and the parameters of the interface-capturing method, and the `&scalar` namelist, read when `nscal = 1`, the parameters of the transport of a scalar (e.g., temperature):
+In addition, the `&two_fluid` namelist contains the physical and transport properties of the two phases and the parameters of the interface-capturing method, and the `&scalar` namelist, read when `nscal > 0`, the parameters of the transport of the scalars (e.g., temperature):
 
 ```fortran
 &scalar
-inisca          = 'cou'
-cbcsca(0:1,1:3) = 'P','P',  'P','P',  'D','D'
-bcsca(0:1,1:3)  =  0.,0. ,   0.,0. ,   1.,0.
-ssource         = 0.
+iniscal(1)         = 'cou'
+cbcscal(0:1,1:3,1) = 'P','P',  'P','P',  'D','D'
+bcscal(0:1,1:3,1)  =  0.,0. ,   0.,0. ,   1.,0.
+ssource(1)         = 0.
 is_boussinesq_buoyancy = F
 /
 
@@ -51,8 +51,8 @@ contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
 sigma             =  1.
 rho12(1:2)        =  1., 1.
 mu12(1:2)         =  0.01, 0.01
-ka12(1:2)         =  0.01, 0.01
-cp12(1:2)         =  1., 1.
+ka12(1:2,1)       =  0.01, 0.01
+cp12(1:2,1)       =  1., 1.
 beta12(1:2)       =  0., 0.
 psi_thickness_factor = 0.51
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
@@ -101,7 +101,7 @@ The admissible MPI process grids depend on the homogeneous direction:
 
 With `ng(3)=1`, use `is_poisson_dtdma = F`, and use a uniform Z grid.
 
-Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `inisca` and `inipsi` below).
+Grid and timestep formulas remain three-dimensional. Since the spacing in a one-cell direction equals its domain length, choose that length at least as large as the largest spacing in the two retained directions. Together with zero normal velocity, this avoids an artificial timestep restriction from the homogeneous direction. See the supplied 2D tests and examples, which use one cell along X; their two-dimensional initial conditions take the suffix `-x` (see `inivel`, `iniscal` and `inipsi` below).
 
 `gtype` and `gr` are the **grid stretching type** and **grid stretching parameter** that tweak the non-uniform grid in the third direction; zero `gr` implies no stretching. See `initgrid.f90` for more details. The following options are available for `gtype`:
 
@@ -291,6 +291,8 @@ A dynamically forced direction must be periodic. Its transverse boundaries must 
 
 `gacc` is a constant **acceleration** in the direction in question (e.g., gravity) added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
 
+Along a periodic direction, and along a direction between two boundaries with zero pressure gradient (`cbcpre = 'N','N'`), the weight of the mean density of the domain is left out of this term. The pressure of the solver, and of the output files, is then the pressure without the hydrostatic one of the mean density, `rho_mean*gacc*x`. Between walls this does not change the flow; it keeps the pressure small and slowly varying, which makes the constant-coefficient pressure solver (`CONSTANT_COEFFS_POISSON=1`) more accurate when the densities differ much.
+
 When fixed or dynamic forcing is active, `forcing.out` contains time, `bforce`, the three equivalent pressure gradients from the dynamic correction, and the three volume-averaged velocities. With dynamic forcing, `forcing_balance.out` additionally contains time followed by six three-component vectors: wall compensation, gravity, surface tension, Boussinesq buoyancy, total applied force density, and the measured change in total mixture momentum per unit time. The last vector is therefore a final residual that also exposes contributions from terms assumed to have zero global integral, such as pressure and conservative advection.
 
 At unequal density, the constant-coefficient pressure split does not in general have a zero global mixture-momentum contribution. In that configuration the controller still closes the listed source-force balance, while the last vector in `forcing_balance.out` reports the remaining pressure contribution. The variable-coefficient pressure solve does not have this limitation.
@@ -346,7 +348,7 @@ Finally, it is worth recalling that passing `dims(1:2) = [0,0]` under `&dns` wil
 
 # About the `&scalar` namelist under `input.nml`
 
-This namelist is **optional** and defines the parameters needed to solve the transport equation of a scalar (e.g., temperature). It is read when the scalar is enabled in the `&dns` namelist:
+This namelist is **optional** and defines the parameters needed to solve the transport equations of an arbitrary number of scalars (e.g., temperature, concentrations). The **number of scalars** `nscal` has to be set in the `&dns` namelist, e.g., for a single scalar:
 
 ```fortran
 &dns
@@ -355,7 +357,20 @@ nscal = 1
 /
 ```
 
-The default value of `nscal` is zero, and at most one scalar is supported.
+The default value of `nscal` is zero. The entries of this namelist, and the conductivity `ka12` and heat capacity `cp12` of the `&two_fluid` namelist, carry the index of the scalar as their last subscript, as in CaNS; e.g., for the second of two scalars:
+
+```fortran
+iniscal(2)         = 'zer'
+cbcscal(0:1,1:3,2) = 'P','P',  'D','D',  'N','N'
+bcscal(0:1,1:3,2)  =  0.,0.,   0.,1.,   0.,0.
+ssource(2)         = 0.
+```
+
+and, in the `&two_fluid` namelist, `ka12(1:2,2)` and `cp12(1:2,2)`.
+
+Every scalar `s` is transported in the form of an energy equation, `d(rho*cp*s)/dt + div(rho*cp*u*s) = div(ka*grad(s)) + source`, with the density, heat capacity and conductivity of each phase. For a quantity that is transported per unit volume, such as a concentration with diffusivity `D` in each phase, set `cp12 = 1/rho12` and `ka12 = D`. Only the first scalar enters the buoyancy term (see below).
+
+The scalars are written to the files `sca_NNN_fld_*` (and `sca_NNN_slice_fld_*`), and saved in the checkpoint files `fld_s_NNN`, with `NNN` the index of the scalar (`001`, `002`, ...).
 
 ---
 
@@ -363,10 +378,10 @@ The following example namelist defines the parameters needed for the differentia
 
 ```fortran
 &scalar
-inisca          = 'dhc-x'
-cbcsca(0:1,1:3) = 'P','P',  'D','D',  'N','N'
-bcsca(0:1,1:3)  =  0.,0.,   -0.5,0.5,   0.,0.
-ssource         = 0.
+iniscal(1)         = 'dhc-x'
+cbcscal(0:1,1:3,1) = 'P','P',  'D','D',  'N','N'
+bcscal(0:1,1:3,1)  =  0.,0.,   -0.5,0.5,   0.,0.
+ssource(1)         = 0.
 is_boussinesq_buoyancy = T
 /
 ```
@@ -374,7 +389,7 @@ is_boussinesq_buoyancy = T
 ---
 
 ```fortran
-inisca          = 'dhc-x'
+iniscal(1)         = 'dhc-x'
 ```
 
 This line sets the **initial scalar field**. The following options are available:
@@ -389,8 +404,8 @@ See `initflow.f90` for more details.
 ---
 
 ```fortran
-cbcsca(0:1,1:3) = 'P','P',  'D','D',  'N','N'
-bcsca(0:1,1:3)  =  0.,0.,   -0.5,0.5,   0.,0.
+cbcscal(0:1,1:3,1) = 'P','P',  'D','D',  'N','N'
+bcscal(0:1,1:3,1)  =  0.,0.,   -0.5,0.5,   0.,0.
 ```
 
 These lines set the **boundary conditions** for the scalar, just like for the pressure.
@@ -398,7 +413,7 @@ These lines set the **boundary conditions** for the scalar, just like for the pr
 ---
 
 ```fortran
-ssource         = 0.
+ssource(1)         = 0.
 ```
 
 `ssource` is a **uniform volumetric source term** added to the right-hand side of the scalar equation.
@@ -411,7 +426,7 @@ ssource         = 0.
 is_boussinesq_buoyancy = T
 ```
 
-`is_boussinesq_buoyancy`, if true, **activates the buoyancy term** of the so-called _Boussinesq approximation_ in the momentum equation, with the scalar as the temperature difference. The thermal expansion coefficient of each fluid is set by `beta12` in the `&two_fluid` namelist, and the gravitational acceleration by `gacc` in the `&dns` namelist, e.g.:
+`is_boussinesq_buoyancy`, if true, **activates the buoyancy term** of the so-called _Boussinesq approximation_ in the momentum equation, with the first scalar as the temperature difference. The thermal expansion coefficient of each fluid is set by `beta12` in the `&two_fluid` namelist, and the gravitational acceleration by `gacc` in the `&dns` namelist, e.g.:
 
 ```fortran
 &dns
@@ -509,8 +524,8 @@ The contact line moves with the flow next to the wall.
 sigma           = 1.
 rho12(1:2)      = 10., 1.
 mu12(1:2)       = 1.e-2, 1.e-3
-ka12(1:2)       = 0., 0.
-cp12(1:2)       = 0., 0.
+ka12(1:2,1)     = 0., 0.
+cp12(1:2,1)     = 0., 0.
 beta12(1:2)     = 0., 0.
 ```
 
@@ -519,8 +534,8 @@ These lines specify the physical and transport properties of the two-phase syste
 * `sigma` sets the value of the surface tension coefficient at the two-phase interface.
 * `rho12` sets the value of the density of each phase. (Note: the initial conditions assume `rho12(1)` as the densest phase)
 * `mu12` sets the value of the dynamic viscosity of each phase.
-* `ka12` sets the value of the thermal conductivity of each phase.
-* `cp12` sets the value of the constant pressure specfic heat capacity of each phase.
+* `ka12` sets the value of the thermal conductivity of each phase, for each scalar (last subscript).
+* `cp12` sets the value of the constant pressure specfic heat capacity of each phase, for each scalar (last subscript).
 * `beta12` sets the value of the thermal expansion coeffcient of each phase.
 
 By default, viscosity and thermal conductivity are interpolated arithmetically between the two phases. The input `is_harmonic_interpolation = T` (`&numerics` namelist, see below) switches both properties to harmonic phase interpolation.

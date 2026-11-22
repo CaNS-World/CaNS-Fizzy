@@ -11,7 +11,7 @@ module mod_rk
   use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
   use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,cmpt_wallshear,cmpt_bodyforce
-  use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0,alpha0
+  use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0
   use mod_types
   implicit none
   private
@@ -222,7 +222,7 @@ module mod_rk
                      factor12,u,v,w)
   end subroutine rk
   !
-  subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
+  subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,alpha0,psi,u,v,w, &
                      psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,sadv,uadv,vadv,wadv)
     use mod_scal, only: scal_ad,scal_a_cons
     !
@@ -243,6 +243,7 @@ module mod_rk
     real(rp), intent(in   )                :: dt
     real(rp), intent(in   )                :: ssource
     real(rp), intent(in   ), dimension(2)  :: rho12,ka12,cp12
+    real(rp), intent(in   )                :: alpha0 ! reference diffusivity (constant-coefficient implicit diffusion)
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psio
@@ -254,7 +255,7 @@ module mod_rk
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
     real(rp) :: c1,c2
     real(rp), allocatable, dimension(:,:,:), save :: dsdtrk
-    real(rp), dimension(2), save :: rhocp12
+    real(rp), dimension(2) :: rhocp12
     real(rp) :: rhocp,drhocp,rhocp_n,rhocp_p
     real(rp) :: factor1,factor2,factor12
     integer :: i,j,k
@@ -265,9 +266,9 @@ module mod_rk
     if(.not.allocated(dsdtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dsdtrk(n(1),n(2),n(3)))
       !$acc enter data create(dsdtrk) async(1)
-      rhocp12(:) = rho12(:)*cp12(:)
       !$acc wait(1)
     end if
+    rhocp12(:) = rho12(:)*cp12(:)
     if(is_ifc_split.and..not.is_vof_sweep_transport) then
       c1 = rkpar(1)
       c2 = rkpar(2)

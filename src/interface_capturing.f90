@@ -27,7 +27,7 @@ module mod_interface_capturing
   use mod_param     , only: datadir,ng,nb,is_bound,cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpsi,bcpsi,cbcnor,bcnor, &
                             cbccur,bccur,contact_angle, &
                             acdi_gam_factor,acdi_gam_min,vof_thinc_beta, &
-                            rho12,cp12,nscal,cbcsca,bcsca, &
+                            rho12,cp12,nscal,cbcscal,bcscal, &
                             is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_sdf_normals,is_vof_sweep_transport, &
                             is_hf_normals
   use mod_bound     , only: boundp,bounduvw
@@ -36,6 +36,7 @@ module mod_interface_capturing
   use mod_rk        , only: rk_2fl
   use mod_acdi      , only: acdi_set_epsilon
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
+  use mod_scal      , only: scalar
   use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_contact_angle, &
                             vof_split_diagnostics
   use mod_thinc     , only: thinc_cmpt_phi
@@ -98,7 +99,7 @@ module mod_interface_capturing
     call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
     !$acc wait
     if(is_ifc_split) then
-      call vof_split_init(ng,n,nh_psi,is_ifc_thinc,vof_thinc_beta,is_hf_normals,is_vof_sweep_transport,nscal > 0,contact_angle)
+      call vof_split_init(ng,n,nh_psi,is_ifc_thinc,vof_thinc_beta,is_hf_normals,is_vof_sweep_transport,nscal,contact_angle)
       call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
       call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub,kstats)
       if(myid == 0) print*, 'Direction-split advection. Initial volume of phase 1: ', vol0
@@ -124,12 +125,13 @@ module mod_interface_capturing
   !
   subroutine ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                          normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
-                         istep,uo,vo,wo,uadv,vadv,wadv,s,sadv)
+                         istep,uo,vo,wo,uadv,vadv,wadv,scalars)
     !
     ! advances the phase indicator over one time step, returns the phase fluxes (with their boundary
     ! conditions), and updates the interface normals and curvature; with the geometric volume-of-fluid
-    ! method and `is_vof_sweep_transport`, the velocity (and the scalar) is transported along with the
-    ! phase indicator, and returned in uadv, vadv, wadv (sadv) instead of the advecting velocity
+    ! method and `is_vof_sweep_transport`, the velocity (and the scalars) is transported along with the
+    ! phase indicator, and returned in uadv, vadv, wadv (and in `sadv` of each scalar) instead of the advecting
+    ! velocity
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -147,9 +149,13 @@ module mod_interface_capturing
     real(rp), intent(inout), dimension(:,:,:) :: dpsidtrko
     integer , intent(in   ) :: istep
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
-    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
-    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: sadv
+    type(scalar), intent(inout), dimension(:), optional :: scalars
+    real(rp), dimension(2,max(nscal,1)) :: rhocp12
+    integer :: is
     !
+    do is=1,max(nscal,1)
+      rhocp12(:,is) = rho12(:)*cp12(:,is)
+    end do
     if(.not.is_ifc_split) then
       call rk_2fl(tm_coeff,n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
                   psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
@@ -157,24 +163,27 @@ module mod_interface_capturing
       call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
     else
       call vof_split_advance(tm_coeff,is_first,.true.,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
-                             cbcpsi,bcpsi,nb,is_bound,rho12,rho12*cp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
-                             uo,vo,wo,uadv,vadv,wadv,s,sadv)
+                             cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
+                             uo,vo,wo,uadv,vadv,wadv,scalars)
       if(.not.is_vof_sweep_transport) then
         call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
       else
         call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
-        if(nscal > 0) call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,sadv)
+        do is=1,nscal
+          call boundp(cbcscal(:,:,is),n,nh_s,nh_g,bcscal(:,:,is),nb,is_bound,dl,dzc,scalars(is)%sadv)
+        end do
       end if
     end if
     call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
   end subroutine ifc_advance
   !
   subroutine ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
-                                    u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,s,sadv)
+                                    u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars)
     !
     ! advecting velocity of a time step in which the interface is not tracked (geometric volume-of-fluid
-    ! method only); with `is_vof_sweep_transport`, the velocity (and the scalar) is transported with the
-    ! sweeps, without updating the phase indicator, and returned in uadv, vadv, wadv (sadv) instead
+    ! method only); with `is_vof_sweep_transport`, the velocity (and the scalars) is transported with the
+    ! sweeps, without updating the phase indicator, and returned in uadv, vadv, wadv (and in `sadv` of each
+    ! scalar) instead
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -189,17 +198,23 @@ module mod_interface_capturing
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
-    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
-    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: sadv
+    type(scalar), intent(inout), dimension(:), optional :: scalars
+    real(rp), dimension(2,max(nscal,1)) :: rhocp12
     real(rp), dimension(3) :: cfl
+    integer :: is
     !
     if(.not.is_ifc_split) return
+    do is=1,max(nscal,1)
+      rhocp12(:,is) = rho12(:)*cp12(:,is)
+    end do
     if(is_vof_sweep_transport) then
       call vof_split_advance(tm_coeff,is_first,.false.,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
-                             cbcpsi,bcpsi,nb,is_bound,rho12,rho12*cp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
-                             uo,vo,wo,uadv,vadv,wadv,s,sadv)
+                             cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
+                             uo,vo,wo,uadv,vadv,wadv,scalars)
       call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
-      if(nscal > 0) call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,sadv)
+      do is=1,nscal
+        call boundp(cbcscal(:,:,is),n,nh_s,nh_g,bcscal(:,:,is),nb,is_bound,dl,dzc,scalars(is)%sadv)
+      end do
     else
       call vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,uadv,vadv,wadv,cfl)
     end if

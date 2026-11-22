@@ -41,6 +41,7 @@ module mod_vof_split
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
   use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature,hf_normal
+  use mod_scal      , only: scalar
   use mod_thinc     , only: thinc_intercept,thinc_slab
   implicit none
   private
@@ -78,14 +79,17 @@ module mod_vof_split
   ! transport of momentum (and scalar) along with the sweeps
   !
   logical :: is_sweep = .false.                       ! momentum (and scalar) transported along with the sweeps
-  logical :: is_scal  = .false.                       ! scalar transported too
+  integer :: nscal_tr = 0                             ! number of scalars transported too
+  logical :: is_scal  = .false.                       ! any
   integer :: ncc = 0                                  ! layers beyond the interior with dilatation indicator and fluxes
   real(rp)     , allocatable, dimension(:,:,:)   :: f_prev      ! volume fraction before a sweep
   integer(int8), allocatable, dimension(:,:,:)   :: band        ! interface band (limited transported value), 0 or 1
   integer(int8), allocatable, dimension(:,:,:)   :: bflag       ! presence of the phases in a cell (bits 0 and 1)
-  real(rp)     , allocatable, dimension(:,:,:)   :: ub,vb,wb,sb ! velocity and scalar during the sweeps
+  real(rp)     , allocatable, dimension(:,:,:)   :: ub,vb,wb    ! velocity during the sweeps
+  real(rp)     , allocatable, dimension(:,:,:,:) :: sb          ! scalars during the sweeps
   real(rp)     , allocatable, dimension(:,:,:,:) :: qflx        ! fluxes of the transported quantities
-  real(rp)     , allocatable, dimension(:,:,:)   :: au,av,aw,as ! non-advective rates of change of the previous time step
+  real(rp)     , allocatable, dimension(:,:,:)   :: au,av,aw    ! non-advective rates of change of the previous time step
+  real(rp)     , allocatable, dimension(:,:,:,:) :: as          ! the same, for the scalars
   !
   ! diagnostics (local to the task, accumulated on the device; reduced by `vof_split_diagnostics`)
   !
@@ -99,18 +103,19 @@ module mod_vof_split
                                                 ! from neighbouring height functions, and without estimate
   !$acc declare create(kappa_stats)
   contains
-  subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_hf_normals,is_sweep_transport,is_scalar,theta_c)
+  subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_hf_normals,is_sweep_transport,nscal,theta_c)
     !
     ! allocates the work arrays; `is_thinc_reconstruction` selects the THINC reconstruction, of sharpness
     ! `beta`, instead of the geometric one, `is_hf_normals` the normals of the geometric reconstruction from
     ! height functions, and `is_sweep_transport` the transport of momentum (and of the
-    ! scalar, if `is_scalar`) along with the sweeps; `theta_c` are the contact angles at the walls (in degrees,
+    ! `nscal` scalars) along with the sweeps; `theta_c` are the contact angles at the walls (in degrees,
     ! measured through phase 1), imposed here with the geometric reconstruction
     !
     implicit none
     integer , intent(in), dimension(3) :: ng,n
     integer , intent(in)               :: nh_psi
-    logical , intent(in)               :: is_thinc_reconstruction,is_hf_normals,is_sweep_transport,is_scalar
+    logical , intent(in)               :: is_thinc_reconstruction,is_hf_normals,is_sweep_transport
+    integer , intent(in)               :: nscal
     real(rp), intent(in)               :: beta
     real(rp), intent(in), dimension(0:1,3) :: theta_c
     integer :: i,j,k
@@ -126,7 +131,8 @@ module mod_vof_split
     allocate(cc(0:n(1)+1,0:n(2)+1,0:n(3)+1))
     allocate(fl,kap,mold=cc)
     is_sweep = is_sweep_transport
-    is_scal  = is_sweep.and.is_scalar
+    nscal_tr = merge(nscal,0,is_sweep)
+    is_scal  = nscal_tr > 0
     ncc = merge(1,0,is_sweep)
     allocate(ilist((n(1)+2+ncc)*(n(2)+2+ncc)*(n(3)+2+ncc)))
     nlist(:) = 0
@@ -151,10 +157,10 @@ module mod_vof_split
       allocate(qflx(0:n(1)+1,0:n(2)+1,0:n(3)+1,merge(0,1,is_scal):3))
       allocate(au,av,aw,mold=cc)
       if(is_scal) then
-        allocate(sb,mold=ub)
-        allocate(as,mold=cc)
+        allocate(sb(1-nh_mom:n(1)+nh_mom,1-nh_mom:n(2)+nh_mom,1-nh_mom:n(3)+nh_mom,nscal_tr))
+        allocate(as(0:n(1)+1,0:n(2)+1,0:n(3)+1,nscal_tr))
       else
-        allocate(sb(1,1,1),as(1,1,1)) ! (not used)
+        allocate(sb(1,1,1,1),as(1,1,1,1)) ! (not used)
       end if
       !$acc enter data create(f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
       !
@@ -163,7 +169,9 @@ module mod_vof_split
       call set_zero(ub)
       call set_zero(vb)
       call set_zero(wb)
-      call set_zero(sb)
+      do i=1,size(sb,4)
+        call set_zero(sb(:,:,:,i))
+      end do
       call set_zero(f_prev)
       !$acc parallel loop collapse(3) default(present) async(1)
       do k=1-nh_psi,n(3)+nh_psi
@@ -200,15 +208,16 @@ module mod_vof_split
   !
   subroutine vof_split_advance(tm_coeff,is_first,is_track,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
-                               uo,vo,wo,ua,va,wa,s,sa)
+                               uo,vo,wo,ua,va,wa,scalars)
     !
     ! advances the volume fraction over one time step, with the face velocity extrapolated to the
     ! middle of the time step from the current and previous velocity fields (both divergence free);
     ! the volume fraction is returned with its halo layers updated, and the advecting velocity in ua, va, wa;
     ! the order of the sweeps is reversed at each (sub-)step, starting from the parity of the time step number
     !
-    ! with the transport along with the sweeps (`is_sweep_transport`), the velocity (and the scalar s) is
-    ! transported too, and ua, va, wa (sa) return the transported velocity (scalar) instead; on entry they
+    ! with the transport along with the sweeps (`is_sweep_transport`), the velocity (and each of the
+    ! `scalars`, with the heat capacities per unit volume `rhocp12` of the two phases) is transported too, and
+    ! ua, va, wa (and `sadv` of each scalar) return the transported velocity (scalar) instead; on entry they
     ! hold that of the previous time step (unless `is_first`), whose time step is dto; the phase fluxes are
     ! then not used; if `is_track` is false, the volume fraction is not updated (transport without interface
     ! tracking)
@@ -226,18 +235,18 @@ module mod_vof_split
     real(rp), intent(in   ), dimension(0:1,3) :: bcpsi
     integer , intent(in   ), dimension(0:1,3) :: nb
     logical , intent(in   ), dimension(0:1,3) :: is_bound
-    real(rp), intent(in   ), dimension(2) :: rho12,rhocp12
+    real(rp), intent(in   ), dimension(2) :: rho12
+    real(rp), intent(in   ), dimension(:,:) :: rhocp12 ! (2,nscal)
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: uo,vo,wo,ua,va,wa
-    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
-    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: sa
+    type(scalar), intent(inout), dimension(:), optional :: scalars
     character(len=1), dimension(0:1,3) :: cbc_tr
     logical , dimension(0:1,3) :: is_bound_tr,is_bound_phys
     logical , save :: is_psiflx_set = .false.
     real(rp) :: dts,dtpi,tc
-    integer  :: i,j,k,isub,nsub,q,idir
+    integer  :: i,j,k,isub,nsub,q,idir,is
     logical  :: is_forward
     !
     if(is_sweep) then
@@ -267,18 +276,9 @@ module mod_vof_split
           end do
         end do
       end do
-      if(is_scal) then
-        !$acc parallel loop collapse(3) default(present) async(1)
-        do k=0,n(3)+1
-          do j=0,n(2)+1
-            do i=0,n(1)+1
-              as(i,j,k) = 0._rp
-              if(dtpi > 0._rp) as(i,j,k) = (s(i,j,k)-sa(i,j,k))*dtpi
-              sb(i,j,k) = s(i,j,k)
-            end do
-          end do
-        end do
-      end if
+      do is=1,nscal_tr
+        call transport_scal_begin(n,nh_s,dtpi,scalars(is)%val,scalars(is)%sadv,as(:,:,:,is),sb(:,:,:,is))
+      end do
       !
       ! the halos of the transported fields are only needed across periodic and inter-task boundaries: at
       ! physical boundaries, the transported value uses zero slopes, and the values of the beginning of the
@@ -364,14 +364,11 @@ module mod_vof_split
         if(is_sweep) then
           select case(idir)
           case(1)
-            call transport_sweep(1,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12,is_bound_phys, &
-                                 ua,u,v,w,psi,s)
+            call transport_all(1,ua)
           case(2)
-            call transport_sweep(2,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12,is_bound_phys, &
-                                 va,u,v,w,psi,s)
+            call transport_all(2,va)
           case(3)
-            call transport_sweep(3,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12,is_bound_phys, &
-                                 wa,u,v,w,psi,s)
+            call transport_all(3,wa)
           end select
           call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
         end if
@@ -391,18 +388,80 @@ module mod_vof_split
           end do
         end do
       end do
-      if(is_scal) then
-        !$acc parallel loop collapse(3) default(present) async(1)
-        do k=0,n(3)+1
-          do j=0,n(2)+1
-            do i=0,n(1)+1
-              sa(i,j,k) = sb(i,j,k)
-            end do
-          end do
+      do is=1,nscal_tr
+        call transport_scal_end(n,nh_s,sb(:,:,:,is),scalars(is)%sadv)
+      end do
+    end if
+  contains
+    subroutine transport_all(idir,vel)
+      !
+      ! transport along direction idir, with the face velocity vel, of the velocity together with the first
+      ! scalar, if any, and then of each of the other scalars
+      !
+      implicit none
+      integer , intent(in) :: idir
+      real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: vel
+      integer :: is
+      if(nscal_tr == 0) then
+        call transport_sweep(idir,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12(:,1),is_bound_phys, &
+                             vel,u,v,w,psi,1,3,sb(:,:,:,1),as(:,:,:,1))
+      else
+        call transport_sweep(idir,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12(:,1),is_bound_phys, &
+                             vel,u,v,w,psi,0,3,sb(:,:,:,1),as(:,:,:,1),scalars(1)%val)
+        do is=2,nscal_tr
+          call transport_sweep(idir,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dts,tc,rho12,rhocp12(:,is),is_bound_phys, &
+                               vel,u,v,w,psi,0,0,sb(:,:,:,is),as(:,:,:,is),scalars(is)%val)
         end do
       end if
-    end if
+    end subroutine transport_all
   end subroutine vof_split_advance
+  !
+  subroutine transport_scal_begin(n,nh_s,dtpi,s,sa,asq,sbq)
+    !
+    ! non-advective rate of change of a scalar over the previous time step (see `vof_split_advance`), and
+    ! its copy into the work array of the transport
+    !
+    implicit none
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_s
+    real(rp), intent(in )               :: dtpi
+    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s,sa
+    real(rp), intent(out), dimension(0:,0:,0:) :: asq
+    real(rp), intent(out), dimension(1-nh_mom:,1-nh_mom:,1-nh_mom:) :: sbq
+    integer :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          asq(i,j,k) = 0._rp
+          if(dtpi > 0._rp) asq(i,j,k) = (s(i,j,k)-sa(i,j,k))*dtpi
+          sbq(i,j,k) = s(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine transport_scal_begin
+  !
+  subroutine transport_scal_end(n,nh_s,sbq,sa)
+    !
+    ! transported scalar
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_s
+    real(rp), intent(in   ), dimension(1-nh_mom:,1-nh_mom:,1-nh_mom:) :: sbq
+    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: sa
+    integer :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          sa(i,j,k) = sbq(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine transport_scal_end
   !
   subroutine vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,ua,va,wa,cfl)
     !
@@ -645,12 +704,15 @@ module mod_vof_split
     real(rp), intent(in), dimension(3) :: dl
     real(rp), intent(in), dimension(1-nh_g:) :: dzc
     real(rp), dimension(0:1,3) :: bc
+    integer :: is
     !
     bc(:,:) = 0._rp
     call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,ub)
     call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,vb)
     call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,wb)
-    if(is_scal) call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,sb)
+    do is=1,nscal_tr
+      call boundp(cbc,n,nh_mom,nh_g,bc,nb,is_bound,dl,dzc,sb(:,:,:,is))
+    end do
   end subroutine transport_halo
   !
   subroutine transport_prepare(n,nh_psi,psi)
@@ -697,11 +759,12 @@ module mod_vof_split
   end subroutine transport_prepare
   !
   subroutine transport_sweep(idir,n,nh_v,nh_s,nh_psi,nh_g,dl,dzf,dzci,dzfi,wzc,dt,tc,rho12,rhocp12,is_bound_phys, &
-                             vel,u,v,w,psi,s)
+                             vel,u,v,w,psi,iq_lo,iq_hi,sbq,asq,s)
     !
     ! conservative transport along direction idir, after the volume-fraction update of the sweep, of the
-    ! quantities per unit mass iq = iq0,...,3: the three velocity components (iq = 1,2,3) on their staggered
-    ! control volumes and, if present, the cell-centred scalar (iq = 0), with the masses per unit volume of
+    ! quantities per unit mass iq = iq_lo,...,iq_hi: the three velocity components (iq = 1,2,3) on their
+    ! staggered control volumes and a cell-centred scalar (iq = 0; its work arrays are sbq and asq, parts of sb
+    ! and as, and s its value at the beginning of the time step), with the masses per unit volume of
     ! the two phases rho12 (densities) and rhocp12 (heat capacities), respectively; the transport is
     ! synchronized with the volume-fraction sweep (Huang et al., arXiv:2606.02467):
     !  - the mass fluxes through the control-volume faces are those of the volume fraction, averaged as the
@@ -713,11 +776,11 @@ module mod_vof_split
     !    (bounded) and unlimited ones elsewhere (low dissipation), see `donor_value`; the slopes vanish next
     !    to physical boundaries;
     !  - the transported value is centred in time with the non-advective rate of change of q of the previous
-    !    time step (pressure, viscous and body forces; au, av, aw, as), over the time tc from the beginning of
+    !    time step (pressure, viscous and body forces; au, av, aw, asq), over the time tc from the beginning of
     !    the step to the middle of the sub-step; without it, the transport of q^n followed by the other terms
     !    is a first-order (Lie) splitting, with a significant dissipation of kinetic energy;
     ! the new value is the new momentum divided by the new mass, computed from the updated volume fraction; it
-    ! is stored in ub, vb, wb, sb (the update of a control volume only reads its own value, the fluxes being
+    ! is stored in ub, vb, wb, sbq (the update of a control volume only reads its own value, the fluxes being
     ! computed beforehand); the normal velocity at the last face of a physical boundary (a boundary value)
     ! is kept
     !
@@ -732,13 +795,15 @@ module mod_vof_split
     logical , intent(in ), dimension(0:1,3) :: is_bound_phys
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel,u,v,w
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    integer , intent(in ) :: iq_lo,iq_hi
+    real(rp), intent(inout), dimension(1-nh_mom:,1-nh_mom:,1-nh_mom:) :: sbq
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: asq
     real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
     real(rp) :: c2,dc,c2m,dcm,c2s,dcs,dl_d,dli_d,w1,w2,w1d,rext,ext_d,mf,mass,dil1,dil1m,dil1s,dil2,rh1,rh2, &
                 rho_o,rho_n,qm,q0,qp,qa,qn
-    integer  :: i,j,k,iq,iq0,di,dj,dk,qi,qj,qk,off,id,jd,kd,dd,nd,n1,n2,n3
+    integer  :: i,j,k,iq,di,dj,dk,qi,qj,qk,off,id,jd,kd,dd,nd,n1,n2,n3
     logical  :: is_stag,is_lo,is_hi,is_zero,is_lim,is_keep,is_keep_x,is_keep_y,is_keep_z
     !
-    iq0 = merge(0,1,is_scal)
     di = merge(1,0,idir == 1)
     dj = merge(1,0,idir == 2)
     dk = merge(1,0,idir == 3)
@@ -766,7 +831,7 @@ module mod_vof_split
       do j=1,n(2)+dj
         do i=1,n(1)+di
           !$acc loop seq
-          do iq=iq0,3
+          do iq=iq_lo,iq_hi
             qi = merge(1,0,iq == 1)
             qj = merge(1,0,iq == 2)
             qk = merge(1,0,iq == 3)
@@ -812,7 +877,7 @@ module mod_vof_split
             case(3)
               qm = wb(id-di,jd-dj,kd-dk); q0 = wb(id,jd,kd); qp = wb(id+di,jd+dj,kd+dk); qa = aw(id,jd,kd)
             case default
-              qm = sb(id-di,jd-dj,kd-dk); q0 = sb(id,jd,kd); qp = sb(id+di,jd+dj,kd+dk); qa = as(id,jd,kd)
+              qm = sbq(id-di,jd-dj,kd-dk); q0 = sbq(id,jd,kd); qp = sbq(id+di,jd+dj,kd+dk); qa = asq(id,jd,kd)
             end select
             qflx(i,j,k,iq) = mf*donor_value(qm,q0,qp,mf,mass,tc*qa,is_zero,is_lim)
           end do
@@ -831,9 +896,9 @@ module mod_vof_split
           if(idir == 3) rh1 = dzfi(k)
           dil1m = (c2m+dcm*cc(i,j,k))*(vel(i,j,k)-vel(i-di,j-dj,k-dk))*(dt*rh1)
           dil1s = 0._rp
-          if(iq0 == 0) dil1s = (c2s+dcs*cc(i,j,k))*(vel(i,j,k)-vel(i-di,j-dj,k-dk))*(dt*rh1)
+          if(iq_lo == 0) dil1s = (c2s+dcs*cc(i,j,k))*(vel(i,j,k)-vel(i-di,j-dj,k-dk))*(dt*rh1)
           !$acc loop seq
-          do iq=iq0,3
+          do iq=iq_lo,iq_hi
             qi = merge(1,0,iq == 1)
             qj = merge(1,0,iq == 2)
             qk = merge(1,0,iq == 3)
@@ -873,7 +938,7 @@ module mod_vof_split
                 wb(i,j,k) = (rho_o*wb(i,j,k)-(qflx(i+di,j+dj,k+dk,iq)-qflx(i,j,k,iq))*rext+w(i,j,k)*(w1*dil1+w2*dil2))/rho_n
               case default
                 qn = s(i,j,k)
-                sb(i,j,k) = (rho_o*sb(i,j,k)-(qflx(i+di,j+dj,k+dk,iq)-qflx(i,j,k,iq))*rext+qn*(w1*dil1+w2*dil2))/rho_n
+                sbq(i,j,k) = (rho_o*sbq(i,j,k)-(qflx(i+di,j+dj,k+dk,iq)-qflx(i,j,k,iq))*rext+qn*(w1*dil1+w2*dil2))/rho_n
               end select
             end if
           end do
