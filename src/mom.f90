@@ -1763,7 +1763,8 @@ module mod_mom
     real(rp), intent(in   ) :: factor
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp) :: rho,drho,mu,dmu,bfac,mfac,dxi,dyi,hz_c
-    real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif
+    real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif,c_min,c_max
+    real(rp), parameter :: c_eps = 1.e-12_rp ! (as for the reconstruction and the viscosity limiter)
     integer  :: i,j,k
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
@@ -1771,10 +1772,23 @@ module mod_mom
     bfac = 2._rp/(rho12(1)+rho12(2))
     mfac = 2._rp/(mu12(1) +mu12(2) )
     dxi = dli(1); dyi = dli(2)
-    !$acc parallel loop collapse(3) default(present) private(hz_c,fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif) async(1)
+    !$acc parallel loop collapse(3) default(present) private(hz_c,fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif,c_min,c_max) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
+          !
+          ! the force vanishes where the phase indicator is uniform over the stencil (to the tolerance of full
+          ! and empty cells): these cells, most of the domain, are skipped
+          !
+          c_min = min(psi(i  ,j  ,k  ),psi(i+1,j  ,k  ),psi(i-1,j  ,k  ),psi(i  ,j+1,k  ),psi(i  ,j-1,k  ), &
+                      psi(i+1,j+1,k  ),psi(i+1,j-1,k  ),psi(i-1,j+1,k  ), &
+                      psi(i  ,j  ,k+1),psi(i+1,j  ,k+1),psi(i-1,j  ,k+1),psi(i  ,j+1,k+1),psi(i  ,j-1,k+1), &
+                      psi(i  ,j  ,k-1),psi(i+1,j  ,k-1),psi(i  ,j+1,k-1))
+          c_max = max(psi(i  ,j  ,k  ),psi(i+1,j  ,k  ),psi(i-1,j  ,k  ),psi(i  ,j+1,k  ),psi(i  ,j-1,k  ), &
+                      psi(i+1,j+1,k  ),psi(i+1,j-1,k  ),psi(i-1,j+1,k  ), &
+                      psi(i  ,j  ,k+1),psi(i+1,j  ,k+1),psi(i-1,j  ,k+1),psi(i  ,j+1,k+1),psi(i  ,j-1,k+1), &
+                      psi(i  ,j  ,k-1),psi(i+1,j  ,k-1),psi(i  ,j+1,k-1))
+          if(c_max-c_min <= c_eps) cycle
           hz_c = dzci(k)*dzci(k-1)/(dzci(k)+dzci(k-1)) ! (factor of the centred difference along z)
           !
           ! x face
