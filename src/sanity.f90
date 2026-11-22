@@ -132,10 +132,6 @@ module mod_sanity
       if(myid == 0)  print*, 'ERROR: `ifc_transport = ab2` goes with `ifc_advection = ab2`, and `one-step` or `sweeps` &
                                      &with `ifc_advection = split`.'; call abortit
     end if
-    if(is_ifc_split .and. is_impdiff) then
-      if(myid == 0)  print*, 'ERROR: implicit diffusion is not available yet with the direction-split advection &
-                                     &(`ifc_advection = split`).'; call abortit
-    end if
   end subroutine test_sanity_input
   !
 #if !defined(_CONSTANT_COEFFS_POISSON)
