@@ -12,7 +12,7 @@ def test_plic_momentum_drop():
     for case in ['drop', 'drop-thinc']:
         u = np.fromfile(f'data-{case}/vex_fld_0000256.bin').reshape(ng, order='F')
         w = np.fromfile(f'data-{case}/vez_fld_0000256.bin').reshape(ng, order='F')
-        s = np.fromfile(f'data-{case}/sca_fld_0000256.bin').reshape(ng, order='F')
+        s = np.fromfile(f'data-{case}/sca_001_fld_0000256.bin').reshape(ng, order='F')
         err_max = 1.e-9
         err = max(np.max(abs(u-1.)), np.max(abs(w-1.)))
         assert err < err_max, f"{case}: uniform flow not preserved: {err} >= {err_max}."
@@ -30,7 +30,7 @@ def test_plic_momentum_restart():
     # restarted halfway with `is_full_restart = T` must reproduce the uninterrupted run exactly
     #
     names = sorted(os.path.basename(f) for f in glob.glob("data-restart-one-step/fld_*.bin"))
-    for field in ["u","v","w","p","psi","s","uadv","vadv","wadv","sadv"]:
+    for field in ["u","v","w","p","psi","s_001","uadv","vadv","wadv","sadv_001"]:
         assert "fld_"+field+".bin" in names, f"Checkpoint of {field} not found."
     for name in names:
         data_one_step = np.fromfile("data-restart-one-step/"+name)

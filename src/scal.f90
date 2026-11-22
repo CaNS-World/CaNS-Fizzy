@@ -5,17 +5,31 @@
 !
 ! -
 module mod_scal
+  use, intrinsic :: iso_c_binding, only: C_PTR
   use mod_param, only: is_harmonic_interpolation,is_ifc_split
+  use mod_solve_helmholtz, only: rhs_bound
   use mod_types
   implicit none
   private
   public scal_ad,scal_a_cons,cmpt_scalflux,scalar
   !
-  ! scalar derived type, as in CaNS (not used yet: there is a single scalar field;
-  ! declared for the checkpoint routines of `load.f90`, which are those of CaNS)
+  ! scalar derived type, as in CaNS: the field, its right-hand side of the previous time step, the previous
+  ! and transported fields of the direction-split advection, and the data of the constant-coefficient
+  ! implicit diffusion; the input parameters of each scalar are those of `mod_param`
   !
   type scalar
     real(rp), allocatable, dimension(:,:,:) :: val
+    real(rp), allocatable, dimension(:,:,:) :: dsdtrko
+    real(rp), allocatable, dimension(:,:,:) :: so,sadv
+#if !defined(_OPENACC) || defined(_USE_HIP)
+    type(C_PTR), dimension(2,2) :: arrplan
+#else
+    integer    , dimension(2,2) :: arrplan
+#endif
+    real(rp), allocatable, dimension(:,:) :: lambdaxy
+    real(rp), allocatable, dimension(:) :: a,b,c
+    real(rp) :: normfft
+    type(rhs_bound) :: rhsb
   end type scalar
   !
   contains

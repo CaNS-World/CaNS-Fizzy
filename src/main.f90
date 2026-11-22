@@ -58,14 +58,14 @@ program cans
                                      gtype,gr, &
                                      cfl,dtmax,dt_f, &
                                      is_solve_ns,is_track_interface, &
-                                     inivel,inisca,inipsi, &
+                                     inivel,iniscal,inipsi, &
                                      is_wallturb,is_forced_hit, &
                                      nstep,time_max,tw_max,stop_type, &
                                      restart,is_overwrite_save,nsaves_max, &
                                      icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                      tout0d,tout1d,tout2d,tout3d,tsave, &
                                      cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpre,bcpre, &
-                                     cbcsca,bcsca, &
+                                     cbcscal,bcscal, &
                                      is_forced,bforce,ssource, &
                                      gacc,nscal, &
                                      rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
@@ -82,6 +82,7 @@ program cans
                                      is_mask_divergence_check, &
                                      nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
   use mod_sanity             , only: test_sanity_input,test_sanity_solver
+  use mod_scal               , only: scalar
   use mod_solve_helmholtz    , only: solve_helmholtz,rhs_bound
   use mod_two_fluid          , only: bulk_mean_12_stag
 #if !defined(_CONSTANT_COEFFS_POISSON)
@@ -107,8 +108,8 @@ program cans
   real(rp), target, allocatable, dimension(:,:,:) :: u,v,w,p,pp
   real(rp), allocatable, dimension(:,:,:) :: pn
   real(rp), target, allocatable, dimension(:,:,:) :: po
-  real(rp), target, allocatable, dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko,dpsidtrko,dsdtrko
-  real(rp), target, allocatable, dimension(:,:,:) :: uo,vo,wo,so ! previous velocity and scalar (geometric VoF method)
+  real(rp), target, allocatable, dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko,dpsidtrko
+  real(rp), target, allocatable, dimension(:,:,:) :: uo,vo,wo ! previous velocity (direction-split advection)
   real(rp), dimension(3) :: wall_force_old
   logical :: is_first
   real(rp), dimension(3) :: rho_av
@@ -127,14 +128,14 @@ program cans
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
 #if !defined(_OPENACC) || defined(_USE_HIP)
-  type(C_PTR), dimension(2,2) :: arrplanu,arrplanv,arrplanw,arrplans
+  type(C_PTR), dimension(2,2) :: arrplanu,arrplanv,arrplanw
 #else
-  integer    , dimension(2,2) :: arrplanu,arrplanv,arrplanw,arrplans
+  integer    , dimension(2,2) :: arrplanu,arrplanv,arrplanw
 #endif
-  real(rp), allocatable, dimension(:,:) :: lambdaxyu,lambdaxyv,lambdaxyw,lambdaxys
-  real(rp), allocatable, dimension(:) :: au,av,aw,bu,bv,bw,cu,cv,cw,as,bs,cs
-  real(rp) :: normfftu,normfftv,normfftw,normffts
-  type(rhs_bound) :: rhsbu,rhsbv,rhsbw,rhsbs
+  real(rp), allocatable, dimension(:,:) :: lambdaxyu,lambdaxyv,lambdaxyw
+  real(rp), allocatable, dimension(:) :: au,av,aw,bu,bv,bw,cu,cv,cw
+  real(rp) :: normfftu,normfftv,normfftw
+  type(rhs_bound) :: rhsbu,rhsbv,rhsbw
   logical :: is_impdiff_cc
   !
   real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
@@ -149,9 +150,12 @@ program cans
   real(rp), dimension(3,6) :: force_balance
   real(rp), dimension(2) :: tm_coeff
   !
-  ! scalar field
+  ! scalar fields (see `mod_scal`)
   !
-  real(rp), target, allocatable, dimension(:,:,:) :: s
+  type(scalar), target, allocatable, dimension(:) :: scalars
+  type(scalar), pointer :: s
+  integer :: iscal
+  character(len=3) :: scalnum
   integer :: is,nio,nio_s
   !
   ! two-fluid solver specific
@@ -161,7 +165,6 @@ program cans
                                              psiflx_x,psiflx_y,psiflx_z
   real(rp), target, allocatable, dimension(:,:,:) :: uadv,vadv,wadv ! advecting (or transported) velocity of the geometric
                                                                     ! VoF method
-  real(rp), target, allocatable, dimension(:,:,:) :: sadv           ! transported scalar of the geometric VoF method
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   real(rp), target, allocatable, dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                      surfx_o,surfy_o,surfz_o
@@ -185,7 +188,7 @@ program cans
   end type arr_ptr
   type(arr_ptr)    , allocatable, dimension(:) ::   io_vars
   integer          , allocatable, dimension(:,:) ::    nh_io
-  character(len=10), allocatable, dimension(:) :: c_io_vars
+  character(len=16), allocatable, dimension(:) :: c_io_vars
   integer :: i,j,k,kk
   logical :: is_done,kill
   !
@@ -218,7 +221,16 @@ program cans
            dvdtrko(n(1),n(2),n(3)), &
            dwdtrko(n(1),n(2),n(3)), &
            dpsidtrko(n(1),n(2),n(3)))
-  if(nscal > 0) allocate(s(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s),dsdtrko(n(1),n(2),n(3)))
+  !
+  ! scalars (one element is allocated if there is none: `scalars(1)%val` is then not allocated, and can be
+  ! passed as an absent argument)
+  !
+  allocate(scalars(max(nscal,1)))
+  do iscal=1,nscal
+    s => scalars(iscal)
+    allocate(s%val(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s),s%dsdtrko(n(1),n(2),n(3)))
+  end do
+  !$acc enter data copyin(scalars(:))
   nio = 5+nscal
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
@@ -276,13 +288,14 @@ program cans
              rhsbw%x(n(2),n(3),0:1), &
              rhsbw%y(n(1),n(3),0:1), &
              rhsbw%z(n(1),n(2),0:1))
-    if(nscal > 0) then
-      allocate(lambdaxys(n_z(1),n_z(2)))
-      allocate(as(n_z(3)),bs(n_z(3)),cs(n_z(3)))
-      allocate(rhsbs%x(n(2),n(3),0:1), &
-               rhsbs%y(n(1),n(3),0:1), &
-               rhsbs%z(n(1),n(2),0:1))
-    end if
+    do iscal=1,nscal
+      s => scalars(iscal)
+      allocate(s%lambdaxy(n_z(1),n_z(2)))
+      allocate(s%a(n_z(3)),s%b(n_z(3)),s%c(n_z(3)))
+      allocate(s%rhsb%x(n(2),n(3),0:1), &
+               s%rhsb%y(n(1),n(3),0:1), &
+               s%rhsb%z(n(1),n(2),0:1))
+    end do
   end if
   allocate(psi(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
   allocate(psio,mold=psi)
@@ -292,7 +305,10 @@ program cans
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=kappa)
   if(is_ifc_split) then
     allocate(uadv,vadv,wadv,uo,vo,wo,mold=u)
-    if(nscal > 0) allocate(so,sadv,mold=s)
+    do iscal=1,nscal
+      s => scalars(iscal)
+      allocate(s%so,s%sadv,mold=s%val)
+    end do
   end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   allocate(surfx_n(n(1),n(2),n(3)),surfy_n(n(1),n(2),n(3)),surfz_n(n(1),n(2),n(3)), &
@@ -402,12 +418,13 @@ program cans
     !$acc enter data copyin(rhsbu,rhsbu%x,rhsbu%y,rhsbu%z) async
     !$acc enter data copyin(rhsbv,rhsbv%x,rhsbv%y,rhsbv%z) async
     !$acc enter data copyin(rhsbw,rhsbw%x,rhsbw%y,rhsbw%z) async
-    if(nscal > 0) then
-      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcsca,bcsca, &
-                      lambdaxys,['c','c','c'],as,bs,cs,arrplans,normffts,rhsbs%x,rhsbs%y,rhsbs%z)
-      !$acc enter data copyin(lambdaxys,as,bs,cs) async
-      !$acc enter data copyin(rhsbs,rhsbs%x,rhsbs%y,rhsbs%z) async
-    end if
+    do iscal=1,nscal
+      s => scalars(iscal)
+      call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcscal(:,:,iscal),bcscal(:,:,iscal), &
+                      s%lambdaxy,['c','c','c'],s%a,s%b,s%c,s%arrplan,s%normfft,s%rhsb%x,s%rhsb%y,s%rhsb%z)
+      !$acc enter data copyin(s%lambdaxy,s%a,s%b,s%c) async
+      !$acc enter data copyin(s%rhsb,s%rhsb%x,s%rhsb%y,s%rhsb%z) async
+    end do
   end if
   if(is_poisson_dtdma) then
     !$acc enter data create(ap_d,cp_d) async
@@ -423,7 +440,9 @@ program cans
     call set_cufft_wspace(pack(arrplanu,.true.),istream_acc_queue_1)
     call set_cufft_wspace(pack(arrplanv,.true.),istream_acc_queue_1)
     call set_cufft_wspace(pack(arrplanw,.true.),istream_acc_queue_1)
-    if(nscal > 0) call set_cufft_wspace(pack(arrplans,.true.),istream_acc_queue_1)
+    do iscal=1,nscal
+      call set_cufft_wspace(pack(scalars(iscal)%arrplan,.true.),istream_acc_queue_1)
+    end do
   end if
   if(myid == 0) print*,'*** Device memory footprint (Gb): ', &
                   device_memory_footprint(n,nh_v,nh_p,nh_s,nh_g,n_z,nscal)/(1._sp*1024**3), ' ***'
@@ -449,17 +468,18 @@ program cans
       if(is_vof_sweep_transport) nio_s = nio_s + 3
     end if
   end if
-  allocate(io_vars(nio_s),c_io_vars(nio_s),nh_io(3,nio_s)) ! u,v,w,p,psi,s
+  allocate(io_vars(nio_s),c_io_vars(nio_s),nh_io(3,nio_s)) ! u,v,w,p,psi,scalars
   nh_io(:,1:3) = nh_v; nh_io(:,4) = nh_p; nh_io(:,5) = nh_psi
   io_vars(1)%arr => u  ; c_io_vars(1) = 'u'
   io_vars(2)%arr => v  ; c_io_vars(2) = 'v'
   io_vars(3)%arr => w  ; c_io_vars(3) = 'w'
   io_vars(4)%arr => p  ; c_io_vars(4) = 'p'
   io_vars(5)%arr => psi; c_io_vars(5) = 'psi'
-  if(nscal > 0) then
-    nh_io(:,6) = nh_s
-    io_vars(6)%arr => s; c_io_vars(6) = 's'
-  end if
+  do iscal=1,nscal
+    write(scalnum,'(i3.3)') iscal
+    nh_io(:,5+iscal) = nh_s
+    io_vars(5+iscal)%arr => scalars(iscal)%val; c_io_vars(5+iscal) = 's_'//scalnum
+  end do
   if(is_full_restart) then
     is = nio
     nh_io(:,nio+1:) = 0; nh_io(:,nio+1) = nh_p
@@ -469,10 +489,11 @@ program cans
     io_vars(is+4)%arr => dwdtrko  ; c_io_vars(is+4) = 'dwdtrko'
     io_vars(is+5)%arr => dpsidtrko; c_io_vars(is+5) = 'dpsidtrko'
     is = is + 5
-    if(nscal > 0) then
-      io_vars(is+1)%arr => dsdtrko; c_io_vars(is+1) = 'dsdtrko'
+    do iscal=1,nscal
+      write(scalnum,'(i3.3)') iscal
+      io_vars(is+1)%arr => scalars(iscal)%dsdtrko; c_io_vars(is+1) = 'dsdtrko_'//scalnum
       is = is + 1
-    end if
+    end do
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     io_vars(is+1)%arr => surfx_n; c_io_vars(is+1) = 'surfx_n'
     io_vars(is+2)%arr => surfy_n; c_io_vars(is+2) = 'surfy_n'
@@ -490,20 +511,26 @@ program cans
       is = is + 3
       if(is_vof_sweep_transport) then
         !
-        ! (the transported velocity and scalar of the previous time step replace the previous scalar)
+        ! (the transported velocity and scalars of the previous time step replace the previous scalars)
         !
         nh_io(:,is+1:is+3) = nh_v
         io_vars(is+1)%arr => uadv; c_io_vars(is+1) = 'uadv'
         io_vars(is+2)%arr => vadv; c_io_vars(is+2) = 'vadv'
         io_vars(is+3)%arr => wadv; c_io_vars(is+3) = 'wadv'
         is = is + 3
-        if(nscal > 0) then
+        do iscal=1,nscal
+          write(scalnum,'(i3.3)') iscal
           nh_io(:,is+1) = nh_s
-          io_vars(is+1)%arr => sadv; c_io_vars(is+1) = 'sadv'
-        end if
-      else if(nscal > 0) then
-        nh_io(:,is+1) = nh_s
-        io_vars(is+1)%arr => so; c_io_vars(is+1) = 'so'
+          io_vars(is+1)%arr => scalars(iscal)%sadv; c_io_vars(is+1) = 'sadv_'//scalnum
+          is = is + 1
+        end do
+      else
+        do iscal=1,nscal
+          write(scalnum,'(i3.3)') iscal
+          nh_io(:,is+1) = nh_s
+          io_vars(is+1)%arr => scalars(iscal)%so; c_io_vars(is+1) = 'so_'//scalnum
+          is = is + 1
+        end do
       end if
     end if
   end if
@@ -520,7 +547,9 @@ program cans
   dvdtrko(:,:,:) = 0.
   dwdtrko(:,:,:) = 0.
   dpsidtrko(:,:,:) = 0.
-  if(nscal > 0) dsdtrko(:,:,:) = 0.
+  do iscal=1,nscal
+    scalars(iscal)%dsdtrko(:,:,:) = 0.
+  end do
   if(is_ifc_split) then
     uo(:,:,:) = 0.
     vo(:,:,:) = 0.
@@ -528,17 +557,19 @@ program cans
     uadv(:,:,:) = 0.
     vadv(:,:,:) = 0.
     wadv(:,:,:) = 0.
-    if(nscal > 0) then
-      so(:,:,:) = 0.
-      sadv(:,:,:) = 0.
-    end if
+    do iscal=1,nscal
+      scalars(iscal)%so(:,:,:) = 0.
+      scalars(iscal)%sadv(:,:,:) = 0.
+    end do
   end if
   wall_force_old(:) = 0.
   is_first = .true.
 #if defined(_CONSTANT_COEFFS_POISSON)
   pn(:,:,:) = 0.
 #endif
-  if(nscal > 0) s(:,:,:) = 0.
+  do iscal=1,nscal
+    scalars(iscal)%val(:,:,:) = 0.
+  end do
   psi(:,:,:) = 0.
   psio(:,:,:) = 0.
   kappa(:,:,:) = 0.
@@ -554,7 +585,9 @@ program cans
     time = 0.
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                   bforce,is_wallturb,time,u,v,w,p)
-    if(nscal > 0) call initscal(inisca,bcsca,ng,lo,nh_s,nh_g,l,dl,zc,dzf,s)
+    do iscal=1,nscal
+      call initscal(iniscal(iscal),bcscal(:,:,iscal),ng,lo,nh_s,nh_g,l,dl,zc,dzf,scalars(iscal)%val)
+    end do
     call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
     if(myid == 0) print*, '*** Initial condition successfully set ***'
   else
@@ -630,20 +663,21 @@ program cans
   end do
   if(.not.is_first) call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,po)
 #endif
-  if(nscal > 0) then
-    !$acc enter data copyin(s,dsdtrko) async(1)
-    call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
+  do iscal=1,nscal
+    s => scalars(iscal)
+    !$acc enter data copyin(s%val,s%dsdtrko) async(1)
+    call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%val)
     if(is_ifc_split) then
-      !$acc enter data copyin(so,sadv) async(1)
+      !$acc enter data copyin(s%so,s%sadv) async(1)
       if(.not.is_first) then
         if(is_vof_sweep_transport) then
-          call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,sadv)
+          call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%sadv)
         else
-          call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,so)
+          call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%so)
         end if
       end if
     end if
-  end if
+  end do
   !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
   if(is_sdf_normals) then
     !$acc enter data create(phi) async(1)
@@ -656,9 +690,9 @@ program cans
   write(fldnum,'(i7.7)') istep
   !$acc wait ! not needed but to prevent possible future issues
   !$acc update self(u,v,w,p,psi,kappa)
-  if(nscal > 0) then
-    !$acc update self(s)
-  end if
+  do iscal=1,nscal
+    !$acc update self(scalars(iscal)%val)
+  end do
   if(is_output_due(istep,iout1d,tout1d,time,time,restart)) then
     include 'out1d.h90'
   end if
@@ -669,7 +703,8 @@ program cans
     include 'out3d.h90'
   end if
   !
-  call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+  call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps, &
+             ka12,cp12)
   dt = min(cfl*dt_cfl,dtmax)
   if(dt_f > 0.) then
     if(dt_f > dt) then
@@ -727,7 +762,7 @@ program cans
     if(is_track_interface) then
       call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
-                       istep,uo,vo,wo,uadv,vadv,wadv,s,sadv)
+                       istep,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     else
       !$acc parallel loop collapse(3) default(present) async(1)
       !$OMP parallel do   collapse(3) DEFAULT(shared)
@@ -741,29 +776,32 @@ program cans
         end do
       end do
       call ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
-                                  u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,s,sadv)
+                                  u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     end if
-    if(nscal > 0) then
-      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,psi,u,v,w, &
-                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,sadv,uadv,vadv,wadv)
+    do iscal=1,nscal
+      s => scalars(iscal)
+      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource(iscal),rho12,ka12(:,iscal),cp12(:,iscal), &
+                   alpha0(iscal),psi,u,v,w, &
+                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,s%dsdtrko,s%val,s%so,s%sadv,uadv,vadv,wadv)
       if(is_impdiff) then
         if(is_impdiff_1d) then
-          call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcsca,bcsca,dzc,dzci,dzfi,0.5_rp*dt,rho12*cp12,ka12,psi,s)
+          call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcscal(:,:,iscal),bcscal(:,:,iscal),dzc,dzci,dzfi,0.5_rp*dt, &
+                                    rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
         else if(is_impdiff_cc) then
-          call impdiff_cc_scal_updt(n,nh_s,0.5_rp*dt,s)
-          call solve_helmholtz(n,nh_s,ng,hi,arrplans,normffts,-0.5*alpha0*dt, &
-                               lambdaxys,as,bs,cs,rhsbs%x,rhsbs%y,rhsbs%z,is_bound,cbcsca,['c','c','c'],s)
+          call impdiff_cc_scal_updt(n,nh_s,0.5_rp*dt,s%val)
+          call solve_helmholtz(n,nh_s,ng,hi,s%arrplan,s%normfft,-0.5*alpha0(iscal)*dt, &
+                               s%lambdaxy,s%a,s%b,s%c,s%rhsb%x,s%rhsb%y,s%rhsb%z,is_bound,cbcscal(:,:,iscal),['c','c','c'],s%val)
 #if !defined(_CONSTANT_COEFFS_POISSON)
         else
-          call impdiff_vc_scal_updt(n,nh_s,nh_psi,0.5_rp*dt,rho12*cp12,psi,s)
-          call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
-          call impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbcsca,cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dt, &
-                                     rho12*cp12,ka12,psi,s)
+          call impdiff_vc_scal_updt(n,nh_s,nh_psi,0.5_rp*dt,rho12*cp12(:,iscal),psi,s%val)
+          call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%val)
+          call impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbcscal(:,:,iscal),cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dt, &
+                                     rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
 #endif
         end if
       end if
-      call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,s)
-    end if
+      call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%val)
+    end do
     if(.not.is_solve_ns) then
       call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                     bforce,is_wallturb,time,u,v,w,p)
@@ -787,7 +825,7 @@ program cans
         call bulk_mean_12_stag(n,nh_psi,nh_g,3,grid_vol_ratio_c,wzc,psi,rho12,rho_av(3))
       call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
               grid_vol_ratio_c,grid_vol_ratio_f, &
-              dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+              dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,scalars(1)%val, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
@@ -890,7 +928,8 @@ program cans
     call ifc_update_params(n,nh_v,u,v,w,gam)
     if(icheck > 0.and.mod(istep,max(icheck,1)) == 0) then
       if(myid == 0) print*, 'Checking stability and divergence...'
-      call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps,ka12,cp12)
+      call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps, &
+                 ka12,cp12)
       dt = min(cfl*dt_cfl,dtmax)
       if(dt_f > 0.) then
         if(dt_f > dt) then
@@ -960,25 +999,25 @@ program cans
     if(is_output_due(istep,iout1d,tout1d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-      if(nscal > 0) then
-        !$acc update self(s)
-      end if
+      do iscal=1,nscal
+        !$acc update self(scalars(iscal)%val)
+      end do
       include 'out1d.h90'
     end if
     if(is_output_due(istep,iout2d,tout2d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-      if(nscal > 0) then
-        !$acc update self(s)
-      end if
+      do iscal=1,nscal
+        !$acc update self(scalars(iscal)%val)
+      end do
       include 'out2d.h90'
     end if
     if(is_output_due(istep,iout3d,tout3d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-      if(nscal > 0) then
-        !$acc update self(s)
-      end if
+      do iscal=1,nscal
+        !$acc update self(scalars(iscal)%val)
+      end do
       include 'out3d.h90'
     end if
     if((isave > 0.or.tsave > 0.).and.(.not.kill).and.(is_output_due(istep,isave,tsave,time_start,time).or.is_done)) then
@@ -995,14 +1034,14 @@ program cans
       end if
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
-      if(nscal > 0) then
-        !$acc update self(s)
-      end if
+      do iscal=1,nscal
+        !$acc update self(scalars(iscal)%val)
+      end do
       if(is_full_restart) then
         !$acc update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
-        if(nscal > 0) then
-          !$acc update self(dsdtrko)
-        end if
+        do iscal=1,nscal
+          !$acc update self(scalars(iscal)%dsdtrko)
+        end do
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
         !$acc update self(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
@@ -1011,9 +1050,9 @@ program cans
           if(is_vof_sweep_transport) then
             !$acc update self(uadv,vadv,wadv)
           end if
-          if(nscal > 0) then
-            !$acc update self(so,sadv)
-          end if
+          do iscal=1,nscal
+            !$acc update self(scalars(iscal)%so,scalars(iscal)%sadv)
+          end do
         end if
       end if
       is_save_tmp = trim(io_ext) /= '.bp'
@@ -1097,7 +1136,9 @@ program cans
     call fftend(arrplanu)
     call fftend(arrplanv)
     call fftend(arrplanw)
-    if(nscal > 0) call fftend(arrplans)
+    do iscal=1,nscal
+      call fftend(scalars(iscal)%arrplan)
+    end do
   end if
 #if !defined(_CONSTANT_COEFFS_POISSON)
   call solver_vc_end

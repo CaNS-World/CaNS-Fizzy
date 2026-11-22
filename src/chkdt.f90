@@ -27,11 +27,11 @@ module mod_chkdt
     real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
     real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
     real(rp), intent(out) :: dtmax
-    real(rp), intent(in ), optional :: ka12(2),cp12(2)
+    real(rp), intent(in ), optional :: ka12(:,:),cp12(:,:) ! (2,nscal)
     real(rp) :: dxi,dyi,dzi
     real(rp) :: ux,uy,uz,vx,vy,vz,wx,wy,wz
     real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dtipsi,dti,dl2i
-    integer :: i,j,k
+    integer :: i,j,k,is
     real(rp), save :: dlmin,dzmin
     logical , save :: is_first = .true.
     !
@@ -98,8 +98,12 @@ module mod_chkdt
       if(is_track_interface.and.dtipsi > 0.) dtmax = min(dtmax,dtipsi**(-1))
     end if
     if(nscal > 0) then
-      if(present(ka12) .and. present(cp12)) &
-        dti = maxval(ka12(:)/(rho12(:)*cp12(:)))*dl2i
+      if(present(ka12) .and. present(cp12)) then
+        dti = 0.
+        do is=1,nscal
+          dti = max(dti,maxval(ka12(:,is)/(rho12(:)*cp12(:,is)))*dl2i)
+        end do
+      end if
       if(is_impdiff.and..not.is_impdiff_1d) dti = 0.
       if(dti == 0.) dti = 1.
       dtmax = min(dtmax,dti**(-1))

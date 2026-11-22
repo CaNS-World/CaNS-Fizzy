@@ -5,7 +5,7 @@ def test_dht():
     #
     # testing u
     #
-    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("data/","sca_fld_0050000.bin",np.array([1,1,1]))
+    data,xp,yp,zp,xu,yv,zw = read_single_field_binary("data/","sca_001_fld_0050000.bin",np.array([1,1,1]))
     islice = np.size(data[0,0,:])//2
     tw = -0.5
     l  = 1.

@@ -25,10 +25,10 @@ dims(1:2) = 2, 2, ipencil_axis = 2
 /
 
 &scalar
-inisca          = 'uni'
-cbcsca(0:1,1:3) = 'P','P',  'P','P',  'P','P'
-bcsca(0:1,1:3)  =  0.,0.,   0.,0.,   1.,1.
-ssource         = 0.
+iniscal(1)         = 'uni'
+cbcscal(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
+bcscal(0:1,1:3,1)  =  0.,0.,   0.,0.,   1.,1.
+ssource(1)         = 0.
 is_boussinesq_buoyancy = T
 /
 
@@ -41,8 +41,8 @@ bcpsi(0:1,1:3)    =  0.,0.,   0.,0.,   0.,0.
 rho12(1:2)        =  1000., 0.001
 mu12(1:2)         =  0., 0.
 sigma             =  0.
-ka12(1:2)         =  0., 0.
-cp12(1:2)         =  1., 1.
+ka12(1:2,1)       =  0., 0.
+cp12(1:2,1)       =  1., 1.
 beta12(1:2)       =  0., 0.
 psi_thickness_factor = 0.51
 /
