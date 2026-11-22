@@ -44,7 +44,8 @@ module mod_vof_split
   use mod_thinc     , only: thinc_intercept,thinc_slab
   implicit none
   private
-  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics
+  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics, &
+         vof_split_contact_angle
   !
   real(rp), parameter :: cfl_max = 0.5_rp    ! maximum CFL number of a sweep
   real(rp), parameter :: f_eps   = 1.e-12_rp ! cells with f_eps < f < 1-f_eps are reconstructed
@@ -63,6 +64,14 @@ module mod_vof_split
   logical , dimension(3) :: is_active                 ! false along the directions in which the problem is invariant
   logical  :: is_thinc   = .false.                    ! THINC reconstruction instead of the geometric one
   real(rp) :: thinc_beta = 1._rp                      ! its sharpness
+  !
+  ! contact angles at walls, with the geometric reconstruction (see `vof_split_contact_angle`)
+  !
+  integer , parameter :: nr_ca = 2                    ! search radius (along the wall) for the plane of a ghost cell
+  logical :: is_ca_any = .false.                      ! any wall with a contact angle other than 90 degrees
+  logical , dimension(0:1,3) :: is_ca = .false.       ! walls with a contact angle other than 90 degrees
+  real(rp), dimension(0:1,3) :: ca_cos = 0._rp,ca_sin = 1._rp ! cosine and sine of the contact angles
+  real(rp), allocatable, dimension(:,:,:) :: ca_pl    ! planes of the wall cells (alpha,m; m = 0 without interface)
   !
   ! transport of momentum (and scalar) along with the sweeps
   !
@@ -88,17 +97,19 @@ module mod_vof_split
                                                 ! from neighbouring height functions, and without estimate
   !$acc declare create(kappa_stats)
   contains
-  subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_sweep_transport,is_scalar)
+  subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_sweep_transport,is_scalar,theta_c)
     !
     ! allocates the work arrays; `is_thinc_reconstruction` selects the THINC reconstruction, of sharpness
     ! `beta`, instead of the geometric one, and `is_sweep_transport` the transport of momentum (and of the
-    ! scalar, if `is_scalar`) along with the sweeps
+    ! scalar, if `is_scalar`) along with the sweeps; `theta_c` are the contact angles at the walls (in degrees,
+    ! measured through phase 1), imposed here with the geometric reconstruction
     !
     implicit none
     integer , intent(in), dimension(3) :: ng,n
     integer , intent(in)               :: nh_psi
     logical , intent(in)               :: is_thinc_reconstruction,is_sweep_transport,is_scalar
     real(rp), intent(in)               :: beta
+    real(rp), intent(in), dimension(0:1,3) :: theta_c
     integer :: i,j,k
     !
     is_thinc   = is_thinc_reconstruction
@@ -148,6 +159,19 @@ module mod_vof_split
           end do
         end do
       end do
+    end if
+    !
+    ! contact angles (walls with an angle other than 90 degrees within round-off)
+    !
+    if(.not.is_thinc) then
+      ca_cos(:,:) = cos(theta_c(:,:)*acos(-1._rp)/180._rp)
+      ca_sin(:,:) = sin(theta_c(:,:)*acos(-1._rp)/180._rp)
+      is_ca(:,:)  = abs(ca_cos(:,:)) > 1.e-12_rp
+      is_ca_any   = any(is_ca(:,:))
+      if(is_ca_any) then
+        allocate(ca_pl(0:3,1-nh_psi:maxval(n(:))+nh_psi,1-nh_psi:maxval(n(:))+nh_psi))
+        !$acc enter data create(ca_pl)
+      end if
     end if
     !$acc update device(clip_vol,fmin_raw,fmax_raw)
     !$acc parallel loop collapse(3) default(present) async(1)
@@ -318,6 +342,7 @@ module mod_vof_split
             call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi)
           end select
           call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
+          call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
         end if
         if(is_sweep) then
           select case(idir)
@@ -881,6 +906,156 @@ module mod_vof_split
       qtr = qtr+dq
     end if
   end function donor_value
+  !
+  subroutine vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
+    !
+    ! contact angles at walls (approach of S. Afkhami & M. Bussmann, Int. J. Numer. Methods Fluids 57 (2008)
+    ! 453--472 and 61 (2009) 827--847, through the volume fractions of the ghost cells): the ghost cells of a
+    ! wall with contact angle theta (measured through phase 1) take the volume fractions of the interface
+    ! extended into the wall at that angle; in each wall cell with an interface, the plane has the volume
+    ! fraction of the cell and the normal n = sin(theta)*t + cos(theta)*e (pointing out of phase 1), with t the
+    ! unit wall-tangential part of the MYC normal (computed with the mirrored ghost cells of the Neumann
+    ! condition) and e the unit normal to the wall pointing into the domain; each ghost cell takes the plane of
+    ! the nearest wall cell with an interface along the wall (within nr_ca cells; otherwise, the mirrored value
+    ! is kept); the normals of the cells next to the wall (interface reconstruction) and the height functions
+    ! (curvature) then see the contact angle; the ghost cells do not enter the advection (no flux through a
+    ! wall), such that the volume is conserved
+    !
+    ! to be called after the boundary conditions of the volume fraction are imposed; the halo cells of the
+    ! ghost layers along the wall are then updated without reimposing the Neumann condition at the walls
+    ! with a contact angle (boundary type 'C', which `boundp` leaves as it is); at an edge with another wall,
+    ! the ghost cells are mirrored about it
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf
+    character(len=1), intent(in), dimension(0:1,3) :: cbcpsi
+    real(rp), intent(in   ), dimension(0:1,3) :: bcpsi
+    integer , intent(in   ), dimension(0:1,3) :: nb
+    logical , intent(in   ), dimension(0:1,3) :: is_bound
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), dimension(-1:1,-1:1,-1:1) :: c3
+    real(rp), dimension(-1:1) :: dz3
+    real(rp), dimension(3) :: m
+    logical , dimension(3) :: act
+    character(len=1), dimension(0:1,3) :: cbc_ca
+    real(rp) :: dx,dy,dz,cs,sn,fw,tn,d2,d2b,n1,n2,n3,o3,s3
+    integer  :: id,is,da,db,iw,se,ia,ib,ip,iq,l,ic,jc,kc,i,j,k,ipb,iqb,kk,na,nb_,gi,gj,gk,pi,pj,pk,ig
+    logical  :: is_act1,is_act2,is_act3
+    !
+    if(.not.is_ca_any) return
+    dx = dl(1)
+    dy = dl(2)
+    is_act1 = is_active(1)
+    is_act2 = is_active(2)
+    is_act3 = is_active(3)
+    do id=1,3
+      do is=0,1
+        if(.not.(is_ca(is,id).and.is_bound(is,id))) cycle
+        da = merge(2,1,id == 1) ! directions along the wall (da < db)
+        db = merge(2,3,id == 3)
+        na = n(da)
+        nb_ = n(db)
+        iw = merge(1,n(id),is == 0) ! index of the wall cells
+        se = merge(1,-1,is == 0)    ! orientation of the normal to the wall pointing into the domain
+        cs = ca_cos(is,id)
+        sn = ca_sin(is,id)
+        !
+        ! planes of the wall cells with an interface
+        !
+        !$acc parallel loop gang vector collapse(2) default(present) private(c3,dz3,m,act) async(1)
+        do ib=2-nh_psi,nb_+nh_psi-1
+          do ia=2-nh_psi,na+nh_psi-1
+            i = merge(iw,ia,id == 1)
+            j = merge(ia,merge(iw,ib,id == 2),id == 1)
+            k = merge(iw,ib,id == 3)
+            fw = psi(i,j,k)
+            ca_pl(0,ia,ib) = 0._rp
+            ca_pl(1,ia,ib) = 0._rp
+            ca_pl(2,ia,ib) = 0._rp
+            ca_pl(3,ia,ib) = 0._rp
+            if(fw > f_eps .and. fw < 1._rp-f_eps) then
+              act(:) = [is_act1,is_act2,is_act3]
+              do kc=-1,1
+                do jc=-1,1
+                  do ic=-1,1
+                    c3(ic,jc,kc) = psi(i+ic,j+jc,k+kc)
+                  end do
+                end do
+                dz3(kc) = dzf(k+kc)
+              end do
+              call plic_normal_myc(c3,dx,dy,dz3,act,m(1),m(2),m(3))
+              dz = dz3(0)
+              n1 = merge(0._rp,m(1)/dx,id == 1) ! wall-tangential part of the unit normal
+              n2 = merge(0._rp,m(2)/dy,id == 2)
+              n3 = merge(0._rp,m(3)/dz,id == 3)
+              tn = sqrt(n1**2+n2**2+n3**2)
+              if(tn > 0._rp) then
+                n1 = merge(cs*se,sn*n1/tn,id == 1)
+                n2 = merge(cs*se,sn*n2/tn,id == 2)
+                n3 = merge(cs*se,sn*n3/tn,id == 3)
+                ca_pl(1,ia,ib) = n1*dx
+                ca_pl(2,ia,ib) = n2*dy
+                ca_pl(3,ia,ib) = n3*dz
+                ca_pl(0,ia,ib) = plic_alpha(n1*dx,n2*dy,n3*dz,fw)
+              end if
+            end if
+          end do
+        end do
+        !
+        ! ghost cells: volume fraction of the plane of the nearest wall cell with an interface
+        !
+        !$acc parallel loop collapse(3) default(present) async(1)
+        do l=1,nh_psi
+          do ib=1,nb_
+            do ia=1,na
+              ipb = 0; iqb = 0
+              d2b = huge(1._rp)
+              do iq=-nr_ca,nr_ca
+                do ip=-nr_ca,nr_ca
+                  d2 = real(ip**2+iq**2,rp)
+                  if(d2 < d2b .and. abs(ca_pl(1,ia+ip,ib+iq))+abs(ca_pl(2,ia+ip,ib+iq))+abs(ca_pl(3,ia+ip,ib+iq)) > 0._rp) then
+                    d2b = d2; ipb = ip; iqb = iq
+                  end if
+                end do
+              end do
+              if(d2b < huge(1._rp)) then
+                !
+                ! ghost cell (gi,gj,gk), and wall cell (pi,pj,pk) with the plane
+                !
+                ig = iw-se*l
+                gi = merge(ig,ia,id == 1)
+                gj = merge(ia,merge(ig,ib,id == 2),id == 1)
+                gk = merge(ig,ib,id == 3)
+                pi = merge(iw,ia+ipb,id == 1)
+                pj = merge(ia+ipb,merge(iw,ib+iqb,id == 2),id == 1)
+                pk = merge(iw,ib+iqb,id == 3)
+                !
+                ! box of the ghost cell in the cell-scaled coordinates of the wall cell (non-uniform along z)
+                !
+                o3 = 0._rp
+                do kk=min(gk,pk),max(gk,pk)-1
+                  o3 = o3+dzf(kk)
+                end do
+                o3 = sign(o3,real(gk-pk,rp))/dzf(pk)
+                s3 = dzf(gk)/dzf(pk)
+                psi(gi,gj,gk) = plic_volume_box(ca_pl(1,ia+ipb,ib+iqb),ca_pl(2,ia+ipb,ib+iqb),ca_pl(3,ia+ipb,ib+iqb), &
+                                                ca_pl(0,ia+ipb,ib+iqb),real(gi-pi,rp),real(gj-pj,rp),o3,1._rp,1._rp,s3)
+              end if
+            end do
+          end do
+        end do
+      end do
+    end do
+    !
+    ! halo cells of the ghost layers along the walls (on all the tasks)
+    !
+    cbc_ca(:,:) = cbcpsi(:,:)
+    where(is_ca(:,:)) cbc_ca(:,:) = 'C'
+    call boundp(cbc_ca,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
+  end subroutine vof_split_contact_angle
   !
   pure subroutine donor_fractions(mx,my,mz,vol,idir,is_thinc_rec,beta,cfl_p,cfl_m,frac_p,frac_m)
     !

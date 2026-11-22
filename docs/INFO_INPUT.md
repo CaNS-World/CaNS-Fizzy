@@ -46,13 +46,8 @@ is_boussinesq_buoyancy = F
 &two_fluid
 inipsi            = 'bub3'
 cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'N','N'
-cbcnor(0:1,1:3,1) = 'P','P',  'P','P',  'N','N'
-cbcnor(0:1,1:3,2) = 'P','P',  'P','P',  'N','N'
-cbcnor(0:1,1:3,3) = 'P','P',  'P','P',  'D','D'
 bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
-bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
-bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
-bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
+contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
 sigma             =  1.
 rho12(1:2)        =  1., 1.
 mu12(1:2)         =  0.01, 0.01
@@ -463,16 +458,10 @@ Finally, if the `spheres.in` file is not specified, the solver will initialize a
 
 ```fortran
 cbcpsi(0:1,1:3)   = 'P','P',  'P','P',  'P','P'
-cbcnor(0:1,1:3,1) = 'P','P',  'P','P',  'P','P'
-cbcnor(0:1,1:3,2) = 'P','P',  'P','P',  'P','P'
-cbcnor(0:1,1:3,3) = 'P','P',  'P','P',  'P','P'
 bcpsi(0:1,1:3)    =  0.,0. ,   0.,0. ,   0.,0.
-bcnor(0:1,1:3,1)  =  0.,0.,    0.,0.,    0.,0.
-bcnor(0:1,1:3,2)  =  0.,0.,    0.,0.,    0.,0.
-bcnor(0:1,1:3,3)  =  0.,0.,    0.,0.,    0.,0.
 ```
 
-These lines set the boundary conditions (BC) for the volume fraction of phase 1 (`cbcpsi`) and for the three cartesian components of the interface normal (`cbcnor`).
+These lines set the boundary conditions (BC) for the volume fraction of phase 1 (`cbcpsi`).
 
 The **type** (BC) is set by a row of six characters, `X0 X1  Y0 Y1  Z0 Z1` where,
 
@@ -486,10 +475,24 @@ The following options are available:
 * `D` Dirichlet
 * `N` Neumann
 
-The corresponding BC **values** (dummy for a periodic direction) are set in `bcpsi` for the volume fraction of phase 1 and in `bcnor` for the components of the interface normal.
-For consistency, the components of the interface normal should be periodic when the volume fraction boundary conditions are periodic.
+The corresponding BC **values** (dummy for a periodic direction) are set in `bcpsi`.
 
-Note: to conserve mass in the domain, a solid wall boundary requires a homogeneous Neumann BC for the volume fraction and a homogeneous Dirichlet BC for the wall-normal component of the interface normal. In this case, the BC for the wall-tangential components of the interface normal should be set to homogeneous Neumann.
+The conditions of the interface normal and of the curvature follow from these: periodic where the volume fraction is periodic, and, at a boundary with a Neumann condition for the volume fraction, zero wall-normal component of the interface normal and zero gradient of its other two components (the interface meets the wall at 90 degrees).
+
+Note: to conserve mass in the domain, a solid wall boundary requires a homogeneous Neumann BC for the volume fraction.
+
+---
+
+```fortran
+contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
+```
+
+This optional line sets a **static contact angle** on each boundary, in degrees and measured through phase 1, in the order `X0 X1  Y0 Y1  Z0 Z1` (default: `90.`). An angle other than 90 degrees requires a wall (homogeneous Neumann BC for the volume fraction) along a direction with more than two grid cells. The volume fraction keeps its condition at the wall, so that the volume is conserved; the angle enters through the geometry of the interface next to the wall:
+
+* with `ifc_reconstruction = 'plic'`, the ghost cells of the wall take the volume fractions of the interface extended into the wall at that angle (Afkhami & Bussmann, *Int. J. Numer. Methods Fluids* 57 (2008) 453–472 and 61 (2009) 827–847), which the interface reconstruction and the height-function curvature next to the wall then see;
+* with `acdi` and `thinc`, the interface normal at the wall is rotated to that angle (the wall adhesion of Brackbill et al., *J. Comput. Phys.* 100 (1992) 335–354), which the normals and the curvature of the cells next to the wall then see.
+
+The contact line moves with the flow next to the wall.
 
 ---
 

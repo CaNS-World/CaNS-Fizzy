@@ -128,7 +128,7 @@ module mod_two_fluid
     call MPI_ALLREDUCE(MPI_IN_PLACE,mean,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine bulk_mean_12_stag
   !
-  subroutine cmpt_norm_curv_youngs(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+  subroutine cmpt_norm_curv_youngs(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa,is_bound,theta_c)
     !
     ! computes the normals and curvature based on a volume-of-fluid
     ! or level-set field using finite-differences based on Youngs method
@@ -136,6 +136,14 @@ module mod_two_fluid
     ! the normalized normals at the cell vertices are computed once and stored, and then averaged to the
     ! cell centers and differentiated for the curvature (rather than computing the eight vertex normals of
     ! each cell, i.e., each vertex normal eight times)
+    !
+    ! contact angles `theta_c` (in degrees, measured through phase 1) other than 90 degrees are imposed at
+    ! the walls held by the task (`is_bound`) as in the wall adhesion of Brackbill et al., J. Comput. Phys. 100
+    ! (1992) 335--354: the normal at the vertices on the wall, which points into phase 1 and is tangential
+    ! to the wall for a field with zero normal gradient, is rotated to n = sin(theta)*t - cos(theta)*e,
+    ! with t its unit tangential part and e the unit normal to the wall pointing into the domain; the
+    ! normals and the curvature of the cells next to the wall then see the contact angle, while the field
+    ! itself keeps its condition at the wall
     !
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
@@ -145,7 +153,11 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
     real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz,kappa
+    logical , intent(in ), dimension(0:1,3), optional :: is_bound
+    real(rp), intent(in ), dimension(0:1,3), optional :: theta_c
     real(rp), allocatable, dimension(:,:,:), save :: vnx,vny,vnz ! normals at the vertices (i+1/2,j+1/2,k+1/2)
+    real(rp) :: cs,sn,cn,tn
+    integer  :: idir,ib,iw
     real(rp) :: psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp
     real(rp) :: mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8, &
                 my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8, &
@@ -188,6 +200,52 @@ module mod_two_fluid
         end do
       end do
     end do
+    !
+    ! contact angles: normals at the vertices on the walls
+    !
+    if(present(theta_c)) then
+      do idir=1,3
+        do ib=0,1
+          cs = cos(theta_c(ib,idir)*acos(-1._rp)/180._rp)
+          if(.not.is_bound(ib,idir) .or. abs(cs) <= 1.e-12_rp) cycle
+          sn = sin(theta_c(ib,idir)*acos(-1._rp)/180._rp)
+          cn = -cs*merge(1._rp,-1._rp,ib == 0) ! component along the direction, for a unit tangential part
+          iw = ib*n(idir)                      ! index of the vertices on the wall
+          select case(idir)
+          case(1)
+            !$acc parallel loop collapse(2) default(present) private(tn) async(1)
+            do k=0,n(3)
+              do j=0,n(2)
+                tn = sqrt(vny(iw,j,k)**2+vnz(iw,j,k)**2)
+                vnx(iw,j,k) = cn*tn
+                vny(iw,j,k) = sn*vny(iw,j,k)
+                vnz(iw,j,k) = sn*vnz(iw,j,k)
+              end do
+            end do
+          case(2)
+            !$acc parallel loop collapse(2) default(present) private(tn) async(1)
+            do k=0,n(3)
+              do i=0,n(1)
+                tn = sqrt(vnx(i,iw,k)**2+vnz(i,iw,k)**2)
+                vnx(i,iw,k) = sn*vnx(i,iw,k)
+                vny(i,iw,k) = cn*tn
+                vnz(i,iw,k) = sn*vnz(i,iw,k)
+              end do
+            end do
+          case(3)
+            !$acc parallel loop collapse(2) default(present) private(tn) async(1)
+            do j=0,n(2)
+              do i=0,n(1)
+                tn = sqrt(vnx(i,j,iw)**2+vny(i,j,iw)**2)
+                vnx(i,j,iw) = sn*vnx(i,j,iw)
+                vny(i,j,iw) = sn*vny(i,j,iw)
+                vnz(i,j,iw) = cn*tn
+              end do
+            end do
+          end select
+        end do
+      end do
+    end if
     !
     ! normals and curvature at the cell centers
     !

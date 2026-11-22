@@ -24,7 +24,7 @@ module mod_interface_capturing
   !
   use mod_types
   use mod_common_mpi, only: myid
-  use mod_param     , only: datadir,ng,nb,is_bound,cbcvel,bcvel,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur, &
+  use mod_param     , only: datadir,ng,nb,is_bound,cbcvel,bcvel,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur,contact_angle, &
                             acdi_gam_factor,acdi_gam_min,vof_thinc_beta, &
                             rho12,cp12,nscal,cbcsca,bcsca, &
                             is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_sdf_normals,is_vof_sweep_transport
@@ -34,7 +34,7 @@ module mod_interface_capturing
   use mod_rk        , only: rk_2fl
   use mod_acdi      , only: acdi_set_epsilon
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
-  use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature, &
+  use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_contact_angle, &
                             vof_split_diagnostics
   use mod_thinc     , only: thinc_cmpt_phi
   implicit none
@@ -96,7 +96,8 @@ module mod_interface_capturing
     call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
     !$acc wait
     if(is_ifc_split) then
-      call vof_split_init(ng,n,nh_psi,is_ifc_thinc,vof_thinc_beta,is_vof_sweep_transport,nscal > 0)
+      call vof_split_init(ng,n,nh_psi,is_ifc_thinc,vof_thinc_beta,is_vof_sweep_transport,nscal > 0,contact_angle)
+      call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
       call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub,kstats)
       if(myid == 0) print*, 'Direction-split advection. Initial volume of phase 1: ', vol0
       !$acc parallel loop collapse(3) default(present) async(1)
@@ -238,9 +239,10 @@ module mod_interface_capturing
         else
           call thinc_cmpt_phi(n,nh_psi,nh_ifc,vof_thinc_beta,psi,phi)
         end if
-        call cmpt_norm_curv(n,nh_ifc,nh_ifc,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa) ! (halo width of phi)
+        call cmpt_norm_curv(n,nh_ifc,nh_ifc,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa,is_bound,contact_angle) ! (halo
+                                                                                                    ! width of phi)
       else
-        call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
+        call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa,is_bound,contact_angle)
       end if
       call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
       call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)

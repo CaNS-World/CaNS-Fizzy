@@ -77,10 +77,11 @@ logical , protected :: is_boussinesq_buoyancy = .false.
 character(len=100), protected     :: inipsi
 character(len=1), protected, dimension(0:1,3)   ::  cbcpsi
 real(rp)        , protected, dimension(0:1,3)   ::   bcpsi
-character(len=1), protected, dimension(0:1,3)   ::  cbccur
-real(rp)        , protected, dimension(0:1,3)   ::   bccur
+character(len=1), protected, dimension(0:1,3)   ::  cbccur ! (not inputs: the conditions of the curvature and of the
+real(rp)        , protected, dimension(0:1,3)   ::   bccur !  interface normals follow from the others)
 character(len=1), protected, dimension(0:1,3,3) ::  cbcnor
 real(rp)        , protected, dimension(0:1,3,3) ::   bcnor
+real(rp)        , protected, dimension(0:1,3)   :: contact_angle ! static contact angle at walls, in degrees through phase 1
 real(rp), protected               :: sigma
 real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, dimension(2) :: ka12,cp12,beta12
@@ -168,7 +169,7 @@ contains
     implicit none
     character(len=255) :: input_file,filename
     integer, intent(in) :: myid
-    integer :: iunit,ierr,numarg
+    integer :: iunit,ierr,numarg,idir,ib
     character(len=1024) :: c_iomsg
     logical :: is_io_fallback
     namelist /dns/ &
@@ -206,7 +207,7 @@ contains
                      is_boussinesq_buoyancy
     namelist /two_fluid/ &
                         inipsi, &
-                        cbcpsi,cbcnor,bcnor,bcpsi, &
+                        cbcpsi,bcpsi,contact_angle, &
                         sigma,rho12,mu12, &
                         ka12,cp12,beta12, &
                         psi_thickness_factor, &
@@ -255,6 +256,7 @@ contains
     inipsi = 'uni'
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     cbccur(:,:) = 'P'; bccur(:,:) = 0.
+    contact_angle(:,:) = 90.
     sigma = 0.; rho12(:) = 1.; mu12(:) = 0.01
     ka12(:) = 0.01; cp12(:) = 1.; beta12(:) = 1.
     psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
@@ -429,6 +431,23 @@ contains
       !
       cbccur(:,:) = cbcpsi(:,:)
       bccur(:,:) = bcpre(:,:)
+      !
+      ! conditions of the interface normal, from those of the phase indicator: at a wall (zero gradient of
+      ! the phase indicator) the interface is normal to it, i.e., the wall-normal component of the interface
+      ! normal vanishes and the other two have zero gradient
+      !
+      do idir=1,3
+        do ib=0,1
+          select case(cbcpsi(ib,idir))
+          case('P')
+            cbcnor(ib,idir,:) = 'P'
+          case default
+            cbcnor(ib,idir,:) = 'N'
+            if(cbcpsi(ib,idir) == 'N') cbcnor(ib,idir,idir) = 'D'
+          end select
+        end do
+      end do
+      bcnor(:,:,:) = 0.
       rho0 = 1. ! reference density of the pressure splitting; one with the variable-coefficient solver, where it has no role
 #if defined(_CONSTANT_COEFFS_POISSON)
       rho0 = minval(rho12(:))
