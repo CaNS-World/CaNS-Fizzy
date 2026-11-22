@@ -267,6 +267,14 @@ The **last four rows** follow the same logic, but now for the BC **values** (dum
 ---
 
 ```fortran
+slip_length(0:1,1:3) = 0.,0.,   0.,0.,   0.,0.
+```
+
+This optional line sets a **Navier slip length** on each boundary, in the order `X0 X1  Y0 Y1  Z0 Z1` (default: `0.`, i.e., no slip). On a wall with a positive slip length `λ`, the wall-tangential velocity components satisfy `u_t = λ du_t/dn` (with `n` the normal pointing into the domain) instead of `u_t = 0`. The wall must be at rest, i.e., with `D` velocity BCs with zero values and an `N` pressure BC, and the diffusion must be explicit (`is_impdiff = F`).
+
+---
+
+```fortran
 bforce(1:3) = 0., 0., 0.
 is_forced(1:3) = T, F, F
 gacc(1:3) = 0., 0., 0.

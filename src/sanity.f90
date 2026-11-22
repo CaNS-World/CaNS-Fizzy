@@ -19,7 +19,8 @@ module mod_sanity
   use mod_initmpi   , only: initmpi
   use mod_initsolver, only: initsolver
   use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
-                            ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split,cbcpsi,bcpsi,contact_angle
+                            ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split,cbcpsi,bcpsi,contact_angle, &
+                            slip_length
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -100,6 +101,20 @@ module mod_sanity
     if(trim(ifc_reconstruction) == 'acdi' .and. is_ifc_split) then
       if(myid == 0)  print*, 'ERROR: the ACDI phase field (`ifc_reconstruction = acdi`) is advected with `ifc_advection = ab2`: &
                                      &the direction-split advection needs a volume fraction.'; call abortit
+    end if
+    !
+    ! Navier slip: at walls at rest only (Dirichlet velocity with zero values, Neumann pressure)
+    !
+    if(any(slip_length(:,:) < 0.)) then
+      if(myid == 0)  print*, 'ERROR: `slip_length` must not be negative.'; call abortit
+    end if
+    if(any(slip_length(:,:) > 0. .and. (any(cbcvel(:,:,:) /= 'D',dim=3) .or. any(bcvel(:,:,:) /= 0.,dim=3) .or. &
+                                        cbcpre(:,:) /= 'N'))) then
+      if(myid == 0)  print*, 'ERROR: a positive `slip_length` requires a wall at rest (Dirichlet conditions with &
+                                     &zero values for the velocity, Neumann condition for the pressure).'; call abortit
+    end if
+    if(any(slip_length(:,:) > 0.) .and. is_impdiff) then
+      if(myid == 0)  print*, 'ERROR: `slip_length` is not available yet with implicit diffusion.'; call abortit
     end if
     if(any(contact_angle(:,:) <= 0. .or. contact_angle(:,:) >= 180.)) then
       if(myid == 0)  print*, 'ERROR: contact angles must be between 0 and 180 degrees (exclusive).'; call abortit

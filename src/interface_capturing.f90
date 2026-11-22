@@ -24,7 +24,8 @@ module mod_interface_capturing
   !
   use mod_types
   use mod_common_mpi, only: myid
-  use mod_param     , only: datadir,ng,nb,is_bound,cbcvel,bcvel,cbcpsi,bcpsi,cbcnor,bcnor,cbccur,bccur,contact_angle, &
+  use mod_param     , only: datadir,ng,nb,is_bound,cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpsi,bcpsi,cbcnor,bcnor, &
+                            cbccur,bccur,contact_angle, &
                             acdi_gam_factor,acdi_gam_min,vof_thinc_beta, &
                             rho12,cp12,nscal,cbcsca,bcsca, &
                             is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_sdf_normals,is_vof_sweep_transport
@@ -160,7 +161,7 @@ module mod_interface_capturing
       if(.not.is_vof_sweep_transport) then
         call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
       else
-        call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
+        call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
         if(nscal > 0) call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,sadv)
       end if
     end if
@@ -196,7 +197,7 @@ module mod_interface_capturing
       call vof_split_advance(tm_coeff,is_first,.false.,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                              cbcpsi,bcpsi,nb,is_bound,rho12,rho12*cp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
                              uo,vo,wo,uadv,vadv,wadv,s,sadv)
-      call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
       if(nscal > 0) call boundp(cbcsca,n,nh_s,nh_g,bcsca,nb,is_bound,dl,dzc,sadv)
     else
       call vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,uadv,vadv,wadv,cfl)
