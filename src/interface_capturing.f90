@@ -36,7 +36,7 @@ module mod_interface_capturing
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
   use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature, &
                             vof_split_diagnostics
-  use mod_vof_thinc_qq, only: vof_thinc_cmpt_phi
+  use mod_thinc     , only: thinc_cmpt_phi
   implicit none
   private
   public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity,ifc_update_params,ifc_write_log
@@ -236,7 +236,7 @@ module mod_interface_capturing
         if(is_ifc_acdi) then
           call acdi_cmpt_phi(n,nh_psi,nh_ifc,seps,psi,phi)
         else
-          call vof_thinc_cmpt_phi(n,nh_psi,nh_ifc,vof_thinc_beta,psi,phi)
+          call thinc_cmpt_phi(n,nh_psi,nh_ifc,vof_thinc_beta,psi,phi)
         end if
         call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,phi,normx,normy,normz,kappa)
       else

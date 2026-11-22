@@ -4,7 +4,7 @@
 ! SPDX-License-Identifier: MIT
 !
 ! -
-module mod_vof_thinc_qq
+module mod_thinc
   !
   ! this module implements the THINC/QQ method from Bin & Xiao. J. of Comput. Phys 349 (2017): 415-440.
   !
@@ -19,7 +19,7 @@ module mod_vof_thinc_qq
   use mod_param, only: eps,is_sdf_normals
   implicit none
   private
-  public vof_thinc_transport_psi,vof_thinc_cmpt_phi
+  public thinc_transport_psi,thinc_cmpt_phi
   !
   ! constants relate to Gaussian quadrature
   !
@@ -36,8 +36,8 @@ module mod_vof_thinc_qq
 #endif
   !
   contains
-  subroutine vof_thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidt, &
-                                     flux_x,flux_y,flux_z)
+  subroutine thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidt, &
+                                 flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the VoF transport equation
     !
@@ -143,9 +143,9 @@ module mod_vof_thinc_qq
         end do
       end do
     end do
-  end subroutine vof_thinc_transport_psi
+  end subroutine thinc_transport_psi
   !
-  subroutine vof_thinc_cmpt_phi(n,nh_psi,nh_ifc,beta,psi,phi)
+  subroutine thinc_cmpt_phi(n,nh_psi,nh_ifc,beta,psi,phi)
     !
     ! compute the dimensionless signed-distance proxy implied by the
     ! midpoint THINC reconstruction
@@ -168,10 +168,10 @@ module mod_vof_thinc_qq
         end do
       end do
     end do
-  end subroutine vof_thinc_cmpt_phi
+  end subroutine thinc_cmpt_phi
   !
-  subroutine vof_thinc_transport_psi_gauss(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidt, &
-                                           flux_x,flux_y,flux_z)
+  subroutine thinc_transport_psi_gauss(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidt, &
+                                       flux_x,flux_y,flux_z)
     !
     ! compute right-hand side of the VoF transport equation
     !
@@ -281,7 +281,7 @@ module mod_vof_thinc_qq
         end do
       end do
     end do
-  end subroutine vof_thinc_transport_psi_gauss
+  end subroutine thinc_transport_psi_gauss
   !
   pure function cmpt_intercept(psi,beta,normx,normy,normz) result(d)
     !
@@ -359,4 +359,4 @@ module mod_vof_thinc_qq
     h = 1._rp/(1._rp + exp(-2._rp*beta*(nx*x + ny*y + nz*z + d)))
     !h = 0.5_rp*(1._rp+tanh(beta*(nx*x+ny*y+nz*z+d)))
   end function smooth_step_tanh
-end module mod_vof_thinc_qq
+end module mod_thinc

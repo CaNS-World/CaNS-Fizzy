@@ -349,7 +349,7 @@ module mod_rk
   subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &
                     psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
     use mod_acdi        , only: acdi_transport_pf
-    use mod_vof_thinc_qq, only: vof_thinc_transport_psi
+    use mod_thinc       , only: thinc_transport_psi
     use mod_two_fluid   , only: clip_field
     !
     ! AB2 scheme for time integration of the phase field
@@ -383,8 +383,8 @@ module mod_rk
       call acdi_transport_pf(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
                              psiflx_x,psiflx_y,psiflx_z)
     else
-      call vof_thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
-                                   psiflx_x,psiflx_y,psiflx_z)
+      call thinc_transport_psi(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,beta,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
+                               psiflx_x,psiflx_y,psiflx_z)
     end if
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)
