@@ -10,7 +10,7 @@ module mod_rk
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
-  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce
+  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,marker_fields
   use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0, &
                          dsigma_ds,s_ref,is_brackbill_normalization
   use mod_types
@@ -25,7 +25,7 @@ module mod_rk
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
                 psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
-                uadv,vadv,wadv)
+                uadv,vadv,wadv,fsx,fsy,fsz,mfields)
     !
     ! AB2 scheme for time integration of the momentum equations
     !
@@ -37,6 +37,9 @@ module mod_rk
     ! `vadv`, `wadv` (extrapolated to the middle of the time step), which is also the transported velocity;
     ! with `is_vof_sweep_transport`, the velocity has been transported along with the sweeps of the volume
     ! fraction instead, and `uadv`, `vadv`, `wadv` is the transported velocity
+    !
+    ! with several markers, `fsx`, `fsy`, `fsz` is the surface tension force summed over them (see `mom_xyz_oth`),
+    ! and `mfields` points to the phase indicator and curvature of each (see `mom_xyz_marangoni`)
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
@@ -68,12 +71,14 @@ module mod_rk
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)           :: u,v,w
     real(rp), intent(out  ), dimension(3,6)                 :: force_balance
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
+    real(rp), intent(in   ), dimension(:,:,:), optional :: fsx,fsy,fsz
+    type(marker_fields), intent(in), dimension(:), optional :: mfields
     real(rp), allocatable, dimension(:,:,:), save :: dudtrk,dvdtrk,dwdtrk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
     real(rp) :: factor1,factor2,factor12
     real(rp), dimension(3) :: taux,tauy,tauz,wall_force,wall_force_imp,dwall_force_old
-    integer :: i,j,k
+    integer :: i,j,k,m
     !
     factor1  = rkpar(1)*dt
     factor2  = rkpar(2)*dt
@@ -103,7 +108,7 @@ module mod_rk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                           surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                          force_balance(:,2),force_balance(:,3),force_balance(:,4),force_balance(:,6))
+                          force_balance(:,2),force_balance(:,3),force_balance(:,4),force_balance(:,6),fsx,fsy,fsz)
       where(is_forced(:))
         bforce_eff(:) = force_balance(:,1)-force_balance(:,2)-force_balance(:,3)-force_balance(:,4)
       end where
@@ -220,13 +225,19 @@ module mod_rk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                     factor12,u,v,w)
+                     factor12,u,v,w,fsx,fsy,fsz)
     !
-    ! surface tension that varies with the first scalar
+    ! surface tension that varies with the first scalar: the force of the interface, or that of each marker
+    ! (with the fluid properties of the total phase indicator)
     !
-    if(dsigma_ds /= 0._rp) then
+    if(dsigma_ds /= 0._rp .and. .not.present(mfields)) then
       call mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma_ds,s_ref, &
-                             is_brackbill_normalization,psi,kappa,s,factor12,u,v,w)
+                             is_brackbill_normalization,psi,psi,kappa,s,factor12,u,v,w)
+    else if(dsigma_ds /= 0._rp) then
+      do m=1,size(mfields)
+        call mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma_ds,s_ref, &
+                               is_brackbill_normalization,psi,mfields(m)%psi,mfields(m)%kappa,s,factor12,u,v,w)
+      end do
     end if
   end subroutine rk
   !

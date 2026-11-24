@@ -13,6 +13,7 @@ module mod_two_fluid
   public init2fl,init2fl_sharp,clip_field,cmpt_norm_curv_youngs,bulk_mean_12_stag
   type sphere
     real(rp) :: xyz(3),r
+    integer  :: imarker ! marker of the sphere (fifth, optional column of `spheres.in`; 1 if absent)
   end type sphere
   contains
   subroutine update_property(nh,prop12,psi,p)
@@ -357,10 +358,11 @@ module mod_two_fluid
     end do
   end subroutine cmpt_curv_fd2
   !
-  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
+  subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi,imarker)
     use mod_common_mpi, only: myid
     !
-    ! computes initial conditions for the volume fraction field psi
+    ! computes initial conditions for the volume fraction field psi; with `imarker`, only the spheres of that
+    ! marker are initialized (none, if the file holds no sphere of that marker)
     !
     implicit none
     character(len=*), intent(in) :: inipsi
@@ -371,6 +373,7 @@ module mod_two_fluid
     real(rp), intent(in), dimension(3)  :: l,dl
     real(rp), intent(in), dimension(1-nh_g:) :: zc_g
     real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
+    integer , intent(in), optional :: imarker
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
@@ -409,29 +412,29 @@ module mod_two_fluid
     case('zer')
       psi(:,:,:) = 0._rp
     case('bub3')
-      call read_sphere_file('spheres.in',spheres,nspheres)
+      call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
     case('bub2')
-      call read_sphere_file('spheres.in',spheres,nspheres)
+      call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       is_dim(:) = .true.; is_dim(ih) = .false. ! cylinder along the direction normal to the plane
       is_sphere = .true.
     case('bub1')
-      call read_sphere_file('spheres.in',spheres,nspheres)
+      call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
     case('drp3','dis3')
-      call read_sphere_file('spheres.in',spheres,nspheres)
+      call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       is_dim(:) = [.true. ,.true. ,.true.] ! sphere
       is_sphere = .true.
       is_swap_pf = .true.
     case('drp2','dis2')
-      call read_sphere_file('spheres.in',spheres,nspheres)
+      call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       is_dim(:) = .true.; is_dim(ih) = .false. ! cylinder along the direction normal to the plane
       is_sphere = .true.
       is_swap_pf = .true.
     case('drp1','dis1')
-      call read_sphere_file('spheres.in',spheres,nspheres)
+      call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       is_dim(:) = [.false.,.false.,.true.] ! planar film
       is_sphere = .true.
       is_swap_pf = .true.
@@ -524,7 +527,7 @@ module mod_two_fluid
     end select
     !
     if(is_sphere) then
-      if(nspheres == 0) then
+      if(nspheres == 0 .and. .not.present(imarker)) then
         if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
         if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
         nspheres = nspheres + 1
@@ -570,7 +573,7 @@ module mod_two_fluid
     if(is_swap_pf) psi(:,:,:) = 1.-psi(:,:,:)
   end subroutine init2fl
   !
-  subroutine init2fl_sharp(inipsi,cbcpsi,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
+  subroutine init2fl_sharp(inipsi,cbcpsi,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi,imarker)
     use mod_common_mpi, only: myid
     use mod_plic      , only: plic_volume
     !
@@ -589,6 +592,7 @@ module mod_two_fluid
     real(rp), intent(in), dimension(3)  :: l,dl
     real(rp), intent(in), dimension(1-nh_g:) :: zc_g,dzf_g
     real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
+    integer , intent(in), optional :: imarker
     type(sphere), allocatable, dimension(:) :: spheres
     integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
@@ -645,8 +649,8 @@ module mod_two_fluid
     end select
     if(is_sphere) then
       is_swap_pf = ini(1:3) == 'drp'.or.ini(1:3) == 'dis'
-      call read_sphere_file('spheres.in',spheres,nspheres)
-      if(nspheres == 0) then
+      call read_sphere_file('spheres.in',spheres,nspheres,imarker)
+      if(nspheres == 0 .and. .not.present(imarker)) then
         if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
         if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
         nspheres = 1
@@ -764,11 +768,17 @@ module mod_two_fluid
     end function sdf
   end subroutine init2fl_sharp
   !
-  subroutine read_sphere_file(fname,spheres,nspheres)
+  subroutine read_sphere_file(fname,spheres,nspheres,imarker)
+    !
+    ! reads the spheres of the file: centre, radius and, optionally, marker (1 if absent); with `imarker`,
+    ! only the spheres of that marker are returned
+    !
     implicit none
     character(len=*), intent(in) :: fname
     type(sphere), allocatable, intent(out), dimension(:) :: spheres
     integer, intent(out) :: nspheres
+    integer, intent(in ), optional :: imarker
+    type(sphere), allocatable, dimension(:) :: spheres_all
     character(len=1024) :: dummy
     integer :: q,iunit,ierr
     logical :: is_bubble_file
@@ -792,9 +802,20 @@ module mod_two_fluid
       allocate(spheres(nspheres))
       rewind(iunit)
       do q = 1,nspheres
-        read(iunit,*) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
+        read(iunit,'(A)') dummy
+        read(dummy,*,iostat=ierr) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r,spheres(q)%imarker
+        if(ierr /= 0) then
+          read(dummy,*) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
+          spheres(q)%imarker = 1
+        end if
       end do
       close(iunit)
+      if(present(imarker)) then
+        call move_alloc(spheres,spheres_all)
+        nspheres = count(spheres_all(:)%imarker == imarker)
+        allocate(spheres(nspheres))
+        spheres(:) = pack(spheres_all(:),spheres_all(:)%imarker == imarker)
+      end if
     end if
   end subroutine read_sphere_file
   !

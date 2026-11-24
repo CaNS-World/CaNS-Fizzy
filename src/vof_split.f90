@@ -48,6 +48,10 @@ module mod_vof_split
   public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics, &
          vof_split_contact_angle
   !
+  type, public :: vof_marker
+    real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null() ! volume fraction of a marker (see `vof_split_advance`)
+  end type vof_marker
+  !
   real(rp), parameter :: cfl_max = 0.5_rp    ! maximum CFL number of a sweep
   real(rp), parameter :: f_eps   = 1.e-12_rp ! cells with f_eps < f < 1-f_eps are reconstructed
   integer , parameter :: nq_hf   = 4         ! half-length of the height-function columns (nine cells)
@@ -59,6 +63,8 @@ module mod_vof_split
   !
   real(rp), allocatable, dimension(:,:,:) :: cc       ! dilatation indicator c_c
   real(rp), allocatable, dimension(:,:,:) :: fl       ! face fluxes of a sweep
+  real(rp), allocatable, dimension(:,:,:,:) :: ccm    ! dilatation indicator of each marker (several markers)
+  real(rp), allocatable, dimension(:,:,:) :: flt      ! face fluxes of a sweep, summed over the markers
   real(rp), allocatable, dimension(:,:,:) :: kap      ! work array for the curvature
   integer , allocatable, dimension(:)     :: ilist    ! compacted list of interfacial donor cells (packed indices)
   integer , dimension(1) :: nlist                     ! number of entries of ilist
@@ -206,7 +212,7 @@ module mod_vof_split
   !
   subroutine vof_split_advance(tm_coeff,is_first,is_track,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
-                               uo,vo,wo,ua,va,wa,scalars)
+                               uo,vo,wo,ua,va,wa,scalars,psi_m,nm_off)
     !
     ! advances the volume fraction over one time step, with the face velocity extrapolated to the
     ! middle of the time step from the current and previous velocity fields (both divergence free);
@@ -219,6 +225,14 @@ module mod_vof_split
     ! hold that of the previous time step (unless `is_first`), whose time step is dto; the phase fluxes are
     ! then not used; if `is_track` is false, the volume fraction is not updated (transport without interface
     ! tracking)
+    !
+    ! with several markers, `psi_m` holds their volume fractions, each of which goes through the sweeps as psi
+    ! does, with its own dilatation indicator, all with the same advecting velocity; the phase fluxes are
+    ! summed over the markers, and the total volume fraction psi is left for the calling routine to form, except
+    ! with the transport along with the sweeps: the transport then takes, after the sweeps of all the markers
+    ! along a direction, their total volume fraction (the sum, minus the offset `nm_off`, clipped to [0,1]; see
+    ! `markers_total` in `interface_capturing.f90`), face fluxes and dilatation indicator, and psi is the total
+    ! one, on entry and on exit
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -240,13 +254,25 @@ module mod_vof_split
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: uo,vo,wo,ua,va,wa
     type(scalar), intent(inout), dimension(:), optional :: scalars
+    type(vof_marker), intent(in), dimension(:), optional :: psi_m
+    integer , intent(in   ), optional :: nm_off
     character(len=1), dimension(0:1,3) :: cbc_tr
     logical , dimension(0:1,3) :: is_bound_tr,is_bound_phys
     logical , save :: is_psiflx_set = .false.
     real(rp) :: dts,dtpi,tc
-    integer  :: i,j,k,isub,nsub,q,idir,is
+    integer  :: i,j,k,isub,nsub,q,idir,is,m,nm
     logical  :: is_forward
     !
+    nm = 0
+    if(present(psi_m)) nm = size(psi_m)
+    if(nm > 0 .and. .not.allocated(ccm)) then
+      allocate(ccm(0:n(1)+1,0:n(2)+1,0:n(3)+1,nm))
+      !$acc enter data create(ccm)
+      if(is_sweep) then
+        allocate(flt,mold=fl)
+        !$acc enter data create(flt)
+      end if
+    end if
     if(is_sweep) then
       !
       ! non-advective rates of change of the previous time step (pressure, viscous and body forces), from the
@@ -330,34 +356,41 @@ module mod_vof_split
       !$acc end serial
     end if
     do isub=1,nsub
-      !$acc parallel loop collapse(3) default(present) async(1)
-      do k=1-ncc,n(3)+ncc
-        do j=1-ncc,n(2)+ncc
-          do i=1-ncc,n(1)+ncc
-            cc(i,j,k) = merge(1._rp,0._rp,psi(i,j,k) > 0.5_rp)
-          end do
+      if(nm == 0) then
+        call dilatation_indicator(n,nh_psi,psi,cc)
+      else
+        do m=1,nm
+          call dilatation_indicator(n,nh_psi,psi_m(m)%psi,ccm(:,:,:,m))
+          if(is_sweep) call markers_sum(m == 1,ccm(:,:,:,m),cc)
         end do
-      end do
+        if(is_sweep) call markers_dilatation(nm_off,cc)
+      end if
       is_forward = mod(istep+isub,2) == 0
       tc = (isub-0.5_rp)*dts ! time from the beginning of the step to the middle of the sub-step
       do q=1,3
         idir = merge(q,4-q,is_forward)
         if(.not.is_active(idir)) cycle
         if(is_sweep) call transport_prepare(n,nh_psi,psi)
-        if(is_track) then
-          select case(idir)
-          case(1)
-            call sweep(1,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,ua,isub == 1,1._rp/dt,psiflx_x,psi, &
-                       mxs,mys,mzs)
-          case(2)
-            call sweep(2,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,va,isub == 1,1._rp/dt,psiflx_y,psi, &
-                       mxs,mys,mzs)
-          case(3)
-            call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,isub == 1,1._rp/dt,psiflx_z,psi, &
-                       mxs,mys,mzs)
-          end select
-          call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
-          call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
+        if(is_track .and. nm == 0) then
+          call sweep_bc(idir,isub == 1,psi,cc)
+        else if(is_track) then
+          do m=1,nm
+            call sweep_bc(idir,isub == 1 .and. m == 1,psi_m(m)%psi,ccm(:,:,:,m))
+            if(is_sweep) then
+              call markers_sum(m == 1,psi_m(m)%psi,psi)
+              call markers_sum(m == 1,fl,flt)
+            end if
+          end do
+          if(is_sweep) then
+            select case(idir)
+            case(1)
+              call markers_total(n,nh_v,nh_psi,nm_off,dts,ua,psi)
+            case(2)
+              call markers_total(n,nh_v,nh_psi,nm_off,dts,va,psi)
+            case(3)
+              call markers_total(n,nh_v,nh_psi,nm_off,dts,wa,psi)
+            end select
+          end if
         end if
         if(is_sweep) then
           select case(idir)
@@ -391,6 +424,28 @@ module mod_vof_split
       end do
     end if
   contains
+    subroutine sweep_bc(idir,is_init,f,cf)
+      !
+      ! sweep along direction idir of the volume fraction f, with the dilatation indicator cf, followed by its
+      ! boundary conditions; the phase fluxes are stored if `is_init`, and accumulated otherwise
+      !
+      implicit none
+      integer , intent(in   ) :: idir
+      logical , intent(in   ) :: is_init
+      real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: f
+      real(rp), intent(in   ), dimension(0:,0:,0:) :: cf
+      select case(idir)
+      case(1)
+        call sweep(1,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,ua,is_init,1._rp/dt,psiflx_x,f,cf,mxs,mys,mzs)
+      case(2)
+        call sweep(2,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,va,is_init,1._rp/dt,psiflx_y,f,cf,mxs,mys,mzs)
+      case(3)
+        call sweep(3,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dts,wa,is_init,1._rp/dt,psiflx_z,f,cf,mxs,mys,mzs)
+      end select
+      call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,f)
+      call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,f)
+    end subroutine sweep_bc
+    !
     subroutine transport_all(idir,vel)
       !
       ! transport along direction idir, with the face velocity vel, of the velocity together with the first
@@ -461,6 +516,109 @@ module mod_vof_split
     end do
   end subroutine transport_scal_end
   !
+  subroutine dilatation_indicator(n,nh_psi,psi,cc)
+    !
+    ! dilatation indicator of a volume fraction, kept over the sweeps of a (sub-)step
+    !
+    implicit none
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_psi
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(out), dimension(0:,0:,0:) :: cc
+    integer :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1-ncc,n(3)+ncc
+      do j=1-ncc,n(2)+ncc
+        do i=1-ncc,n(1)+ncc
+          cc(i,j,k) = merge(1._rp,0._rp,psi(i,j,k) > 0.5_rp)
+        end do
+      end do
+    end do
+  end subroutine dilatation_indicator
+  !
+  subroutine markers_sum(is_init,a_m,a)
+    !
+    ! copies (if `is_init`) or adds the field a_m of a marker to the sum over the markers a, over the whole
+    ! arrays (of the same shape)
+    !
+    implicit none
+    logical , intent(in   ) :: is_init
+    real(rp), intent(in   ), dimension(:,:,:) :: a_m
+    real(rp), intent(inout), dimension(:,:,:) :: a
+    integer :: i,j,k,n1,n2,n3
+    !
+    n1 = size(a,1); n2 = size(a,2); n3 = size(a,3)
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n3
+      do j=1,n2
+        do i=1,n1
+          if(is_init) then
+            a(i,j,k) = a_m(i,j,k)
+          else
+            a(i,j,k) = a(i,j,k) + a_m(i,j,k)
+          end if
+        end do
+      end do
+    end do
+  end subroutine markers_sum
+  !
+  subroutine markers_dilatation(nm_off,cc)
+    !
+    ! total dilatation indicator, from the sum over the markers
+    !
+    implicit none
+    integer , intent(in   ) :: nm_off
+    real(rp), intent(inout), dimension(:,:,:) :: cc
+    integer :: i,j,k,n1,n2,n3
+    !
+    if(nm_off == 0) return
+    n1 = size(cc,1); n2 = size(cc,2); n3 = size(cc,3)
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n3
+      do j=1,n2
+        do i=1,n1
+          cc(i,j,k) = cc(i,j,k) - nm_off
+        end do
+      end do
+    end do
+  end subroutine markers_dilatation
+  !
+  subroutine markers_total(n,nh_v,nh_psi,nm_off,dt,vel,psi)
+    !
+    ! total volume fraction and face fluxes after the sweeps of all the markers along one direction, for the
+    ! transport along with the sweeps, from the sums over the markers in psi and flt: the offset `nm_off` is
+    ! subtracted (for the fluxes, times the volume of the donor region per unit area, vel*dt), and the total
+    ! volume fraction is clipped to [0,1] where markers overlap
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nm_off
+    real(rp), intent(in   ) :: dt
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: vel
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: offset
+    integer  :: i,j,k
+    !
+    offset = nm_off
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1-nh_psi,n(3)+nh_psi
+      do j=1-nh_psi,n(2)+nh_psi
+        do i=1-nh_psi,n(1)+nh_psi
+          psi(i,j,k) = min(max(psi(i,j,k)-offset,0._rp),1._rp)
+        end do
+      end do
+    end do
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          fl(i,j,k) = flt(i,j,k) - offset*vel(i,j,k)*dt
+        end do
+      end do
+    end do
+  end subroutine markers_total
+  !
   subroutine vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,ua,va,wa,cfl)
     !
     ! advecting velocity, extrapolated to the middle of the time step from the current and previous
@@ -519,9 +677,10 @@ module mod_vof_split
     cfl(:) = [cflx,cfly,cflz]
   end subroutine vof_split_velocity
   !
-  subroutine sweep(idir,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi,mx_hf,my_hf,mz_hf)
+  subroutine sweep(idir,n,nh_v,nh_psi,nh_ifc,nh_g,dl,dzf,dzfi,dt,vel,is_init,scl,psiflx,psi,cc,mx_hf,my_hf,mz_hf)
     !
-    ! one directional sweep: geometric donor-region fluxes, and conservative update with the dilatation term;
+    ! one directional sweep: geometric donor-region fluxes, and conservative update with the dilatation term,
+    ! of indicator cc (that of the volume fraction being swept);
     ! the face fluxes, times scl, are stored in psiflx if is_init, and accumulated otherwise; the extrema of
     ! the volume fraction before clipping and the clipped volume are accumulated in `clip_stats`;
     ! mx_hf, my_hf, mz_hf are the work arrays of the height-function normals, present if these are used
@@ -538,6 +697,7 @@ module mod_vof_split
     real(rp), intent(in   ) :: scl
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: cc
     real(rp), intent(inout), dimension(0:,0:,0:), optional :: mx_hf,my_hf,mz_hf
     real(rp), dimension(-1:1,-1:1,-1:1) :: c
     real(rp), dimension(-1:1) :: dz3

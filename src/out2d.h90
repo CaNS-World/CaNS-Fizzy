@@ -45,6 +45,12 @@
   call write_visu_2d(datadir,'psi_slice_fld_'//fldnum//trim(io_ext),'log_visu_2d_slice_1.out','Psi', &
                      ng,[nh_psi,nh_psi,nh_psi],nh_g,lo,hi,2,max(1,ng(2)/2),time,istep, &
                      psi,xc_g,yc_g,zc_g,.true.)
+  do imark=1,nmk
+    write(marknum,'(i3.3)') imark
+    call write_visu_2d(datadir,'psi_'//marknum//'_slice_fld_'//fldnum//trim(io_ext),'log_visu_2d_slice_1.out','Psi_'//marknum, &
+                       ng,[nh_psi,nh_psi,nh_psi],nh_g,lo,hi,2,max(1,ng(2)/2),time,istep, &
+                       markers(imark)%psi,xc_g,yc_g,zc_g,.true.)
+  end do
   do iscal=1,nscal
     write(scalnum,'(i3.3)') iscal
     call write_visu_2d(datadir,'sca_'//scalnum//'_slice_fld_'//fldnum//trim(io_ext),'log_visu_2d_slice_1.out','Scalar_S'//scalnum, &
