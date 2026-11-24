@@ -23,12 +23,24 @@ cp $TESTDIR/input.nml $TESTDIR/spheres-*.in $RUNDIR
 TRANSPORTS="default"
 if [[ "$TEST_TWO_FLUID_INPUT" == *plic* || "$TEST_TWO_FLUID_INPUT" == *split* ]]; then TRANSPORTS="default sweeps"; fi
 for transport in $TRANSPORTS; do
-  for name in one same split; do
+  for name in one same split bubbles restart-1 restart-2; do
     echo "INFO: Running CaNS, case $name, transport $transport"
     cp $TESTDIR/input.nml input.nml
     cp spheres-same.in spheres.in
     if [ $name = one   ]; then sed -i "s/^nmarker = 2/nmarker = 1/" input.nml; fi
-    if [ $name = split ]; then cp spheres-split.in spheres.in; fi
+    if [ $name != one ] && [ $name != same ]; then cp spheres-split.in spheres.in; fi
+    #
+    # bubbles ten times lighter than the surrounding fluid, instead of drops of the same density
+    #
+    if [ $name = bubbles ]; then sed -i -e "s/^inipsi.*/inipsi = 'bub2-x'/" -e "s/^rho12.*/rho12(1:2) = 1., 0.1/" input.nml; fi
+    #
+    # the case `split` in two runs of 300 time steps, restarted exactly
+    #
+    if [[ $name == restart-* ]]; then
+      sed -i -e "s/^nstep = 600/nstep = 300/" -e "s/isave = 600/isave = 300/" input.nml
+      printf "\n&io\nis_full_restart = T\n/\n" >> input.nml
+    fi
+    if [ $name = restart-2 ]; then sed -i -e "s/^nstep = 300/nstep = 600/" -e "s/^restart = F/restart = T/" input.nml; fi
     #
     # interface method of the variant under test, if set (see `tests/testall.sh`): a line for the `two_fluid` namelist
     #
@@ -47,6 +59,7 @@ for transport in $TRANSPORTS; do
       echo "ERROR: CaNS exited with status $status"
       exit $status
     fi
+    if [ $name = restart-1 ]; then continue; fi # (its checkpoint stays in place for the second run)
     mkdir -p data-$name
     mv data/* data-$name
   done

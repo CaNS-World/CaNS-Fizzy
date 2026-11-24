@@ -390,11 +390,11 @@ module mod_vof_split
           if(is_sweep) then
             select case(idir)
             case(1)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,ua,psi)
+              call markers_total(1,n,nh_v,nh_psi,nm_off,dts,ua,psi)
             case(2)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,va,psi)
+              call markers_total(2,n,nh_v,nh_psi,nm_off,dts,va,psi)
             case(3)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,wa,psi)
+              call markers_total(3,n,nh_v,nh_psi,nm_off,dts,wa,psi)
             end select
           end if
         end if
@@ -590,23 +590,30 @@ module mod_vof_split
     end do
   end subroutine markers_dilatation
   !
-  subroutine markers_total(n,nh_v,nh_psi,nm_off,dt,vel,psi)
+  subroutine markers_total(idir,n,nh_v,nh_psi,nm_off,dt,vel,psi)
     !
     ! total volume fraction and face fluxes after the sweeps of all the markers along one direction, for the
     ! transport along with the sweeps, from the sums over the markers in psi and flt: the offset `nm_off` is
     ! subtracted (for the fluxes, times the volume of the donor region per unit area, vel*dt), and the total
-    ! volume fraction is clipped to [0,1] where markers overlap
+    ! volume fraction is clipped to [0,1] where markers overlap; the fluxes are those that a sweep along idir
+    ! computes (faces 0:n+1 along it, and 1:n+1 along the other directions): the other entries are left at
+    ! zero, since the offset term, added to entries that the sweeps of the markers do not overwrite, would be
+    ! summed over the markers again in every sweep, and grow without bound
     !
     implicit none
+    integer , intent(in   )               :: idir
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_v,nh_psi,nm_off
     real(rp), intent(in   ) :: dt
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: vel
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp) :: offset
-    integer  :: i,j,k
+    integer  :: i,j,k,di,dj,dk
     !
     offset = nm_off
+    di = merge(1,0,idir == 1)
+    dj = merge(1,0,idir == 2)
+    dk = merge(1,0,idir == 3)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1-nh_psi,n(3)+nh_psi
       do j=1-nh_psi,n(2)+nh_psi
@@ -616,9 +623,9 @@ module mod_vof_split
       end do
     end do
     !$acc parallel loop collapse(3) default(present) async(1)
-    do k=0,n(3)+1
-      do j=0,n(2)+1
-        do i=0,n(1)+1
+    do k=1-dk,n(3)+1
+      do j=1-dj,n(2)+1
+        do i=1-di,n(1)+1
           fl(i,j,k) = flt(i,j,k) - offset*vel(i,j,k)*dt
         end do
       end do
