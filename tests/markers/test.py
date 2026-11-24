@@ -2,10 +2,10 @@
 def test_markers():
     import numpy as np
     #
-    # two drops at rest, two grid cells apart, with surface tension (64^2 cells, ACDI):
-    #   one  : a single marker; the drops merge
+    # two drops at rest, half a grid cell apart, with surface tension (64^2 cells):
+    #   one  : a single marker; the drops merge, which sets the fluid in motion
     #   same : two markers, both drops in the first one; must reproduce the case `one` exactly
-    #   split: one drop per marker; the drops must stay apart, each marker conserving its volume
+    #   split: one drop per marker; the drops must stay apart and at rest, each marker conserving its volume
     #
     n = 64
     def load(case,field):
@@ -16,12 +16,15 @@ def test_markers():
         assert np.array_equal(load("one",field),load("same",field)), \
                f"{field}: two markers with all the drops in the first one differ from a single marker."
     #
-    # phase indicator between the two drops
+    # largest velocity, and width of the bridge between the two drops (in grid cells)
     #
-    def psi_mid(case):
-        return np.mean(load(case,"psi").reshape((n,n),order="F")[n//2-1:n//2+1,n//2-1:n//2+1])
-    assert psi_mid("one"  ) > 0.9, f"The drops of a single marker did not merge: {psi_mid('one')}."
-    assert psi_mid("split") < 0.6, f"The drops of two markers merged: {psi_mid('split')}."
+    def vel_max(case):
+        return max(np.max(np.abs(load(case,field))) for field in ["v","w"])
+    def bridge(case):
+        return np.mean(np.sum(load(case,"psi").reshape((n,n),order="F")[n//2-1:n//2+1,:],axis=1))
+    assert vel_max("one"  ) > 1.e-1, f"The drops of a single marker did not merge: largest velocity {vel_max('one')}."
+    assert vel_max("split") < 1.e-2, f"The drops of two markers did not stay at rest: largest velocity {vel_max('split')}."
+    assert bridge("one") > 1.5*bridge("split"), f"Bridge between the drops: {bridge('one')} against {bridge('split')} cells."
     #
     # volume of each marker, against that of the initial condition
     #
