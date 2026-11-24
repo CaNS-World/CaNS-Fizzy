@@ -608,7 +608,8 @@ module mod_mom
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     logical  :: is_adv,is_harm,is_lim,is_lim_c
     real(rp) :: c_min,c_max
-    real(rp), parameter :: c_eps = 1.e-12_rp ! full and empty cells for the viscosity limiter (as for the reconstruction)
+    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! full and empty cells for the viscosity
+                                                                         ! limiter (as for the reconstruction)
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     is_harm = is_harmonic_interpolation
@@ -1846,7 +1847,7 @@ module mod_mom
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp) :: rho,drho,mu,dmu,bfac,mfac,dxi,dyi,hz_c
     real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif,c_min,c_max
-    real(rp), parameter :: c_eps = 1.e-12_rp ! (as for the reconstruction and the viscosity limiter)
+    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! (as for the reconstruction and the limiter)
     integer  :: i,j,k
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
