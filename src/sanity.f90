@@ -21,7 +21,7 @@ module mod_sanity
   use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
                             ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split,cbcpsi,bcpsi,contact_angle, &
                             slip_length,is_hf_normals,dsigma_ds,nscal,nmarker,inipsi
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
   use mod_solver    , only: solver
 #else
   use mod_solver_gpu, only: solver => solver_gpu
@@ -241,7 +241,7 @@ module mod_sanity
         if(ng(idir) /= 1) cycle
         bc01v = cbcvel(0,idir,idir)//cbcvel(1,idir,idir)
         passed_loc = passed_loc.and.bc01v /= 'NN'
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
         if(.not.is_impdiff_1d) passed_loc = passed_loc.and.(bc01v == 'PP'.or.bc01v == 'ND')
 #endif
       end do
@@ -255,7 +255,7 @@ module mod_sanity
         passed_loc = all(cbcvel(:,3,:) == 'P')
         if(nscal > 0) passed_loc = passed_loc.and.all(cbcscal(:,3,:) == 'P')
       else
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
         passed_loc = .false.
 #else
         passed_loc = .not.is_impdiff
@@ -278,7 +278,7 @@ module mod_sanity
     logical         , intent(out) :: passed
     character(len=2) :: bc01v,bc01p
     integer :: ivel,idir,is
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     character(len=2) :: bc01s
 #endif
     logical :: passed_loc
@@ -359,7 +359,7 @@ module mod_sanity
         print*, 'ERROR: velocity BCs with implicit diffusion in directions x and y must be homogeneous (value = 0.).'
       passed = passed.and.passed_loc
     end if
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     if(is_impdiff .and. .not.is_impdiff_1d .and. nscal > 0) then
       passed_loc = .true.
       do is=1,nscal
@@ -420,7 +420,7 @@ module mod_sanity
   !
   subroutine test_sanity_solver(ng,lo,hi,n,nh_v,nh_p,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,n_z,l,dl,dli,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g, &
                                 nb,is_bound,cbcvel,cbcpre,bcvel,bcpre)
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     use mod_workspaces     , only: set_cufft_wspace
     use mod_common_cudecomp, only: istream_acc_queue_1
 #endif
@@ -437,7 +437,7 @@ module mod_sanity
     real(rp), intent(in), dimension(0:1,3,3)          :: bcvel
     real(rp), intent(in), dimension(0:1,3)            :: bcpre
     real(rp), allocatable, dimension(:,:,:) :: u,v,w,p
-#if !defined(_OPENACC) || defined(_USE_HIP)
+#if !(defined(_OPENACC) || defined(_OPENMP)) || defined(_USE_HIP)
     type(C_PTR), dimension(2,2) :: arrplan
 #else
     integer    , dimension(2,2) :: arrplan
@@ -461,7 +461,8 @@ module mod_sanity
              rhsbx(n(2),n(3),0:1), &
              rhsby(n(1),n(3),0:1), &
              rhsbz(n(1),n(2),0:1))
-    !$acc enter data copyin(n,n_z)
+    !$acc        enter data copyin(n,n_z)
+    !$omp target enter data map(to:n,n_z)
     !
     ! initialize velocity below with some random noise
     !
@@ -472,14 +473,16 @@ module mod_sanity
     call add_noise(ng,lo,123,.5_rp,u(1:n(1),1:n(2),1:n(3)))
     call add_noise(ng,lo,456,.5_rp,v(1:n(1),1:n(2),1:n(3)))
     call add_noise(ng,lo,789,.5_rp,w(1:n(1),1:n(2),1:n(3)))
-    !$acc enter data copyin(u,v,w,p)
+    !$acc        enter data copyin(u,v,w,p)
+    !$omp target enter data map(to:u,v,w,p)
     !
     ! test pressure correction
     !
     call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcpre,bcpre(:,:), &
                     lambdaxy,['c','c','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
-    !$acc enter data copyin(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-#if defined(_OPENACC)
+    !$acc        enter data copyin(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+    !$omp target enter data map(to:lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+#if defined(_OPENACC) || defined(_OPENMP)
     call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
 #endif
     dt  = acos(-1.) ! value is irrelevant
@@ -500,8 +503,8 @@ module mod_sanity
     if(is_impdiff .and. .not.is_impdiff_1d) then
       allocate(bb(n_z(3)))
       alpha = -acos(-1.) ! negative shift, as in implicit diffusion
-      !$acc parallel loop collapse(3) default(present)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present)
+      !$omp target teams loop collapse(3)
       do k=0,n(3)+1
         do j=0,n(2)+1
           do i=0,n(1)+1
@@ -511,21 +514,25 @@ module mod_sanity
           end do
         end do
       end do
-      !$acc update self(u,v,w)
+      !$acc        update self(u,v,w)
+      !$omp target update from(u,v,w)
       call add_noise(ng,lo,123,.5_rp,u(1:n(1),1:n(2),1:n(3)))
       call add_noise(ng,lo,456,.5_rp,v(1:n(1),1:n(2),1:n(3)))
       call add_noise(ng,lo,789,.5_rp,w(1:n(1),1:n(2),1:n(3)))
-      !$acc update device(u,v,w)
-      !$acc enter data create(bb)
+      !$acc        update device(u,v,w)
+      !$omp target update to(u,v,w)
+      !$acc        enter data create(bb)
+      !$omp target enter data map(alloc:bb)
       call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,1),bcvel(:,:,1), &
                       lambdaxy,['f','c','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
-      !$acc update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-#if defined(_OPENACC)
+      !$acc        update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+      !$omp target update to(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+#if defined(_OPENACC) || defined(_OPENMP)
       call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
 #endif
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
-      !$acc parallel loop collapse(3) default(present)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present)
+      !$omp target teams loop collapse(3)
       do k=0,n(3)+1
         do j=0,n(2)+1
           do i=0,n(1)+1
@@ -534,8 +541,8 @@ module mod_sanity
           end do
         end do
       end do
-      !$acc parallel loop default(present)
-      !$OMP parallel do   DEFAULT(shared)
+      !$acc parallel     loop default(present)
+      !$omp target teams loop
       do k=1,n_z(3)
         bb(k) = b(k) + alpha
       end do
@@ -552,13 +559,14 @@ module mod_sanity
       !
       call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,2),bcvel(:,:,2), &
                       lambdaxy,['c','f','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
-      !$acc update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-#if defined(_OPENACC)
+      !$acc        update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+      !$omp target update to(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+#if defined(_OPENACC) || defined(_OPENMP)
       call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
 #endif
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
-      !$acc parallel loop collapse(3) default(present)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present)
+      !$omp target teams loop collapse(3)
       do k=0,n(3)+1
         do j=0,n(2)+1
           do i=0,n(1)+1
@@ -567,8 +575,8 @@ module mod_sanity
           end do
         end do
       end do
-      !$acc parallel loop default(present)
-      !$OMP parallel do   DEFAULT(shared)
+      !$acc parallel     loop default(present)
+      !$omp target teams loop
       do k=1,n_z(3)
         bb(k) = b(k) + alpha
       end do
@@ -585,13 +593,14 @@ module mod_sanity
       !
       call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,3),bcvel(:,:,3), &
                       lambdaxy,['c','c','f'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
-      !$acc update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-#if defined(_OPENACC)
+      !$acc        update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+      !$omp target update to(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+#if defined(_OPENACC) || defined(_OPENMP)
       call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
 #endif
       call bounduvw(cbcvel,n,nh_v,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,u,v,w)
-      !$acc parallel loop collapse(3) default(present)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present)
+      !$omp target teams loop collapse(3)
       do k=0,n(3)+1
         do j=0,n(2)+1
           do i=0,n(1)+1
@@ -600,8 +609,8 @@ module mod_sanity
           end do
         end do
       end do
-      !$acc parallel loop default(present)
-      !$OMP parallel do   DEFAULT(shared)
+      !$acc parallel     loop default(present)
+      !$omp target teams loop
       do k=1,n_z(3)
         bb(k) = b(k) + alpha
       end do
@@ -615,9 +624,11 @@ module mod_sanity
       if(myid == 0.and.(.not.passed_loc)) &
       print*, 'ERROR: wrong solution of Helmholtz equation in z direction.'
       passed = passed.and.passed_loc
-      !$acc exit data delete(bb)
+      !$acc        exit data delete(bb)
+      !$omp target exit data map(delete:bb)
     end if
-    !$acc exit data delete(u,v,w,p,lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+    !$acc        exit data delete(u,v,w,p,lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+    !$omp target exit data map(delete:u,v,w,p,lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
     if(.not.passed) then
       call decomp_2d_finalize
       call MPI_FINALIZE(ierr)

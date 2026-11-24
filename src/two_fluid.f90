@@ -26,11 +26,18 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: psi
     real(rp), intent(out), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: p
     real(rp) :: prop1,prop2
+    integer  :: i,j,k
     prop1 = prop12(1)
     prop2 = prop12(2)
-    !$acc kernels default(present) async(1)
-    p(:,:,:) = psi(:,:,:)*prop1+(1.-psi(:,:,:))*prop2
-    !$acc end kernels
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
+    do k=lbound(p,3),ubound(p,3)
+      do j=lbound(p,2),ubound(p,2)
+        do i=lbound(p,1),ubound(p,1)
+          p(i,j,k) = psi(i,j,k)*prop1+(1.-psi(i,j,k))*prop2
+        end do
+      end do
+    end do
   end subroutine update_property
   !
   subroutine clip_field(nh,minmax,p)
@@ -52,9 +59,14 @@ module mod_two_fluid
     nh3 = nh(3)
     rmin = minmax(1); rmax = minmax(2)
     !
-    !$acc parallel loop collapse(3) default(present) firstprivate(rmin,rmax) async(1)
-    do concurrent(k=1-nh3:n3+nh3,j=1-nh2:n2+nh2,i=1-nh1:n1+nh1)
-      p(i,j,k) = min(max(rmin,p(i,j,k)),rmax)
+    !$acc parallel     loop collapse(3) default(present) firstprivate(rmin,rmax) async(1)
+    !$omp target teams loop collapse(3)                  firstprivate(rmin,rmax)
+    do k=1-nh3,n3+nh3
+      do j=1-nh2,n2+nh2
+        do i=1-nh1,n1+nh1
+          p(i,j,k) = min(max(rmin,p(i,j,k)),rmax)
+        end do
+      end do
     end do
   end subroutine clip_field
   !
@@ -78,8 +90,10 @@ module mod_two_fluid
     mean = 0.
     select case(idir)
     case(1)
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      !$acc        data copy(mean) async(1)
+      !$omp target data map(tofrom:mean)
+      !$acc parallel     loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      !$omp target teams loop collapse(3)                  private(psi_loc) reduction(+:mean)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -88,10 +102,13 @@ module mod_two_fluid
           end do
         end do
       end do
-      !$acc end data
+      !$omp end target data
+      !$acc end        data
     case(2)
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      !$acc        data copy(mean) async(1)
+      !$omp target data map(tofrom:mean)
+      !$acc parallel     loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      !$omp target teams loop collapse(3)                  private(psi_loc) reduction(+:mean)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -100,10 +117,13 @@ module mod_two_fluid
           end do
         end do
       end do
-      !$acc end data
+      !$omp end target data
+      !$acc end        data
     case(3)
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      !$acc        data copy(mean) async(1)
+      !$omp target data map(tofrom:mean)
+      !$acc parallel     loop collapse(3) default(present) private(psi_loc) reduction(+:mean) async(1)
+      !$omp target teams loop collapse(3)                  private(psi_loc) reduction(+:mean)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -112,10 +132,13 @@ module mod_two_fluid
           end do
         end do
       end do
-      !$acc end data
+      !$omp end target data
+      !$acc end        data
     case default 
-      !$acc data copy(mean) async(1)
-      !$acc parallel loop collapse(3) default(present) reduction(+:mean) async(1)
+      !$acc        data copy(mean) async(1)
+      !$omp target data map(tofrom:mean)
+      !$acc parallel     loop collapse(3) default(present) reduction(+:mean) async(1)
+      !$omp target teams loop collapse(3)                  reduction(+:mean)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -123,7 +146,8 @@ module mod_two_fluid
           end do
         end do
       end do
-      !$acc end data
+      !$omp end target data
+      !$acc end        data
     end select
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,mean,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
@@ -168,14 +192,14 @@ module mod_two_fluid
     !
     if(.not.allocated(vnx)) then
       allocate(vnx(0:n(1),0:n(2),0:n(3)),vny(0:n(1),0:n(2),0:n(3)),vnz(0:n(1),0:n(2),0:n(3)))
-      !$acc enter data create(vnx,vny,vnz) async(1)
+      !$acc        enter data create(vnx,vny,vnz) async(1)
+      !$omp target enter data map(alloc:vnx,vny,vnz)
     end if
     !
     ! normals at the vertices, from the eight cells around them
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared) &
-    !$OMP private(psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp,mx_1,my_1,mz_1,normi)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -214,7 +238,8 @@ module mod_two_fluid
           iw = ib*n(idir)                      ! index of the vertices on the wall
           select case(idir)
           case(1)
-            !$acc parallel loop collapse(2) default(present) private(tn) async(1)
+            !$acc parallel     loop collapse(2) default(present) private(tn) async(1)
+            !$omp target teams loop collapse(2)                  private(tn)
             do k=0,n(3)
               do j=0,n(2)
                 tn = sqrt(vny(iw,j,k)**2+vnz(iw,j,k)**2)
@@ -224,7 +249,8 @@ module mod_two_fluid
               end do
             end do
           case(2)
-            !$acc parallel loop collapse(2) default(present) private(tn) async(1)
+            !$acc parallel     loop collapse(2) default(present) private(tn) async(1)
+            !$omp target teams loop collapse(2)                  private(tn)
             do k=0,n(3)
               do i=0,n(1)
                 tn = sqrt(vnx(i,iw,k)**2+vnz(i,iw,k)**2)
@@ -234,7 +260,8 @@ module mod_two_fluid
               end do
             end do
           case(3)
-            !$acc parallel loop collapse(2) default(present) private(tn) async(1)
+            !$acc parallel     loop collapse(2) default(present) private(tn) async(1)
+            !$omp target teams loop collapse(2)                  private(tn)
             do j=0,n(2)
               do i=0,n(1)
                 tn = sqrt(vnx(i,j,iw)**2+vny(i,j,iw)**2)
@@ -250,10 +277,8 @@ module mod_two_fluid
     !
     ! normals and curvature at the cell centers
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared) &
-    !$OMP private(mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8,my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8) &
-    !$OMP private(mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8,normi,norm_x,norm_y,norm_z)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -302,7 +327,8 @@ module mod_two_fluid
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm,dpsidx,dpsidy,dpsidz,norm
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -340,7 +366,8 @@ module mod_two_fluid
     real(rp) :: normxp,normxm,normyp,normym,normzp,normzm
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -822,6 +849,7 @@ module mod_two_fluid
   pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
     use mod_param, only:pi
     !$acc routine seq
+    !$omp declare target
     !
     ! smooth step function based on trigonometric functions
     !
@@ -839,6 +867,7 @@ module mod_two_fluid
   !
   pure elemental real(rp) function smooth_step_erf(r,eps) result(res)
     !$acc routine seq
+    !$omp declare target
     !
     ! smooth step function based on the hyperbolic tangent function
     !
@@ -851,6 +880,7 @@ module mod_two_fluid
   !
   pure elemental real(rp) function smooth_step_tanh(r,eps) result(res)
     !$acc routine seq
+    !$omp declare target
     !
     ! smooth step function based on the error function
     !
@@ -863,6 +893,7 @@ module mod_two_fluid
   !
   pure elemental real(rp) function smooth_sign(delta,phi) result(res)
     !$acc routine seq
+    !$omp declare target
     !
     ! smooth sign function
     !
@@ -878,6 +909,7 @@ module mod_two_fluid
   pure elemental real(rp) function smooth_impulse(r,eps) result(res)
     use mod_param, only:pi
     !$acc routine seq
+    !$omp declare target
     !
     ! smooth impulse Dirac delta function using trigonometric functions
     !
@@ -916,10 +948,12 @@ module mod_two_fluid
     if(is_first) then
       is_first = .false.
       allocate(mx(8),my(8),mz(8))
-      !$acc enter data create(mx,my,mz)
+      !$acc        enter data create(mx,my,mz)
+      !$omp target enter data map(alloc:mx,my,mz)
     end if
     !
-    !$acc parallel loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
+    !$acc parallel     loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
+    !$omp target teams loop collapse(3)                  private(mx,my,mz,norm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)

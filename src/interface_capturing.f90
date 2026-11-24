@@ -117,7 +117,8 @@ module mod_interface_capturing
       call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,psi)
       call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol0,clip,fmin,fmax,cfl,nsub,kstats)
       if(myid == 0) print*, 'Direction-split advection. Initial volume of phase 1: ', vol0
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1-nh_ifc,n(3)+nh_ifc
         do j=1-nh_ifc,n(2)+nh_ifc
           do i=1-nh_ifc,n(1)+nh_ifc
@@ -273,7 +274,8 @@ module mod_interface_capturing
     if(.not.is_ifc_split) then
       if(.not.allocated(wflx_x)) then
         allocate(wflx_x,wflx_y,wflx_z,mold=psiflx_x)
-        !$acc enter data create(wflx_x,wflx_y,wflx_z)
+        !$acc        enter data create(wflx_x,wflx_y,wflx_z)
+        !$omp target enter data map(alloc:wflx_x,wflx_y,wflx_z)
       end if
       do m=1,nm
         call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
@@ -338,7 +340,8 @@ module mod_interface_capturing
     real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: a
     integer :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-nh,n(3)+nh
       do j=1-nh,n(2)+nh
         do i=1-nh,n(1)+nh
@@ -382,7 +385,8 @@ module mod_interface_capturing
     integer  :: i,j,k,nh
     !
     offset = markers_offset(nm)
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-nh_psi,n(3)+nh_psi
       do j=1-nh_psi,n(2)+nh_psi
         do i=1-nh_psi,n(1)+nh_psi
@@ -392,7 +396,8 @@ module mod_interface_capturing
     end do
     if(present(psiflx_x) .and. offset /= 0._rp) then
       nh = min(nh_v,nh_ifc)
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1-nh,n(3)+nh
         do j=1-nh,n(2)+nh
           do i=1-nh,n(1)+nh

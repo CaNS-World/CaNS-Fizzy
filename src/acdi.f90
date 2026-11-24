@@ -44,8 +44,10 @@ module mod_acdi
     integer :: i,j,k
     !
     velmax = 0.
-    !$acc data copy(velmax) async(1)
-    !$acc parallel loop collapse(3) default(present) private(uc,vc,wc,vel) reduction(max:velmax) async(1)
+    !$acc        data copy(velmax) async(1)
+    !$omp target data map(tofrom:velmax)
+    !$acc parallel     loop collapse(3) default(present) private(uc,vc,wc,vel) reduction(max:velmax) async(1)
+    !$omp target teams loop collapse(3)                  private(uc,vc,wc,vel) reduction(max:velmax)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -57,7 +59,8 @@ module mod_acdi
         end do
       end do
     end do
-    !$acc end data
+    !$omp end target data
+    !$acc end        data
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,velmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
     gam = sqrt(velmax)*gam_factor
@@ -102,7 +105,8 @@ module mod_acdi
     dxi = dli(1)
     dyi = dli(2)
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -274,7 +278,8 @@ module mod_acdi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -288,6 +293,7 @@ module mod_acdi
   pure elemental real(rp) function acdi_phi(psi,seps) result(phi)
     use mod_param, only:eps
     !$acc routine seq
+    !$omp declare target
     !
     ! computes the signed-distance field phi from the smoothed volume fraction field psi
     !

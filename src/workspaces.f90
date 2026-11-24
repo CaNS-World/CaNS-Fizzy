@@ -5,7 +5,7 @@
 !
 ! -
 module mod_workspaces
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   use mod_types
   use mod_common_cudecomp, only: work,work_cuda,work_halo,work_halo_cuda,work_dtdma,work_dtdma_cuda
   use mod_utils          , only: f_sizeof
@@ -29,7 +29,11 @@ contains
 #else
     use cudecomp
 #endif
+#if   defined(_OPENACC)
     use openacc
+#elif defined(_OPENMP)
+    use omp_lib
+#endif
     implicit none
     integer :: istat
     integer(i8) :: i,wsize,max_wsize,elem_round
@@ -53,13 +57,19 @@ contains
     ! one can append more checks here (e.g., for spectra calculation)
     !
     allocate(work(max_wsize))
-    !$acc enter data create(work) if(is_use_diezdecomp)
+    !$acc        enter data create(   work) if(is_use_diezdecomp)
+    !$omp target enter data map(alloc:work) if(is_use_diezdecomp)
 #if !defined(_USE_DIEZDECOMP)
     istat = cudecompMalloc(handle,gd_poi,work_cuda,max_wsize)
+#if   defined(_OPENACC)
 #if defined(_USE_HIP)
     call acc_map_data(work,c_loc(work_cuda),max_wsize*f_sizeof(work(1)))
 #else
     call acc_map_data(work,work_cuda       ,max_wsize*f_sizeof(work(1)))
+#endif
+#elif defined(_OPENMP)
+    istat = omp_target_associate_ptr(c_loc(work(1)),c_loc(work_cuda(1)),max_wsize*f_sizeof(work(1)), &
+                                     0_i8,omp_get_default_device())
 #endif
 #endif
     !
@@ -71,13 +81,19 @@ contains
     istat = cudecompGetHaloWorkspaceSize(handle,gd_halo,ipencil,nh,max_wsize)
     allocate(work_halo(max_wsize))
     !
-    !$acc enter data create(work_halo) if(is_use_diezdecomp)
+    !$acc        enter data create(   work_halo) if(is_use_diezdecomp)
+    !$omp target enter data map(alloc:work_halo) if(is_use_diezdecomp)
 #if !defined(_USE_DIEZDECOMP)
     istat = cudecompMalloc(handle,gd_halo,work_halo_cuda,max_wsize)
+#if   defined(_OPENACC)
 #if defined(_USE_HIP)
     call acc_map_data(work_halo,c_loc(work_halo_cuda),max_wsize*f_sizeof(work_halo(1)))
 #else
     call acc_map_data(work_halo,work_halo_cuda       ,max_wsize*f_sizeof(work_halo(1)))
+#endif
+#elif defined(_OPENMP)
+    istat = omp_target_associate_ptr(c_loc(work_halo(1)),c_loc(work_halo_cuda(1)),max_wsize*f_sizeof(work_halo(1)), &
+                                     0_i8,omp_get_default_device())
 #endif
 #endif
     !
@@ -85,20 +101,24 @@ contains
     !
     wsize = max(ap_x_poi%size,ap_y_poi%size,ap_z_poi%size)
     allocate(solver_buf_0(wsize),solver_buf_1(wsize))
-    !$acc enter data create(solver_buf_0,solver_buf_1)
-    !$acc parallel loop default(present)
+    !$acc        enter data create(   solver_buf_0,solver_buf_1)
+    !$omp target enter data map(alloc:solver_buf_0,solver_buf_1)
+    !$acc parallel     loop default(present)
+    !$omp target teams loop
     do i=1,wsize
       solver_buf_0(i) = 0.
       solver_buf_1(i) = 0.
     end do
     if(cbcpre(0,3)//cbcpre(1,3) == 'PP') then
       allocate(pz_aux_1(ap_z%shape(1),ap_z%shape(2),ap_z%shape(3)))
-      !$acc enter data create(pz_aux_1)
+      !$acc        enter data create(   pz_aux_1)
+      !$omp target enter data map(alloc:pz_aux_1)
     end if
     if(is_poisson_dtdma) then
       if(.not.allocated(pz_aux_1)) then
         allocate(pz_aux_1(ap_z%shape(1),ap_z%shape(2),ap_z%shape(3)))
-        !$acc enter data create(pz_aux_1)
+        !$acc        enter data create(   pz_aux_1)
+        !$omp target enter data map(alloc:pz_aux_1)
       end if
       !
       ! allocate DTDMA transpose workspaces: a separate buffer is needed because `work` is used along with `work_dtdma`
@@ -106,21 +126,31 @@ contains
       istat = cudecompGetTransposeWorkspaceSize(handle,gd_dtdma,wsize)
       wsize = max(wsize,3*((ng(3)+dims(2)-1)/dims(2))*dims(2)) ! considers largest Z slab on every rank
       allocate(work_dtdma(wsize))
-      !$acc enter data create(work_dtdma) if(is_use_diezdecomp)
+      !$acc        enter data create(   work_dtdma) if(is_use_diezdecomp)
+      !$omp target enter data map(alloc:work_dtdma) if(is_use_diezdecomp)
 #if !defined(_USE_DIEZDECOMP)
       istat = cudecompMalloc(handle,gd_dtdma,work_dtdma_cuda,wsize)
+#if   defined(_OPENACC)
 #if defined(_USE_HIP)
       call acc_map_data(work_dtdma,c_loc(work_dtdma_cuda),wsize*f_sizeof(work_dtdma(1)))
 #else
       call acc_map_data(work_dtdma,work_dtdma_cuda       ,wsize*f_sizeof(work_dtdma(1)))
 #endif
+#elif defined(_OPENMP)
+      istat = omp_target_associate_ptr(c_loc(work_dtdma(1)),c_loc(work_dtdma_cuda(1)),wsize*f_sizeof(work_dtdma(1)), &
+                                       0_i8,omp_get_default_device())
+#endif
 #endif
     end if
     !
+#if   defined(_OPENACC)
 #if !defined(_USE_HIP)
     istream_acc_queue_1 = acc_get_cuda_stream(1) ! fetch CUDA stream of OpenACC queue 1
 #else
     istream_acc_queue_1 = acc_get_hip_stream(1)
+#endif
+#elif defined(_OPENMP)
+    istream_acc_queue_1 = 0
 #endif
     istream_acc_queue_1_comm_lib = istream_acc_queue_1
 #if defined(_USE_DIEZDECOMP)
@@ -135,8 +165,8 @@ contains
     use hipfort_hipfft, only: cufftSetWorkArea => hipfftSetWorkArea_, &
                               cufftSetStream   => hipfftSetStream_
 #endif
-    use openacc
-    use mod_fft       , only: wsize_tmp
+    use mod_common_cudecomp, only: cuda_stream_kind
+    use mod_fft            , only: wsize_tmp
     !
     ! to be done after initializing all FFTs and allocating work
     !
@@ -149,11 +179,12 @@ contains
 #if defined(_USE_HIP) && !defined(_USE_DIEZDECOMP)
     type(C_PTR), target, intent(in), optional :: istream
 #else
-    integer(acc_handle_kind), target, intent(in), optional :: istream
+    integer(cuda_stream_kind), target, intent(in), optional :: istream
 #endif
     integer :: istat,i
     do i=1,size(arrplan)
-      !$acc host_data use_device(work)
+      !$acc   host_data use_device(     work)
+      !$omp target data use_device_addr(work)
 #if !defined(_USE_HIP)
       istat = cufftSetWorkArea(arrplan(i),work(wsize_tmp + 1))
 #else
@@ -164,7 +195,8 @@ contains
         istat = cufftSetStream(arrplan(i),istream)
       end if
 #endif
-      !$acc end host_data
+      !$omp end target data
+      !$acc end   host_data
     end do
   end subroutine set_cufft_wspace
   subroutine cudecomp_finalize

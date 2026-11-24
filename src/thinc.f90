@@ -38,6 +38,7 @@ module mod_thinc
   integer , parameter :: ngauss = 2 ! two-point Gaussian quadrature
   real(rp), dimension(ngauss) :: gauss_p = [-sqrt(3._rp)/6._rp,sqrt(3._rp)/6._rp], &
                                  gauss_w = [0.5_rp,0.5_rp]
+  !$omp declare target(gauss_p,gauss_w)
 #if 0
 !  integer , parameter :: ngauss = 1 ! one-point Gaussian quadrature
 !  real(rp), dimension(ngauss) :: gauss_p = [0._rp], &
@@ -78,7 +79,8 @@ module mod_thinc
     !
     is_sdf = is_sdf_normals
     d_full = 1.e3_rp/beta
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -145,7 +147,8 @@ module mod_thinc
       end do
     end do
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -171,7 +174,8 @@ module mod_thinc
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) firstprivate(beta) async(1)
+    !$acc parallel     loop collapse(3) default(present) firstprivate(beta) async(1)
+    !$omp target teams loop collapse(3)                  firstprivate(beta)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -318,6 +322,7 @@ module mod_thinc
     real(rp) :: f0,f1
     real(rp) :: res,sol
     !$acc routine seq
+    !$omp declare target
     !
     ! pre-compute constant terms tanh(\beta P(\xi_{g}))/2
     !
@@ -368,6 +373,7 @@ module mod_thinc
     real(rp), intent(in) :: beta,nx,ny,nz,x,y,z,d
     real(rp) :: h
     !$acc routine seq
+    !$omp declare target
     h = 1._rp/(1._rp + exp(-2._rp*beta*(nx*x + ny*y + nz*z + d)))
     !h = 0.5_rp*(1._rp+tanh(beta*(nx*x+ny*y+nz*z+d)))
   end function smooth_step_tanh
@@ -380,6 +386,7 @@ module mod_thinc
     implicit none
     real(rp), intent(in) :: a,f,beta
     !$acc routine seq
+    !$omp declare target
     d = (beta*a-log(expm1_(2._rp*beta*a*(1._rp-f)))+log(-expm1_(-2._rp*beta*a*f)))/(2._rp*beta)
   end function thinc_intercept
   !
@@ -392,6 +399,7 @@ module mod_thinc
     real(rp), intent(in) :: a,d,beta,s0,s1
     real(rp) :: x0,x1
     !$acc routine seq
+    !$omp declare target
     x0 = 2._rp*beta*(a*s0-d)
     x1 = 2._rp*beta*(a*s1-d)
     if(abs(x1-x0) < 1.e-2_rp) then
@@ -406,6 +414,7 @@ module mod_thinc
     implicit none
     real(rp), intent(in) :: x
     !$acc routine seq
+    !$omp declare target
     sigmoid = 0.5_rp*(1._rp+tanh(0.5_rp*x))
   end function sigmoid
   !
@@ -416,6 +425,7 @@ module mod_thinc
     implicit none
     real(rp), intent(in) :: x
     !$acc routine seq
+    !$omp declare target
     softplus = max(x,0._rp)+log1p_(exp(-abs(x)))
   end function softplus
   !
@@ -427,6 +437,7 @@ module mod_thinc
     real(rp), intent(in) :: x
     real(rp) :: u
     !$acc routine seq
+    !$omp declare target
     u = exp(x)
     if(u == 1._rp) then
       expm1_ = x
@@ -445,6 +456,7 @@ module mod_thinc
     real(rp), intent(in) :: y
     real(rp) :: u
     !$acc routine seq
+    !$omp declare target
     u = 1._rp+y
     if(u == 1._rp) then
       log1p_ = y

@@ -26,9 +26,8 @@ module mod_post
     integer :: i,j,k
     dxi = dli(1)
     dyi = dli(2)
-    !
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)
       do j=0,n(2)
         do i=1,n(1)
@@ -38,8 +37,8 @@ module mod_post
       end do
     end do
     !
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)
       do j=1,n(2)
         do i=0,n(1)
@@ -49,8 +48,8 @@ module mod_post
       end do
     end do
     !
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -85,9 +84,10 @@ module mod_post
     allocate(s12e(0:n(1),0:n(2),1:n(3)), &
              s13e(0:n(1),1:n(2),0:n(3)), &
              s23e(1:n(1),0:n(2),0:n(3)))
-    !$acc enter data create(s12e,s13e,s23e)
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc        enter data create(   s12e,s13e,s23e)
+    !$omp target enter data map(alloc:s12e,s13e,s23e)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -96,8 +96,8 @@ module mod_post
         end do
       end do
     end do
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)
       do j=1,n(2)
         do i=0,n(1)
@@ -106,8 +106,8 @@ module mod_post
         end do
       end do
     end do
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)
       do j=0,n(2)
         do i=1,n(1)
@@ -119,8 +119,8 @@ module mod_post
     !
     ! interpolate squared edge strains only when forming the cell-centered invariant
     !
-    !$acc parallel loop collapse(3) default(present) private(s11,s12c,s13c,s22,s23c,s33)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)  PRIVATE(s11,s12c,s13c,s22,s23c,s33)
+    !$acc parallel     loop collapse(3) default(present) private(s11,s12c,s13c,s22,s23c,s33)
+    !$omp target teams loop collapse(3)                  private(s11,s12c,s13c,s22,s23c,s33)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -134,7 +134,8 @@ module mod_post
         end do
       end do
     end do
-    !$acc exit data delete(s12e,s13e,s23e)
+    !$acc        exit data delete(   s12e,s13e,s23e)
+    !$omp target exit data map(delete:s12e,s13e,s23e)
     deallocate(s12e,s13e,s23e)
   end subroutine strain_rate
   !
@@ -157,13 +158,14 @@ module mod_post
     allocate(vox(0:n(1),0:n(2),0:n(3)), &
              voy(0:n(1),0:n(2),0:n(3)), &
              voz(0:n(1),0:n(2),0:n(3)))
-    !$acc enter data create(vox,voy,voz)
+    !$acc        enter data create(   vox,voy,voz)
+    !$omp target enter data map(alloc:vox,voy,voz)
     call vorticity(n,nh,1,nh_g,dli,dzci,ux,uy,uz,vox,voy,voz)
     !
     ! Wij*Wij = |vorticity|^2/2; interpolate squared edge values to cells
     !
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -175,7 +177,8 @@ module mod_post
         end do
       end do
     end do
-    !$acc exit data delete(vox,voy,voz)
+    !$acc        exit data delete(   vox,voy,voz)
+    !$omp target exit data map(delete:vox,voy,voz)
     deallocate(vox,voy,voz)
   end subroutine rotation_rate
   !
@@ -187,8 +190,8 @@ module mod_post
     real(rp), intent(out), dimension(1-nh:,1-nh:,1-nh:) :: qcr
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)

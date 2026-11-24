@@ -30,6 +30,7 @@ module mod_plic
     real(rp), intent(in) :: mx,my,mz,alpha
     real(rp) :: s,a,b1,b2,b3
     !$acc routine seq
+    !$omp declare target
     s = abs(mx)+abs(my)+abs(mz)
     a = alpha-min(mx,0._rp)-min(my,0._rp)-min(mz,0._rp) ! mirror the cube such that m >= 0
     if(     a <= 0._rp) then
@@ -55,6 +56,7 @@ module mod_plic
     real(rp), intent(in) :: mx,my,mz,vol
     real(rp) :: s,v,a,b1,b2,b3
     !$acc routine seq
+    !$omp declare target
     s = abs(mx)+abs(my)+abs(mz)
     v = min(max(vol,0._rp),1._rp)
     a = 0._rp
@@ -77,6 +79,7 @@ module mod_plic
     implicit none
     real(rp), intent(in) :: mx,my,mz,alpha,x0,y0,z0,dx,dy,dz
     !$acc routine seq
+    !$omp declare target
     vol = plic_volume(mx*dx,my*dy,mz*dz,alpha-mx*x0-my*y0-mz*z0)
   end function plic_volume_box
   !
@@ -98,6 +101,7 @@ module mod_plic
     real(rp), intent(out) :: mx,my,mz
     real(rp) :: mx_y,my_y,mz_y,t,tcc
     !$acc routine seq
+    !$omp declare target
     call normal_cc(c,dx,dy,dz,is_active,mx,my,mz,tcc)
     call plic_normal_youngs(c,dx,dy,dz,mx_y,my_y,mz_y)
     !
@@ -127,6 +131,7 @@ module mod_plic
     real(rp) :: gx,gy,gz,dzm,dzp,s
     integer :: p,q
     !$acc routine seq
+    !$omp declare target
     dzm = 0.5_rp*(dz(-1)+dz(0))
     dzp = 0.5_rp*(dz( 0)+dz(1))
     gx = 0._rp
@@ -169,6 +174,7 @@ module mod_plic
     real(rp), intent(out) :: mx,my,mz
     real(rp) :: tmax
     !$acc routine seq
+    !$omp declare target
     call normal_cc(c,dx,dy,dz,is_active,mx,my,mz,tmax)
   end subroutine plic_normal_cc
   !
@@ -185,6 +191,7 @@ module mod_plic
     real(rp) :: dzm,dzp,hm,h0,hp,hmy,hpy,sgn,ax,ay,az,s,t
     integer :: p
     !$acc routine seq
+    !$omp declare target
     dzm = 0.5_rp*(dz(-1)+dz(0))
     dzp = 0.5_rp*(dz( 0)+dz(1))
     tmax = -1._rp
@@ -279,6 +286,7 @@ module mod_plic
     real(rp) :: lo,hi,vol
     integer :: a,b,q
     !$acc routine seq
+    !$omp declare target
     lo = 0.5_rp*dq(0) ! distance from the lower end of the columns to the central cell centre
     hi = 0.5_rp*dq(0) ! distance from the central cell centre to the upper end
     do q=1,nq
@@ -322,6 +330,7 @@ module mod_plic
     logical , intent(in) :: is_act_a,is_act_b
     real(rp) :: ha,hb,haa,hbb,hab,hbm,hbp
     !$acc routine seq
+    !$omp declare target
     ha  = 0._rp; haa = 0._rp
     hb  = 0._rp; hbb = 0._rp
     hab = 0._rp
@@ -353,6 +362,7 @@ module mod_plic
     real(rp), intent(out) :: na,nb,nq
     real(rp) :: ha,hb,s
     !$acc routine seq
+    !$omp declare target
     ha = 0._rp
     hb = 0._rp
     if(is_act_a) ha = dcentred(hgt(-1,0),hgt(0,0),hgt(1,0),dam,dap)
@@ -371,6 +381,7 @@ module mod_plic
     implicit none
     real(rp), intent(in) :: qm,q0,qp,dzm,dzp
     !$acc routine seq
+    !$omp declare target
     dq = (dzm**2*(qp-q0)+dzp**2*(q0-qm))/(dzm*dzp*(dzm+dzp))
   end function dcentred
   !
@@ -379,6 +390,7 @@ module mod_plic
     real(rp), intent(in ) :: x1,x2,x3
     real(rp), intent(out) :: b1,b2,b3
     !$acc routine seq
+    !$omp declare target
     b1 = min(x1,x2,x3)
     b3 = max(x1,x2,x3)
     b2 = max(min(x1,x2),min(max(x1,x2),x3))
@@ -394,6 +406,7 @@ module mod_plic
     real(rp), intent(in) :: b1,b2,b3,a
     real(rp) :: b12,d2,d3
     !$acc routine seq
+    !$omp declare target
     b12 = b1+b2
     if(     a < b1) then
       vol = a*(a/b1)*(a/b2)/(6._rp*b3)
@@ -419,6 +432,7 @@ module mod_plic
     real(rp), intent(in) :: b1,b2,b3,a
     real(rp) :: b12,d2,d3
     !$acc routine seq
+    !$omp declare target
     b12 = b1+b2
     if(     a < b1) then
       dvol = (a/b1)*(a/b2)/(2._rp*b3)
@@ -448,6 +462,7 @@ module mod_plic
     real(rp) :: b12,a3,v1,v2,v3,alo,ahi,vlo,vhi,f,df,anew
     integer :: iter
     !$acc routine seq
+    !$omp declare target
     b12 = b1+b2
     a3  = min(b12,b3)
     v1 = 0._rp

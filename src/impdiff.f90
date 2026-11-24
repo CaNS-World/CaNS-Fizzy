@@ -51,11 +51,12 @@ module mod_impdiff
     !
     if(.not.allocated(dud)) then
       allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
-      !$acc enter data create(dud,dvd,dwd) async(1)
+      !$acc        enter data create(dud,dvd,dwd) async(1)
+      !$omp target enter data map(alloc:dud,dvd,dwd)
     end if
     call visc_coeffs(mu12,mu,dmu,is_harm)
-    !$acc parallel loop collapse(3) default(present) private(muzp,muzm) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)  private(muzp,muzm)
+    !$acc parallel     loop collapse(3) default(present) private(muzp,muzm) async(1)
+    !$omp target teams loop collapse(3)                  private(muzp,muzm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -100,7 +101,8 @@ module mod_impdiff
     !
     if(.not.allocated(cw)) then
       allocate(cw(n(1),n(2),n(3)))
-      !$acc enter data create(cw) async(1)
+      !$acc        enter data create(cw) async(1)
+      !$omp target enter data map(alloc:cw)
     end if
     call solve_lines_c(n,nh_v,nh_psi,nh_g,1,0,cbc(:,3,1),bc(:,3,1),dzc,dzci,dzfi,theta,rho12,mu12,psi,dud,cw,u)
     call solve_lines_c(n,nh_v,nh_psi,nh_g,0,1,cbc(:,3,2),bc(:,3,2),dzc,dzci,dzfi,theta,rho12,mu12,psi,dvd,cw,v)
@@ -134,12 +136,13 @@ module mod_impdiff
     !
     if(.not.allocated(dud)) then
       allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
-      !$acc enter data create(dud,dvd,dwd) async(1)
+      !$acc        enter data create(dud,dvd,dwd) async(1)
+      !$omp target enter data map(alloc:dud,dvd,dwd)
     end if
     rho = rho12(2); drho = rho12(1)-rho12(2)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -176,8 +179,8 @@ module mod_impdiff
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -209,12 +212,13 @@ module mod_impdiff
     !
     if(.not.allocated(dsd)) then
       allocate(dsd(n(1),n(2),n(3)))
-      !$acc enter data create(dsd) async(1)
+      !$acc        enter data create(dsd) async(1)
+      !$omp target enter data map(alloc:dsd)
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -240,8 +244,8 @@ module mod_impdiff
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -274,7 +278,6 @@ module mod_impdiff
     !
     if(.not.allocated(dud)) allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
     call impdiff_vc_mom_cmpt(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,mu12,psi,u,v,w,dud,dvd,dwd)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -306,9 +309,6 @@ module mod_impdiff
     !
     call visc_coeffs(mu12,mu,dmu,is_harm)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
-    !$OMP parallel do   collapse(3) DEFAULT(shared) &
-    !$OMP private(muxp,muxm,muyp,muym,muzp,muzm) &
-    !$OMP private(c_ccc,c_pcc,c_mcc,c_cpc,c_cmc,c_ccp,c_ccm,c_ppc,c_pmc,c_mpc,c_pcp,c_pcm,c_mcp,c_cpp,c_cpm,c_cmp)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -380,7 +380,6 @@ module mod_impdiff
     integer  :: i,j,k
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -426,7 +425,6 @@ module mod_impdiff
     call helmholtz_coeffs(n,nh_psi,nh_g,3,cbc(:,:,3),is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,dwd)
     call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dwd)
     deallocate(coeffs)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -456,7 +454,6 @@ module mod_impdiff
     !
     if(.not.allocated(dsd)) allocate(dsd(n(1),n(2),n(3)))
     call impdiff_vc_scal_cmpt(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,ka12,psi,s,dsd)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -485,7 +482,6 @@ module mod_impdiff
     !
     call visc_coeffs(ka12,ka,dka,is_harm)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
-    !$OMP parallel do   collapse(3) DEFAULT(shared) private(kaxp,kaxm,kayp,kaym,kazp,kazm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -518,7 +514,6 @@ module mod_impdiff
     integer  :: i,j,k
     !
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -552,7 +547,6 @@ module mod_impdiff
     call helmholtz_coeffs(n,nh_psi,nh_g,0,cbc,is_bound,dli,dzci,dzfi,dzci,theta,rhocp12,ka12,psi,coeffs,dsd) ! (no weights needed)
     call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dsd)
     deallocate(coeffs)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -600,7 +594,6 @@ module mod_impdiff
     call visc_coeffs(mu12,mu,dmu,is_harm)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     e(:) = 0; if(iq > 0) e(iq) = 1
-    !$OMP parallel do   collapse(3) DEFAULT(shared) private(vol,rhop,cc,psic,psif,sgn,cs,ijk,ijkn,is_node,idir,ib)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -715,10 +708,11 @@ module mod_impdiff
     rho = rho12(2); drho = rho12(1)-rho12(2)
     fx = 0._rp; fy = 0._rp; fz = 0._rp
     gx = 0._rp; gy = 0._rp; gz = 0._rp
-    !$acc data copy(fx,fy,fz,gx,gy,gz) async(1)
+    !$acc        data copy(fx,fy,fz,gx,gy,gz) async(1)
+    !$omp target data map(tofrom:fx,fy,fz,gx,gy,gz)
     if(.not.is_cc) then
-      !$acc parallel loop collapse(3) default(present) reduction(+:fx,fy,fz) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)  reduction(+:fx,fy,fz)
+      !$acc parallel     loop collapse(3) default(present) reduction(+:fx,fy,fz) async(1)
+      !$omp target teams loop collapse(3)                  reduction(+:fx,fy,fz)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -729,8 +723,8 @@ module mod_impdiff
         end do
       end do
     else
-      !$acc parallel loop collapse(3) default(present) private(psixp,psiyp,psizp) reduction(+:fx,fy,fz,gx,gy,gz) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)  private(psixp,psiyp,psizp) reduction(+:fx,fy,fz,gx,gy,gz)
+      !$acc parallel     loop collapse(3) default(present) private(psixp,psiyp,psizp) reduction(+:fx,fy,fz,gx,gy,gz) async(1)
+      !$omp target teams loop collapse(3)                  private(psixp,psiyp,psizp) reduction(+:fx,fy,fz,gx,gy,gz)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -747,7 +741,8 @@ module mod_impdiff
         end do
       end do
     end if
-    !$acc end data
+    !$omp end target data
+    !$acc end        data
     !$acc wait(1)
     force(:) = [fx,fy,fz,gx,gy,gz]
     call MPI_ALLREDUCE(MPI_IN_PLACE,force,6,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
@@ -777,8 +772,8 @@ module mod_impdiff
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     dtfx = dtf(1); dtfy = dtf(2); dtfz = dtf(3)
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -810,11 +805,12 @@ module mod_impdiff
     !
     if(.not.allocated(dsd)) then
       allocate(dsd(n(1),n(2),n(3)))
-      !$acc enter data create(dsd) async(1)
+      !$acc        enter data create(dsd) async(1)
+      !$omp target enter data map(alloc:dsd)
     end if
     call visc_coeffs(ka12,ka,dka,is_harm)
-    !$acc parallel loop collapse(3) default(present) private(kazp,kazm) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)  private(kazp,kazm)
+    !$acc parallel     loop collapse(3) default(present) private(kazp,kazm) async(1)
+    !$omp target teams loop collapse(3)                  private(kazp,kazm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -847,7 +843,8 @@ module mod_impdiff
     !
     if(.not.allocated(cw)) then
       allocate(cw(n(1),n(2),n(3)))
-      !$acc enter data create(cw) async(1)
+      !$acc        enter data create(cw) async(1)
+      !$omp target enter data map(alloc:cw)
     end if
     call solve_lines_c(n,nh_s,nh_psi,nh_g,0,0,cbc(:,3),bc(:,3),dzc,dzci,dzfi,theta,rhocp12,ka12,psi,dsd,cw,s)
   end subroutine impdiff_z_scal_solve
@@ -884,8 +881,8 @@ module mod_impdiff
     !
     call bc_ghost(cbc(0),2.*bc(0),-dzc(0 )*bc(0),sgn0,fac0)
     call bc_ghost(cbc(1),2.*bc(1), dzc(nz)*bc(1),sgn1,fac1)
-    !$acc parallel loop collapse(2) default(present) private(a,b,c,d,rhop,z,cwm,pm,psim,psic,psip,muzm,muzp) async(1)
-    !$OMP parallel do   collapse(2) DEFAULT(shared)  private(a,b,c,d,rhop,z,cwm,pm,psim,psic,psip,muzm,muzp)
+    !$acc parallel     loop collapse(2) default(present) private(a,b,c,d,rhop,z,cwm,pm,psim,psic,psip,muzm,muzp) async(1)
+    !$omp target teams loop collapse(2)                  private(a,b,c,d,rhop,z,cwm,pm,psim,psic,psip,muzm,muzp)
     do j=1,n(2)
       do i=1,n(1)
         !
@@ -970,8 +967,8 @@ module mod_impdiff
     !
     call bc_ghost(cbc(0),bc(0),-dzf(0 )*bc(0),sgn0,fac0); if(cbc(0) == 'D') sgn0 = 0.
     call bc_ghost(cbc(1),bc(1), dzf(nz)*bc(1),sgn1,fac1); if(cbc(1) == 'D') sgn1 = 0.
-    !$acc parallel loop collapse(2) default(present) private(a,b,c,d,rhop,z,cwm,pm,psim,psip,muzm,muzp) async(1)
-    !$OMP parallel do   collapse(2) DEFAULT(shared)  private(a,b,c,d,rhop,z,cwm,pm,psim,psip,muzm,muzp)
+    !$acc parallel     loop collapse(2) default(present) private(a,b,c,d,rhop,z,cwm,pm,psim,psip,muzm,muzp) async(1)
+    !$omp target teams loop collapse(2)                  private(a,b,c,d,rhop,z,cwm,pm,psim,psip,muzm,muzp)
     do j=1,n(2)
       do i=1,n(1)
         !
@@ -1059,6 +1056,7 @@ module mod_impdiff
     ! viscosity for a value `psi` of the phase indicator: arithmetic or harmonic interpolation
     !
     !$acc routine seq
+    !$omp declare target
     implicit none
     logical , intent(in) :: is_harm
     real(rp), intent(in) :: mu,dmu,psi

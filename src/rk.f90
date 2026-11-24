@@ -88,8 +88,10 @@ module mod_rk
     !
     if(.not.allocated(dudtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dudtrk(n(1),n(2),n(3)),dvdtrk(n(1),n(2),n(3)),dwdtrk(n(1),n(2),n(3)))
-      !$acc enter data create(dudtrk,dvdtrk,dwdtrk) async(1)
-      !$acc enter data create(bforce_eff) async(1)
+      !$acc        enter data create(dudtrk,dvdtrk,dwdtrk) async(1)
+      !$omp target enter data map(alloc:dudtrk,dvdtrk,dwdtrk)
+      !$acc        enter data create(bforce_eff) async(1)
+      !$omp target enter data map(alloc:bforce_eff)
     end if
     !
     ! zero-net-acceleration forcing
@@ -115,7 +117,8 @@ module mod_rk
       wall_force_old(:) = wall_force(:)
     end if
     force_balance(:,5) = bforce_eff(:)
-    !$acc update device(bforce_eff) async(1)
+    !$acc        update device(bforce_eff) async(1)
+    !$omp target update to(bforce_eff)
     !
     ! advection, diffusion and regularization terms
     !
@@ -148,13 +151,14 @@ module mod_rk
         force_balance(:,1) = force_balance(:,1) - wall_force_imp(:)
         bforce_eff(:)      = bforce_eff(:)      - wall_force_imp(:)
         force_balance(:,5) = bforce_eff(:)
-        !$acc update device(bforce_eff) async(1)
+        !$acc        update device(bforce_eff) async(1)
+        !$omp target update to(bforce_eff)
       end if
     end if
     !
     if(is_first) then
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -168,7 +172,8 @@ module mod_rk
     !
     if(.not.is_ifc_split) then
       rho = rho12(2); drho = rho12(1)-rho12(2)
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -199,7 +204,8 @@ module mod_rk
         ! the other terms are added to the velocity transported along with the volume fraction
         !
         rho = rho12(2); drho = rho12(1)-rho12(2)
-        !$acc parallel loop collapse(3) default(present) async(1)
+        !$acc parallel     loop collapse(3) default(present) async(1)
+        !$omp target teams loop collapse(3)
         do k=1,n(3)
           do j=1,n(2)
             do i=1,n(1)
@@ -284,7 +290,8 @@ module mod_rk
     factor12 = factor1 + factor2
     if(.not.allocated(dsdtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dsdtrk(n(1),n(2),n(3)))
-      !$acc enter data create(dsdtrk) async(1)
+      !$acc        enter data create(dsdtrk) async(1)
+      !$omp target enter data map(alloc:dsdtrk)
       !$acc wait(1)
     end if
     rhocp12(:) = rho12(:)*cp12(:)
@@ -295,7 +302,8 @@ module mod_rk
         c1 = 1.
         c2 = 0.
       end if
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1-nh_s,n(3)+nh_s
         do j=1-nh_s,n(2)+nh_s
           do i=1-nh_s,n(1)+nh_s
@@ -322,8 +330,8 @@ module mod_rk
       end if
     end if
     if(is_first) then
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -334,7 +342,8 @@ module mod_rk
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     if(.not.is_vof_sweep_transport) then
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -353,7 +362,8 @@ module mod_rk
       !
       ! the other terms are added to the scalar transported along with the volume fraction
       !
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -397,7 +407,8 @@ module mod_rk
     factor12 = factor1 + factor2 ! unused but left here in case a source term is needed in the future
     if(.not.allocated(dpsidtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dpsidtrk(n(1),n(2),n(3)))
-      !$acc enter data create(dpsidtrk) async(1)
+      !$acc        enter data create(dpsidtrk) async(1)
+      !$omp target enter data map(alloc:dpsidtrk)
     end if
     if(is_ifc_acdi) then
       call acdi_transport_pf(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,gam,seps,u,v,w,normx,normy,normz,phi,psi,dpsidtrk, &
@@ -407,8 +418,8 @@ module mod_rk
                                psiflx_x,psiflx_y,psiflx_z)
     end if
     if(is_first) then
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -417,7 +428,8 @@ module mod_rk
         end do
       end do
     end if
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)

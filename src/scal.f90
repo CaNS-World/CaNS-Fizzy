@@ -21,7 +21,7 @@ module mod_scal
     real(rp), allocatable, dimension(:,:,:) :: val
     real(rp), allocatable, dimension(:,:,:) :: dsdtrko
     real(rp), allocatable, dimension(:,:,:) :: so,sadv
-#if !defined(_OPENACC) || defined(_USE_HIP)
+#if !(defined(_OPENACC) || defined(_OPENMP)) || defined(_USE_HIP)
     type(C_PTR), dimension(2,2) :: arrplan
 #else
     integer    , dimension(2,2) :: arrplan
@@ -65,7 +65,8 @@ module mod_scal
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -148,7 +149,8 @@ module mod_scal
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     dxi = dli(1)
     dyi = dli(2)
-    !$acc parallel loop collapse(3) default(present) private(usip,usim,vsjp,vsjm,wskp,wskm) async(1)
+    !$acc parallel     loop collapse(3) default(present) private(usip,usim,vsjp,vsjm,wskp,wskm) async(1)
+    !$omp target teams loop collapse(3)                  private(usip,usim,vsjp,vsjm,wskp,wskm)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -197,10 +199,12 @@ module mod_scal
     dxi = dli(1); dyi = dli(2)
     lx = l(1); ly = l(2); lz = l(3)
     flux_x = 0._rp
-    !$acc data copy(flux_x) async(1)
+    !$acc        data copy(flux_x) async(1)
+    !$omp target data map(tofrom:flux_x)
     if(is_bound(0,1)) then
       i = 0
-      !$acc parallel loop collapse(2) default(present) private(dsdxp,kaxp,psip) reduction(+:flux_x) async(1)
+      !$acc parallel     loop collapse(2) default(present) private(dsdxp,kaxp,psip) reduction(+:flux_x) async(1)
+      !$omp target teams loop collapse(2)                  private(dsdxp,kaxp,psip) reduction(+:flux_x)
       do k=1,nz
         do j=1,ny
           dsdxp = (s(i+1,j,k)-s(i  ,j,k))*dxi
@@ -213,7 +217,8 @@ module mod_scal
     end if
     if(is_bound(1,1)) then
       i = nx+1
-      !$acc parallel loop collapse(2) default(present) private(dsdxm,kaxm,psip) reduction(+:flux_x) async(1)
+      !$acc parallel     loop collapse(2) default(present) private(dsdxm,kaxm,psip) reduction(+:flux_x) async(1)
+      !$omp target teams loop collapse(2)                  private(dsdxm,kaxm,psip) reduction(+:flux_x)
       do k=1,nz
         do j=1,ny
           dsdxm = (s(i  ,j,k)-s(i-1,j,k))*dxi
@@ -224,12 +229,15 @@ module mod_scal
         end do
       end do
     end if
-    !$acc end data
+    !$omp end target data
+    !$acc end        data
     flux_y = 0._rp
-    !$acc data copy(flux_y) async(1)
+    !$acc        data copy(flux_y) async(1)
+    !$omp target data map(tofrom:flux_y)
     if(is_bound(0,2)) then
       j = 0
-      !$acc parallel loop collapse(2) default(present) private(dsdyp,kayp,psip) reduction(+:flux_y) async(1)
+      !$acc parallel     loop collapse(2) default(present) private(dsdyp,kayp,psip) reduction(+:flux_y) async(1)
+      !$omp target teams loop collapse(2)                  private(dsdyp,kayp,psip) reduction(+:flux_y)
       do k=1,nz
         do i=1,nx
           dsdyp = (s(i,j+1,k)-s(i,j  ,k))*dyi
@@ -242,7 +250,8 @@ module mod_scal
     end if
     if(is_bound(1,2)) then
       j = ny+1
-      !$acc parallel loop collapse(2) default(present) private(dsdym,kaym,psip) reduction(+:flux_y) async(1)
+      !$acc parallel     loop collapse(2) default(present) private(dsdym,kaym,psip) reduction(+:flux_y) async(1)
+      !$omp target teams loop collapse(2)                  private(dsdym,kaym,psip) reduction(+:flux_y)
       do k=1,nz
         do i=1,nx
           dsdym = (s(i,j  ,k)-s(i,j-1,k))*dyi
@@ -253,12 +262,15 @@ module mod_scal
         end do
       end do
     end if
-    !$acc end data
+    !$omp end target data
+    !$acc end        data
     flux_z = 0._rp
-    !$acc data copy(flux_z) async(1)
+    !$acc        data copy(flux_z) async(1)
+    !$omp target data map(tofrom:flux_z)
     if(is_bound(0,3)) then
       k = 0
-      !$acc parallel loop collapse(2) default(present) private(dsdzp,kazp,psip) reduction(+:flux_z) async(1)
+      !$acc parallel     loop collapse(2) default(present) private(dsdzp,kazp,psip) reduction(+:flux_z) async(1)
+      !$omp target teams loop collapse(2)                  private(dsdzp,kazp,psip) reduction(+:flux_z)
       do j=1,ny
         do i=1,nx
           dsdzp = (s(i,j,k+1)-s(i,j,k  ))*dzci(k  )
@@ -271,7 +283,8 @@ module mod_scal
     end if
     if(is_bound(1,3)) then
       k = nz+1
-      !$acc parallel loop collapse(2) default(present) private(dsdzm,kazm,psip) reduction(+:flux_z) async(1)
+      !$acc parallel     loop collapse(2) default(present) private(dsdzm,kazm,psip) reduction(+:flux_z) async(1)
+      !$omp target teams loop collapse(2)                  private(dsdzm,kazm,psip) reduction(+:flux_z)
       do j=1,ny
         do i=1,nx
           dsdzm = (s(i,j,k  )-s(i,j,k-1))*dzci(k-1)
@@ -282,7 +295,8 @@ module mod_scal
         end do
       end do
     end if
-    !$acc end data
+    !$omp end target data
+    !$acc end        data
     !$acc wait(1)
     flux(:) = [flux_x,flux_y,flux_z]
     call MPI_ALLREDUCE(MPI_IN_PLACE,flux,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)

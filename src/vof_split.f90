@@ -145,7 +145,8 @@ module mod_vof_split
     ncc = merge(1,0,is_sweep)
     allocate(ilist((n(1)+2+ncc)*(n(2)+2+ncc)*(n(3)+2+ncc)))
     nlist(:) = 0
-    !$acc enter data create(cc,fl,kap,ilist) copyin(nlist)
+    !$acc        enter data create(cc,fl,kap,ilist) copyin(nlist)
+    !$omp target enter data map(alloc:cc,fl,kap,ilist) map(to:nlist)
     if(is_hf_normals) then
       !
       ! height-function normals: the columns of the donor cells in the halo layers need a wider halo (the
@@ -155,7 +156,8 @@ module mod_vof_split
                                           &height-function normals.'
       allocate(mxs(0:n(1)+1+ncc,0:n(2)+1+ncc,0:n(3)+1+ncc))
       allocate(mys,mzs,mold=mxs)
-      !$acc enter data create(mxs,mys,mzs)
+      !$acc        enter data create(mxs,mys,mzs)
+      !$omp target enter data map(alloc:mxs,mys,mzs)
     end if
     if(is_sweep) then
       allocate(f_prev(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
@@ -171,7 +173,8 @@ module mod_vof_split
       else
         allocate(sb(1,1,1,1),as(1,1,1,1)) ! (not used)
       end if
-      !$acc enter data create(f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
+      !$acc        enter data create(f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
+      !$omp target enter data map(alloc:f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
       !
       ! (the outer halo layers are not updated at physical boundaries, and must be finite)
       !
@@ -182,7 +185,8 @@ module mod_vof_split
         call set_zero(sb(:,:,:,i))
       end do
       call set_zero(f_prev)
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1-nh_psi,n(3)+nh_psi
         do j=1-nh_psi,n(2)+nh_psi
           do i=1-nh_psi,n(1)+nh_psi
@@ -201,11 +205,14 @@ module mod_vof_split
       is_ca_any   = any(is_ca(:,:))
       if(is_ca_any) then
         allocate(ca_pl(0:3,1-nh_psi:maxval(n(:))+nh_psi,1-nh_psi:maxval(n(:))+nh_psi))
-        !$acc enter data create(ca_pl)
+        !$acc        enter data create(ca_pl)
+        !$omp target enter data map(alloc:ca_pl)
       end if
     end if
-    !$acc enter data copyin(clip_stats,clip_sweep,kappa_stats)
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc        enter data copyin(clip_stats,clip_sweep,kappa_stats)
+    !$omp target enter data map(to:clip_stats,clip_sweep,kappa_stats)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -265,17 +272,19 @@ module mod_vof_split
     logical , dimension(0:1,3) :: is_bound_tr,is_bound_phys
     logical , save :: is_psiflx_set = .false.
     real(rp) :: dts,dtpi,tc
-    integer  :: i,j,k,isub,nsub,q,idir,is,m,nm
+    integer  :: isub,nsub,q,idir,is,m,nm
     logical  :: is_forward
     !
     nm = 0
     if(present(psi_m)) nm = size(psi_m)
     if(nm > 0 .and. .not.allocated(ccm)) then
       allocate(ccm(0:n(1)+1,0:n(2)+1,0:n(3)+1,nm))
-      !$acc enter data create(ccm)
+      !$acc        enter data create(ccm)
+      !$omp target enter data map(alloc:ccm)
       if(is_sweep) then
         allocate(flt,mold=fl)
-        !$acc enter data create(flt)
+        !$acc        enter data create(flt)
+        !$omp target enter data map(alloc:flt)
       end if
     end if
     if(is_sweep) then
@@ -287,24 +296,7 @@ module mod_vof_split
       !
       dtpi = 0._rp
       if(.not.is_first) dtpi = 1._rp/dto
-      !$acc parallel loop collapse(3) default(present) async(1)
-      do k=0,n(3)+1
-        do j=0,n(2)+1
-          do i=0,n(1)+1
-            au(i,j,k) = 0._rp
-            av(i,j,k) = 0._rp
-            aw(i,j,k) = 0._rp
-            if(dtpi > 0._rp) then
-              au(i,j,k) = (u(i,j,k)-ua(i,j,k))*dtpi
-              av(i,j,k) = (v(i,j,k)-va(i,j,k))*dtpi
-              aw(i,j,k) = (w(i,j,k)-wa(i,j,k))*dtpi
-            end if
-            ub(i,j,k) = u(i,j,k)
-            vb(i,j,k) = v(i,j,k)
-            wb(i,j,k) = w(i,j,k)
-          end do
-        end do
-      end do
+      call transport_vel_begin(n,nh_v,dtpi,u,v,w,ua,va,wa)
       do is=1,nscal_tr
         call transport_scal_begin(n,nh_s,dtpi,scalars(is)%val,scalars(is)%sadv,as(:,:,:,is),sb(:,:,:,is))
       end do
@@ -356,8 +348,10 @@ module mod_vof_split
     !
     if(is_track) then
       !$acc serial default(present) async(1)
+      !$omp target
       clip_stats(2) =  huge(1._rp)
       clip_stats(3) = -huge(1._rp)
+      !$omp end target
       !$acc end serial
     end if
     do isub=1,nsub
@@ -414,16 +408,7 @@ module mod_vof_split
       !
       ! transported velocity (and scalar)
       !
-      !$acc parallel loop collapse(3) default(present) async(1)
-      do k=0,n(3)+1
-        do j=0,n(2)+1
-          do i=0,n(1)+1
-            ua(i,j,k) = ub(i,j,k)
-            va(i,j,k) = vb(i,j,k)
-            wa(i,j,k) = wb(i,j,k)
-          end do
-        end do
-      end do
+      call transport_vel_end(n,nh_v,ua,va,wa)
       do is=1,nscal_tr
         call transport_scal_end(n,nh_s,sb(:,:,:,is),scalars(is)%sadv)
       end do
@@ -474,6 +459,62 @@ module mod_vof_split
     end subroutine transport_all
   end subroutine vof_split_advance
   !
+  subroutine transport_vel_begin(n,nh_v,dtpi,u,v,w,ua,va,wa)
+    !
+    ! non-advective rate of change of the velocity over the previous time step (see `vof_split_advance`), and
+    ! its copy into the work arrays of the transport
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: nh_v
+    real(rp), intent(in)               :: dtpi
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w,ua,va,wa
+    integer :: i,j,k
+    !
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          au(i,j,k) = 0._rp
+          av(i,j,k) = 0._rp
+          aw(i,j,k) = 0._rp
+          if(dtpi > 0._rp) then
+            au(i,j,k) = (u(i,j,k)-ua(i,j,k))*dtpi
+            av(i,j,k) = (v(i,j,k)-va(i,j,k))*dtpi
+            aw(i,j,k) = (w(i,j,k)-wa(i,j,k))*dtpi
+          end if
+          ub(i,j,k) = u(i,j,k)
+          vb(i,j,k) = v(i,j,k)
+          wb(i,j,k) = w(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine transport_vel_begin
+  !
+  subroutine transport_vel_end(n,nh_v,ua,va,wa)
+    !
+    ! transported velocity
+    !
+    implicit none
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_v
+    real(rp), intent(out), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
+    integer :: i,j,k
+    !
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          ua(i,j,k) = ub(i,j,k)
+          va(i,j,k) = vb(i,j,k)
+          wa(i,j,k) = wb(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine transport_vel_end
+  !
   subroutine transport_scal_begin(n,nh_s,dtpi,s,sa,asq,sbq)
     !
     ! non-advective rate of change of a scalar over the previous time step (see `vof_split_advance`), and
@@ -488,7 +529,8 @@ module mod_vof_split
     real(rp), intent(out), dimension(1-nh_mom:,1-nh_mom:,1-nh_mom:) :: sbq
     integer :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -511,7 +553,8 @@ module mod_vof_split
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: sa
     integer :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -532,7 +575,8 @@ module mod_vof_split
     real(rp), intent(out), dimension(0:,0:,0:) :: cc
     integer :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-ncc,n(3)+ncc
       do j=1-ncc,n(2)+ncc
         do i=1-ncc,n(1)+ncc
@@ -554,7 +598,8 @@ module mod_vof_split
     integer :: i,j,k,n1,n2,n3
     !
     n1 = size(a,1); n2 = size(a,2); n3 = size(a,3)
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n3
       do j=1,n2
         do i=1,n1
@@ -579,7 +624,8 @@ module mod_vof_split
     !
     if(nm_off == 0) return
     n1 = size(cc,1); n2 = size(cc,2); n3 = size(cc,3)
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n3
       do j=1,n2
         do i=1,n1
@@ -606,7 +652,8 @@ module mod_vof_split
     integer  :: i,j,k
     !
     offset = nm_off
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-nh_psi,n(3)+nh_psi
       do j=1-nh_psi,n(2)+nh_psi
         do i=1-nh_psi,n(1)+nh_psi
@@ -614,7 +661,8 @@ module mod_vof_split
         end do
       end do
     end do
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -657,7 +705,8 @@ module mod_vof_split
     cflx = 0._rp
     cfly = 0._rp
     cflz = 0._rp
-    !$acc parallel loop collapse(3) default(present) private(uaux,vaux,waux) reduction(max:cflx,cfly,cflz) async(1)
+    !$acc parallel     loop collapse(3) default(present) private(uaux,vaux,waux) reduction(max:cflx,cfly,cflz) async(1)
+    !$omp target teams loop collapse(3)                  private(uaux,vaux,waux) reduction(max:cflx,cfly,cflz)
     do k=0,n3+1
       do j=0,n2+1
         do i=0,n1+1
@@ -740,8 +789,10 @@ module mod_vof_split
     ni = ihi-ilo+1
     nj = jhi-jlo+1
     nlist(1) = 0
-    !$acc update device(nlist) async(1)
-    !$acc parallel loop collapse(3) default(present) private(il) async(1)
+    !$acc        update device(nlist) async(1)
+    !$omp target update to(nlist)
+    !$acc parallel     loop collapse(3) default(present) private(il) async(1)
+    !$omp target teams distribute parallel do collapse(3)                  private(il)
     do k=klo,khi
       do j=jlo,jhi
         do i=ilo,ihi
@@ -758,23 +809,28 @@ module mod_vof_split
             if(is_own_m) fl(i-di,j-dj,k-dk) = fc*vm*dt
             if(fc > f_eps .and. fc < 1._rp-f_eps) then
               !$acc atomic capture
+              !$omp atomic capture
               nlist(1) = nlist(1)+1
               il = nlist(1)
               !$acc end atomic
+              !$omp end atomic
               ilist(il) = (i-ilo)+ni*((j-jlo)+nj*(k-klo))
             end if
           end if
         end do
       end do
     end do
+    !$omp target update from(nlist)
     !
     ! normals of the listed donor cells from height functions, where valid
     !
     if(is_hfn) call hf_list(ilo,jlo,klo,ni,nj,nh_psi,nh_ifc,nh_g,dl,dzf,psi,mx=mx_hf,my=my_hf,mz=mz_hf)
     !
-    ! (the number of listed cells is read from the device copy of nlist, without a host synchronization)
+    ! (the number of listed cells is read from the device copy of nlist, without a host synchronization;
+    ! with OpenMP, where the bounds of a loop are those of the host, it is copied to the host above)
     !
-    !$acc parallel loop default(present) private(c,dz3,act) async(1)
+    !$acc parallel     loop default(present) private(c,dz3,act) async(1)
+    !$omp target teams distribute parallel do                  private(c,dz3,act)
     do il=1,nlist(1)
       lin = ilist(il)
       i = ilo+mod(lin,ni)
@@ -812,11 +868,14 @@ module mod_vof_split
     ! them and the clipped volume, with atomics instead of reductions over the whole domain)
     !
     !$acc serial default(present) async(1)
+    !$omp target
     clip_sweep(1) = 0._rp
     clip_sweep(2) = 0._rp
     clip_sweep(3) = 1._rp
+    !$omp end target
     !$acc end serial
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -827,10 +886,13 @@ module mod_vof_split
           fcl  = min(max(fnew,0._rp),1._rp)
           if(fcl /= fnew) then
             !$acc atomic update
+            !$omp atomic update
             clip_sweep(2) = min(clip_sweep(2),fnew)
             !$acc atomic update
+            !$omp atomic update
             clip_sweep(3) = max(clip_sweep(3),fnew)
             !$acc atomic update
+            !$omp atomic update
             clip_sweep(1) = clip_sweep(1)+(fcl-fnew)*dx*dy*dzf(k)
           end if
           psi(i,j,k) = fcl
@@ -847,9 +909,11 @@ module mod_vof_split
       end do
     end do
     !$acc serial default(present) async(1)
+    !$omp target
     clip_stats(1) = clip_stats(1)+clip_sweep(1)
     clip_stats(2) = min(clip_stats(2),clip_sweep(2))
     clip_stats(3) = max(clip_stats(3),clip_sweep(3))
+    !$omp end target
     !$acc end serial
   end subroutine sweep
   !
@@ -891,7 +955,8 @@ module mod_vof_split
     integer  :: i,j,k,ii,jj,kk
     integer(int8) :: ib
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=-1,n(3)+3
       do j=-1,n(2)+3
         do i=-1,n(1)+3
@@ -900,7 +965,8 @@ module mod_vof_split
         end do
       end do
     end do
-    !$acc parallel loop collapse(3) default(present) private(ib) async(1)
+    !$acc parallel     loop collapse(3) default(present) private(ib) async(1)
+    !$omp target teams loop collapse(3)                  private(ib)
     do k=0,n(3)+2
       do j=0,n(2)+2
         do i=0,n(1)+2
@@ -990,6 +1056,8 @@ module mod_vof_split
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(iq,qi,qj,qk,is_stag,c2,dc,w1,w2,w1d,ext_d,mf,mass,qm,q0,qp,qa,off,id,jd,kd,dd,is_zero,is_lim) &
     !$acc async(1)
+    !$omp target teams loop collapse(3) &
+    !$omp private(iq,qi,qj,qk,is_stag,c2,dc,w1,w2,w1d,ext_d,mf,mass,qm,q0,qp,qa,off,id,jd,kd,dd,is_zero,is_lim)
     do k=1,n(3)+dk
       do j=1,n(2)+dj
         do i=1,n(1)+di
@@ -1052,6 +1120,8 @@ module mod_vof_split
     !
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(iq,qi,qj,qk,is_stag,is_keep,c2,dc,w1,w2,rext,dil1,dil1m,dil1s,dil2,rh1,rh2,rho_o,rho_n,qn) async(1)
+    !$omp target teams loop collapse(3) &
+    !$omp private(iq,qi,qj,qk,is_stag,is_keep,c2,dc,w1,w2,rext,dil1,dil1m,dil1s,dil2,rh1,rh2,rho_o,rho_n,qn)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -1129,6 +1199,7 @@ module mod_vof_split
     logical , intent(in) :: is_zero,is_lim
     real(rp) :: a,b,sl,sig
     !$acc routine seq
+    !$omp declare target
     sl = 0._rp
     if(.not.is_zero) then
       a = q0-qm
@@ -1220,7 +1291,8 @@ module mod_vof_split
         !
         ! planes of the wall cells with an interface
         !
-        !$acc parallel loop gang vector collapse(2) default(present) private(c3,dz3,m,act) async(1)
+        !$acc parallel     loop gang vector collapse(2) default(present) private(c3,dz3,m,act) async(1)
+        !$omp target teams distribute parallel do collapse(2)                  private(c3,dz3,m,act)
         do ib=2-nh_psi,nb_+nh_psi-1
           do ia=2-nh_psi,na+nh_psi-1
             i = merge(iw,ia,id == 1)
@@ -1262,7 +1334,8 @@ module mod_vof_split
         !
         ! ghost cells: volume fraction of the plane of the nearest wall cell with an interface
         !
-        !$acc parallel loop collapse(3) default(present) async(1)
+        !$acc parallel     loop collapse(3) default(present) async(1)
+        !$omp target teams distribute parallel do collapse(3)
         do l=1,nh_psi
           do ib=1,nb_
             do ia=1,na
@@ -1335,6 +1408,7 @@ module mod_vof_split
     real(rp), dimension(3) :: o,s
     real(rp) :: alpha,a,d
     !$acc routine seq
+    !$omp declare target
     if(.not.is_thinc_rec) then
       alpha = plic_alpha(mx,my,mz,vol)
       frac_p = 0._rp
@@ -1394,11 +1468,15 @@ module mod_vof_split
       ! (the interfacial cells are compacted into a list, processed by a second kernel)
       !
       nlist(1) = 0
-      !$acc update device(nlist) async(1)
+      !$acc        update device(nlist) async(1)
+      !$omp target update to(nlist)
       !$acc serial default(present) async(1)
+      !$omp target
       kappa_stats(1) = 0._rp
+      !$omp end target
       !$acc end serial
-      !$acc parallel loop collapse(3) default(present) private(il) async(1)
+      !$acc parallel     loop collapse(3) default(present) private(il) async(1)
+      !$omp target teams loop collapse(3)                  private(il)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -1406,14 +1484,17 @@ module mod_vof_split
             fc = psi(i,j,k)
             if(fc > f_eps .and. fc < 1._rp-f_eps) then
               !$acc atomic capture
+              !$omp atomic capture
               nlist(1) = nlist(1)+1
               il = nlist(1)
               !$acc end atomic
+              !$omp end atomic
               ilist(il) = (i-1)+n(1)*((j-1)+n(2)*(k-1))
             end if
           end do
         end do
       end do
+      !$omp target update from(nlist)
       call hf_list(1,1,1,n(1),n(2),nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     case(2)
       !
@@ -1423,10 +1504,13 @@ module mod_vof_split
       n1 = n(1)
       n2 = n(2)
       !$acc serial default(present) async(1)
+      !$omp target
       kappa_stats(2) = 0._rp
       kappa_stats(3) = 0._rp
+      !$omp end target
       !$acc end serial
-      !$acc parallel loop default(present) async(1)
+      !$acc parallel     loop default(present) async(1)
+      !$omp target teams loop
       do il=1,nlist(1)
         lin = ilist(il)
         i = 1+mod(lin,n1)
@@ -1449,17 +1533,20 @@ module mod_vof_split
           if(kcnt > 0._rp) then
             kap(i,j,k) = ksum/kcnt
             !$acc atomic update
+            !$omp atomic update
             kappa_stats(2) = kappa_stats(2) + 1._rp
           else
             kap(i,j,k) = 0._rp
             !$acc atomic update
+            !$omp atomic update
             kappa_stats(3) = kappa_stats(3) + 1._rp
           end if
         else
           kap(i,j,k) = kappa(i,j,k)
         end if
       end do
-      !$acc parallel loop default(present) async(1)
+      !$acc parallel     loop default(present) async(1)
+      !$omp target teams loop
       do il=1,nlist(1)
         lin = ilist(il)
         i = 1+mod(lin,n1)
@@ -1472,7 +1559,8 @@ module mod_vof_split
       ! (in place: only the curvature of interfacial cells is read, and only that of the other cells, zero
       ! since the first stage, is written)
       !
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -1535,7 +1623,8 @@ module mod_vof_split
     is_act1 = is_active(1)
     is_act2 = is_active(2)
     is_act3 = is_active(3)
-    !$acc parallel loop default(present) private(m,act,c3,dz3,hgt,dm,dp,h,nrm) async(1)
+    !$acc parallel     loop default(present) private(m,act,c3,dz3,hgt,dm,dp,h,nrm) async(1)
+    !$omp target teams distribute parallel do                  private(m,act,c3,dz3,hgt,dm,dp,h,nrm)
     do il=1,nlist(1)
       lin = ilist(il)
       i = ilo+mod(lin,ni)
@@ -1622,6 +1711,7 @@ module mod_vof_split
         if(is_valid) then
           kappa(i,j,k) = kap_c
           !$acc atomic update
+          !$omp atomic update
           kappa_stats(1) = kappa_stats(1) + 1._rp
         else
           kappa(i,j,k) = kappa_undef
@@ -1647,7 +1737,8 @@ module mod_vof_split
     implicit none
     real(rp), intent(inout), dimension(:,:,:) :: p
     integer :: i,j,k
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,size(p,3)
       do j=1,size(p,2)
         do i=1,size(p,1)
@@ -1676,7 +1767,8 @@ module mod_vof_split
     integer :: i,j,k
     !
     vol = 0._rp
-    !$acc parallel loop collapse(3) default(present) reduction(+:vol) async(1)
+    !$acc parallel     loop collapse(3) default(present) reduction(+:vol) async(1)
+    !$omp target teams loop collapse(3)                  reduction(+:vol)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -1684,7 +1776,8 @@ module mod_vof_split
         end do
       end do
     end do
-    !$acc update self(clip_stats,kappa_stats) async(1)
+    !$acc        update self(clip_stats,kappa_stats) async(1)
+    !$omp target update from(clip_stats,kappa_stats)
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,vol,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call MPI_ALLREDUCE(clip_stats(1),clip,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)

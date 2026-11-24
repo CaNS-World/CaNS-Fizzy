@@ -6,7 +6,7 @@
 ! -
 module mod_param
 use mod_types
-#if defined(_OPENACC) && !defined(_USE_DIEZDECOMP)
+#if (defined(_OPENACC) || defined(_OPENMP)) && !defined(_USE_DIEZDECOMP)
 #if defined (_USE_HIP)
 use hipdecomp
 #else
@@ -112,7 +112,7 @@ real(rp), protected               :: rho0 ! not an input
 real(rp), protected               :: visc0 ! reference diffusivities of the constant-coefficient implicit diffusion
 real(rp), protected, allocatable, dimension(:) :: alpha0 ! (momentum, and each scalar); not inputs
 !
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
 !
 ! cuDecomp input parameters
 !
@@ -205,7 +205,7 @@ contains
                   io_backend, &
                   is_use_compression, &
                   is_full_restart
-#if defined(_OPENACC) && !defined(_USE_DIEZDECOMP)
+#if (defined(_OPENACC) || defined(_OPENMP)) && !defined(_USE_DIEZDECOMP)
     namelist /cudecomp/ &
                        cudecomp_t_comm_backend,cudecomp_is_t_enable_nccl,cudecomp_is_t_enable_nvshmem, &
                        cudecomp_h_comm_backend,cudecomp_is_h_enable_nccl,cudecomp_is_h_enable_nvshmem
@@ -327,7 +327,7 @@ contains
         if(myid == 0) print*, 'Warning: prescribed value of `ipencil_axis` is different from 1/2/3.'
         if(myid == 0) print*, 'Defaulting to `ipencil_axis = 1` (x-aligned pencils)...'
       end if
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
 #if !defined(_USE_DIEZDECOMP)
       !
       ! reading cuDecomp parameters, if these are set

@@ -9,18 +9,18 @@ module mod_fft
   use mod_common_mpi, only: ierr
   use mod_fftw_param
   use mod_types
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   use mod_utils     , only: f_sizeof
 #endif
-  !$ use omp_lib
   private
   public fftini,fftend,fft,prep_dctviii,posp_dctviii
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
   real(rp), allocatable, target :: fft_work(:)
   integer :: nplans = 0
 #endif
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   public fft_gpu,fft_gpu_layout
+  public signal_processing,fftf_gpu,fftb_gpu
   integer(i8), public :: wsize_fft = 0,wsize_tmp = 0
   real(rp), allocatable, target :: sincos_theta_x(:,:,:),sincos_theta_y(:,:,:)
   integer :: n_sincos_theta_x(0:3),n_sincos_theta_y(0:3)
@@ -31,24 +31,17 @@ module mod_fft
     integer , target, intent(in), dimension(3) :: ng,n_x,n_y
     character(len=1), intent(in), dimension(0:1,2) :: bcxy
     character(len=1), intent(in), dimension(2) :: c_or_f
-#if !defined(_OPENACC) || defined(_USE_HIP)
+#if !(defined(_OPENACC) || defined(_OPENMP)) || defined(_USE_HIP)
     type(C_PTR), intent(out), dimension(2,2) :: arrplan
 #else
     integer    , intent(out), dimension(2,2) :: arrplan
 #endif
     real(rp), intent(out) :: normfft
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
     integer(i8) :: nw_x(3),nw_y(3)
 #endif
     !
-#if defined(_SINGLE_PRECISION)
-    !$ call sfftw_init_threads(ierr)
-    !$ call sfftw_plan_with_nthreads(omp_get_max_threads())
-#else
-    !$ call dfftw_init_threads(ierr)
-    !$ call dfftw_plan_with_nthreads(omp_get_max_threads())
-#endif
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
     !
     ! one buffer serves both pencils on the fixed grid;
     ! planning and execution use the same allocation to preserve
@@ -63,7 +56,7 @@ module mod_fft
     normfft = 1.
     call fftini_axis(1,ng(1),n_x,bcxy(:,1),c_or_f(1),arrplan(:,1),normfft)
     call fftini_axis(2,ng(2),n_y,bcxy(:,2),c_or_f(2),arrplan(:,2),normfft)
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
     nplans = nplans+size(arrplan)
 #endif
     normfft = normfft**(-1)
@@ -76,7 +69,7 @@ module mod_fft
     implicit none
     integer , intent(in) :: idir,nn,n(3)
     character(len=1), intent(in) :: bc(0:1),c_or_f
-#if !defined(_OPENACC) || defined(_USE_HIP)
+#if !(defined(_OPENACC) || defined(_OPENMP)) || defined(_USE_HIP)
     type(C_PTR), intent(out), dimension(2) :: arrplan
 #else
     integer    , intent(out), dimension(2) :: arrplan
@@ -84,7 +77,7 @@ module mod_fft
     real(rp), intent(inout) :: normfft
     integer :: kind_fwd,kind_bwd,iexcl
     real(rp) :: norm(2)
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
     real(rp), target :: arr(n(1),n(2),n(3))
     real(rp), pointer, contiguous :: arrwork(:,:,:)
     type(fftw_iodim) :: iodim(1),iodim_howmany(2)
@@ -102,7 +95,7 @@ module mod_fft
     ! exclude the dependent endpoint for face DD/NN
     !
     if((c_or_f == 'f').and.(any(bc(0)//bc(1) == ['DD','NN']))) iexcl = 1
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
     !
     ! prepare plans with guru interface
     !
@@ -168,7 +161,7 @@ module mod_fft
     normfft = normfft*norm(1)*(nn+norm(2)-iexcl)
   end subroutine fftini_axis
   !
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   subroutine init_sincos_theta(nn,sincos_theta,n_sincos_theta)
     use mod_param, only: pi
     implicit none
@@ -193,22 +186,23 @@ module mod_fft
         sincos_theta(ii,2,ip) = cos(theta)
       end do
     end do
-    !$acc enter data copyin(sincos_theta)
+    !$acc        enter data copyin(sincos_theta)
+    !$omp target enter data map(to:sincos_theta)
   end subroutine init_sincos_theta
   !
 #endif
   subroutine fftend(arrplan)
     implicit none
-#if !defined(_OPENACC) || defined(_USE_HIP)
+#if !(defined(_OPENACC) || defined(_OPENMP)) || defined(_USE_HIP)
     type(C_PTR), intent(in), dimension(:,:) :: arrplan
 #else
     integer    , intent(in), dimension(:,:) :: arrplan
 #endif
     integer :: i,j
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     integer :: istat
 #endif
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
 #if defined(_SINGLE_PRECISION)
     do j=1,size(arrplan,2)
       do i=1,size(arrplan,1)
@@ -228,11 +222,6 @@ module mod_fft
     nplans = nplans-size(arrplan)
     if(nplans == 0) then
       if(allocated(fft_work)) deallocate(fft_work)
-#if defined(_SINGLE_PRECISION)
-      !$ call sfftw_cleanup_threads(ierr)
-#else
-      !$ call dfftw_cleanup_threads(ierr)
-#endif
     end if
 #else
     do j=1,size(arrplan,2)
@@ -247,7 +236,7 @@ module mod_fft
     implicit none
     type(C_PTR), intent(in) :: plan
     real(rp), intent(inout), dimension(:,:,:) :: arr
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
 #if defined(_SINGLE_PRECISION)
     call sfftw_execute_r2r(plan,arr,arr)
 #else
@@ -269,7 +258,7 @@ module mod_fft
     integer, intent(in) :: idir
     real(rp), intent(in) :: arr(:,:,:)
     real(rp), pointer, contiguous, intent(out) :: arr_out(:,:,:)
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
     integer :: n(3),nw(3),m,nfft,i,j,k,ii,jj
     logical :: is_reverse
     !
@@ -277,12 +266,9 @@ module mod_fft
     nw = n; nw(idir) = nfft
     arr_out(1:nw(1),1:nw(2),1:nw(3)) => fft_work(1:product(int(nw,i8)))
     is_reverse = cbc == 'DN'
-    !$OMP PARALLEL WORKSHARE
     arr_out(:,:,:) = 0.
-    !$OMP END PARALLEL WORKSHARE
     select case(idir)
     case(1)
-      !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(shared) PRIVATE(ii)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,m
@@ -298,7 +284,6 @@ module mod_fft
         end do
       end do
     case(2)
-      !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(shared) PRIVATE(jj)
       do k=1,n(3)
         do j=1,m
           do i=1,n(1)
@@ -327,7 +312,7 @@ module mod_fft
     integer, intent(in) :: idir
     real(rp), intent(in) :: arr(:,:,:)
     real(rp), intent(out) :: arr_out(:,:,:)
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
     integer :: n(3),m,i,j,k,ii,jj
     logical :: is_reverse
     !
@@ -335,7 +320,6 @@ module mod_fft
     is_reverse = cbc == 'DN'
     select case(idir)
     case(1)
-      !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(shared) PRIVATE(ii)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,m
@@ -349,7 +333,6 @@ module mod_fft
           end do
         end do
       end do
-      !$OMP PARALLEL DO COLLAPSE(2) DEFAULT(shared)
       do k=1,n(3)
         do j=1,n(2)
           arr_out(m+1,j,k) = 0.
@@ -357,7 +340,6 @@ module mod_fft
         end do
       end do
     case(2)
-      !$OMP PARALLEL DO COLLAPSE(3) DEFAULT(shared) PRIVATE(jj)
       do k=1,n(3)
         do j=1,m
           do i=1,n(1)
@@ -371,7 +353,6 @@ module mod_fft
           end do
         end do
       end do
-      !$OMP PARALLEL DO COLLAPSE(2) DEFAULT(shared)
       do k=1,n(3)
         do i=1,n(1)
           arr_out(i,m+1,k) = 0.
@@ -433,7 +414,7 @@ module mod_fft
     end if
   end subroutine find_fft
   !
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   subroutine fft_gpu_layout(nn,n,cbc,c_or_f,nfft,nwork)
     !
     ! FFT length and local scratch shape; the distributed pencil shape stays unchanged
@@ -494,7 +475,8 @@ module mod_fft
 #endif
     real(rp), target, intent(inout), dimension(:,:,:) :: arr
     integer :: istat
-    !$acc host_data use_device(arr)
+    !$acc   host_data use_device(     arr)
+    !$omp target data use_device_addr(arr)
 #if !defined(_USE_HIP)
 #if defined(_SINGLE_PRECISION)
     istat = cufftExecR2C(plan,arr,arr)
@@ -510,7 +492,8 @@ module mod_fft
 #endif
     istat = hipDeviceSynchronize()
 #endif
-    !$acc end host_data
+    !$omp end target data
+    !$acc end   host_data
   end subroutine fftf_gpu
   subroutine fftb_gpu(plan,arr)
     implicit none
@@ -521,7 +504,8 @@ module mod_fft
 #endif
     real(rp), target, intent(inout), dimension(:,:,:) :: arr
     integer :: istat
-    !$acc host_data use_device(arr)
+    !$acc   host_data use_device(     arr)
+    !$omp target data use_device_addr(arr)
 #if !defined(_USE_HIP)
 #if defined(_SINGLE_PRECISION)
     istat = cufftExecC2R(plan,arr,arr)
@@ -537,7 +521,8 @@ module mod_fft
 #endif
     istat = hipDeviceSynchronize()
 #endif
-    !$acc end host_data
+    !$omp end target data
+    !$acc end   host_data
   end subroutine fftb_gpu
   subroutine fft_gpu(f_or_b,cbc,c_or_f,nn,n,plan,arr,arr_tmp)
     implicit none
@@ -591,7 +576,8 @@ module mod_fft
     n_2 = n(2); n_3 = n(3)
     select case(f_or_b)
     case('F')
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n_3
         do j=1,n_2
           do i=1,2*nn+2
@@ -602,7 +588,8 @@ module mod_fft
         end do
       end do
     case('B')
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n_3
         do j=1,n_2
           do i=1,nn+1
@@ -631,7 +618,8 @@ module mod_fft
     n_1 = n(1); n_2 = n(2); n_3 = n(3)
     select case(f_or_b)
     case('F')
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n_3
         do j=1,n_2
           do i=1,n_1
@@ -644,7 +632,8 @@ module mod_fft
         end do
       end do
     case('B')
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n_3
         do j=1,n_2
           do i=1,n_1
@@ -675,7 +664,8 @@ module mod_fft
     select case(idir)
     case(1)
       n_2 = n(2); n_3 = n(3)
-      !$acc parallel loop collapse(2) default(present) async(1)
+      !$acc parallel     loop collapse(2) default(present) async(1)
+      !$omp target teams loop collapse(2)
       do k=1,n_3
         do j=1,n_2
           arr(2,j,k) = arr(nn+1,j,k)
@@ -700,7 +690,8 @@ module mod_fft
     select case(idir)
     case(1)
       n_2 = n(2); n_3 = n(3)
-      !$acc parallel loop collapse(2) default(present) async(1)
+      !$acc parallel     loop collapse(2) default(present) async(1)
+      !$omp target teams loop collapse(2)
       do k=1,n_3
         do j=1,n_2
           arr(nn+1,j,k) = arr(2,j,k)
@@ -768,7 +759,8 @@ module mod_fft
     case(1)
       call get_sincos_theta(nn,sin_theta,cos_theta)
       n_2 = n(2); n_3 = n(3)
-      !$acc parallel loop collapse(3) default(present) private(i) async(1)
+      !$acc parallel     loop collapse(3) default(present) private(i) async(1)
+      !$omp target teams loop collapse(3)                  private(i)
       do k=1,n_3
         do j=1,n_2
           do ii=0,nn/2
@@ -815,7 +807,8 @@ module mod_fft
       if(is_swap_order ) call swap_order( nn,n(2),n(3),arr)
       if(is_negate_even) call negate_even(nn,n(2),n(3),arr)
       n_2 = n(2); n_3 = n(3)
-      !$acc parallel loop collapse(2) default(present) async(1)
+      !$acc parallel     loop collapse(2) default(present) async(1)
+      !$omp target teams loop collapse(2)
       do k=1,n_3
         do j=1,n_2
           do ii = 1,2-mod(nn,2)
@@ -823,7 +816,8 @@ module mod_fft
           end do
         end do
       end do
-      !$acc parallel loop collapse(3) default(present) private(ii) async(1)
+      !$acc parallel     loop collapse(3) default(present) private(ii) async(1)
+      !$omp target teams loop collapse(3)                  private(ii)
       do k=1,n_3
         do j=1,n_2
           do ii=0,nn/2
@@ -904,7 +898,8 @@ module mod_fft
     n_2 = n(2); n_3 = n(3)
     select case(f_or_b)
     case('F')
-      !$acc parallel loop collapse(3) default(present) private(ip,ii,s) async(1)
+      !$acc parallel     loop collapse(3) default(present) private(ip,ii,s) async(1)
+      !$omp target teams loop collapse(3)                  private(ip,ii,s)
       do k=1,n_3
         do j=1,n_2
           do i=1,2*(nfft/2+1)
@@ -927,7 +922,8 @@ module mod_fft
       end do
     case('B')
       call get_sincos_theta(nfft,sin_theta,cos_theta)
-      !$acc parallel loop collapse(3) default(present) private(ip,im,a,b) async(1)
+      !$acc parallel     loop collapse(3) default(present) private(ip,im,a,b) async(1)
+      !$omp target teams loop collapse(3)                  private(ip,im,a,b)
       do k=1,n_3
         do j=1,n_2
           do i=0,nfft/2
@@ -980,7 +976,8 @@ module mod_fft
       ! the round-trip factor is the extension length (2N or 2N-1)
       !
       call get_sincos_theta(nfft,sin_theta,cos_theta)
-      !$acc parallel loop collapse(3) default(present) private(ii,ip) async(1)
+      !$acc parallel     loop collapse(3) default(present) private(ii,ip) async(1)
+      !$omp target teams loop collapse(3)                  private(ii,ip)
       do k=1,n_3
         do j=1,n_2
           do i=1,n_1
@@ -1001,7 +998,8 @@ module mod_fft
         end do
       end do
     case('B')
-      !$acc parallel loop collapse(3) default(present) private(ip,ii) async(1)
+      !$acc parallel     loop collapse(3) default(present) private(ip,ii) async(1)
+      !$omp target teams loop collapse(3)                  private(ip,ii)
       do k=1,n_3
         do j=1,n_2
           do i=1,n_1
@@ -1062,7 +1060,8 @@ module mod_fft
         ! restore the dependent boundary value after the inverse transform
         !
         n_2 = n(2); n_3 = n(3)
-        !$acc parallel loop collapse(2) default(present) async(1)
+        !$acc parallel     loop collapse(2) default(present) async(1)
+        !$omp target teams loop collapse(2)
         do k=1,n_3
           do j=1,n_2
             arr_out(nn,j,k) = arr_out(m,j,k)
@@ -1095,7 +1094,8 @@ module mod_fft
     integer , intent(in   ) :: n,n2,n3
     real(rp), intent(inout) :: arr(:,:,:)
     integer :: i,j,k
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1,n3
       do j=1,n2
         do i=1,n/2
@@ -1110,7 +1110,8 @@ module mod_fft
     real(rp), intent(inout) :: arr(:,:,:)
     real(rp) :: tmp
     integer  :: i,j,k
-    !$acc parallel loop collapse(3) default(present) private(tmp) async(1)
+    !$acc parallel     loop collapse(3) default(present) private(tmp) async(1)
+    !$omp target teams loop collapse(3)                  private(tmp)
     do k=1,n3
       do j=1,n2
         do i=1,n/2
@@ -1138,7 +1139,8 @@ module mod_fft
     nh = (n+1)/2
     select case(ib)
     case(0)
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n3
         do j=1,n2
           do i=1,nh
@@ -1155,7 +1157,8 @@ module mod_fft
         end do
       end do
     case(1)
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1,n3
         do j=1,n2
           do i=1,nh
@@ -1166,5 +1169,22 @@ module mod_fft
       end do
     end select
   end subroutine remap
+  subroutine copy(a,b)
+    real(rp), intent(in ), dimension(:,:,:) :: a
+    real(rp), intent(out), dimension(:,:,:) :: b
+    integer :: i,j,k,n1,n2,n3
+    n1 = min(size(a,1),size(b,1))
+    n2 = min(size(a,2),size(b,2))
+    n3 = min(size(a,3),size(b,3))
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
+    do k=1,n3
+      do j=1,n2
+        do i=1,n1
+          b(i,j,k) = a(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine copy
 #endif
 end module mod_fft

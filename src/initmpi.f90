@@ -11,8 +11,12 @@ module mod_initmpi
   use mod_common_mpi     , only: myid,ierr,halo,dinfo_dtdma
   use mod_param          , only: ipencil => ipencil_axis,is_poisson_dtdma
   use mod_types
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
+#if   defined(_OPENACC)
   use openacc
+#elif defined(_OPENMP)
+  use omp_lib
+#endif
 #if defined(_USE_DIEZDECOMP)
   use diezdecomp
 #elif defined(_USE_HIP)
@@ -26,7 +30,7 @@ module mod_initmpi
 #endif
 #endif
   !@cuf use cudafor, only: cudaGetDeviceCount,cudaSetDevice
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   use mod_common_cudecomp, only: cudecomp_real_rp, &
                                  ch => handle,gd => gd_halo,gd_poi,gd_poi_io, &
                                  ap_x,ap_y,ap_z,ap_x_poi,ap_y_poi,ap_z_poi, &
@@ -39,7 +43,7 @@ module mod_initmpi
   implicit none
   private
   public initmpi
-#if defined(_OPENACC) && !defined(_USE_DIEZDECOMP)
+#if (defined(_OPENACC) || defined(_OPENMP)) && !defined(_USE_DIEZDECOMP)
   integer, parameter :: CUDECOMP_RANK_NULL = -1
 #endif
   contains
@@ -54,8 +58,10 @@ module mod_initmpi
     logical, intent(out), dimension(0:1,3) :: is_bound
     logical, dimension(3) :: periods
     integer :: l,nh,ipencil_t(2),nrank
+#if defined(_OPENACC) || defined(_OPENMP)
 #if defined(_OPENACC)
-    integer(acc_device_kind) ::dev_type
+    integer(acc_device_kind) :: dev_type
+#endif
     integer :: local_comm,mydev,ndev
     integer :: istat
 #if !defined(_USE_DIEZDECOMP)
@@ -86,16 +92,21 @@ module mod_initmpi
       end if
     end if
     !
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     call MPI_COMM_SPLIT_TYPE(MPI_COMM_WORLD,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,local_comm,ierr)
     call MPI_COMM_RANK(local_comm,mydev,ierr)
-    dev_type = acc_get_device_type()
     istat = cudaGetDeviceCount(ndev)      ! may be tweaked with environment variable CUDA_VISIBLE_DEVICES
     mydev = mod(mydev,ndev)
+#if defined(_OPENMP)
+    call omp_set_default_device(mydev)
+#endif
     istat = cudaSetDevice(mydev)
     if(istat /= 0) print*,'MPI rank: ',myid,' error assigning GPU: ',mydev
+#if defined(_OPENACC)
+    dev_type = acc_get_device_type()
     call acc_set_device_num(mydev,dev_type)
     call acc_init(dev_type)
+#endif
     !
 #if !defined(_USE_DIEZDECOMP)
     istat = cudecompInit(ch,MPI_COMM_WORLD)
@@ -211,7 +222,7 @@ module mod_initmpi
     end if
     ipencil_t(:) = pack([1,2,3],[1,2,3] /= ipencil)
     is_bound(:,:) = .false.
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     !
     ! fetch lo(:), hi(:), n(:) and n_z(:) from cuDecomp (should match the modified 2decomp one)
     !
@@ -289,7 +300,7 @@ module mod_initmpi
     call MPI_CART_SHIFT(comm_cart,1,1,nb(0,ipencil_t(2)),nb(1,ipencil_t(2)),ierr)
     where(nb(:,:) == MPI_PROC_NULL) is_bound(:,:) = .true.
 #endif
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     if(is_poisson_dtdma) then
       !
       ! generate global coefficient arrays a(1:ng(3)), b(1:ng(3)), c(1:ng(3)) under initsolver

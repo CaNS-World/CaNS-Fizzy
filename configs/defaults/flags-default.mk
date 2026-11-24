@@ -8,15 +8,24 @@ ifeq ($(strip $(FCOMP)),NVIDIA)
 FFLAGS_MOD_DIR := -module # extra space
 ifeq ($(strip $(GPU)),1)
 NVHPC_GPU_TARGET ?= ccall-major
-override FFLAGS += -acc -cuda -Minfo=accel -gpu=$(NVHPC_GPU_TARGET)
+override FFLAGS += -cuda -gpu=$(NVHPC_GPU_TARGET)
+ifeq ($(strip $(GPU_BACKEND)),OMP)
+override FFLAGS += -mp=gpu -Minfo=mp -Minline
+else
+override FFLAGS += -acc -Minfo=accel
+endif
 endif
 endif
 ifeq ($(strip $(FCOMP)),CRAY)
 FFLAGS_MOD_DIR := -I./build -ef -J
 ifeq ($(strip $(GPU)),1)
-override FFLAGS += -hacc
+ifeq ($(strip $(GPU_BACKEND)),OMP)
+override FFLAGS += -homp -hnoacc
 else
-override FFLAGS += -hnoacc
+override FFLAGS += -hacc -hnoomp
+endif
+else
+override FFLAGS += -hnoacc -hnoomp
 endif
 endif
 ifeq ($(strip $(FCOMP)),FUJITSU)
@@ -161,7 +170,9 @@ override FFLAGS += -fopenmp
 endif
 else
 ifeq ($(strip $(FCOMP)),CRAY)
+ifneq ($(strip $(GPU):$(GPU_BACKEND)),1:OMP)
 override FFLAGS += -fno-openmp
+endif
 endif
 endif
 

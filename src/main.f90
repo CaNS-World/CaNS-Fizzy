@@ -89,7 +89,7 @@ program cans
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc          , only: solver_vc,solver_vc_end
 #endif
-#if !defined(_OPENACC)
+#if !(defined(_OPENACC) || defined(_OPENMP))
   use mod_solver             , only: solver
 #else
   use mod_solver_gpu         , only: solver => solver_gpu
@@ -99,7 +99,7 @@ program cans
   use mod_updatep            , only: updatep
   use mod_posix              , only: rename_file,read_link
   use mod_utils              , only: bulk_mean
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   use mod_utils              , only: device_memory_footprint
 #endif
   use mod_types
@@ -115,7 +115,7 @@ program cans
   logical :: is_first
   real(rp), dimension(3) :: rho_av
   logical , dimension(3) :: is_cmpt_rho_av
-#if !defined(_OPENACC) || defined(_USE_HIP)
+#if !(defined(_OPENACC) || defined(_OPENMP)) || defined(_USE_HIP)
   type(C_PTR), dimension(2,2) :: arrplanp
 #else
   integer    , dimension(2,2) :: arrplanp
@@ -128,7 +128,7 @@ program cans
   real(rp) :: normfftp
   type(rhs_bound) :: rhsbp
   real(rp) :: alpha
-#if !defined(_OPENACC) || defined(_USE_HIP)
+#if !(defined(_OPENACC) || defined(_OPENMP)) || defined(_USE_HIP)
   type(C_PTR), dimension(2,2) :: arrplanu,arrplanv,arrplanw
 #else
   integer    , dimension(2,2) :: arrplanu,arrplanv,arrplanw
@@ -210,7 +210,6 @@ program cans
   !
   ! initialize MPI/OpenMP
   !
-  !$ call omp_set_num_threads(omp_get_max_threads())
   call initmpi(ng,dims,cbcpre,nh_g,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z,nb,is_bound)
   twi = MPI_WTIME()
   savecounter = 0
@@ -239,13 +238,14 @@ program cans
     s => scalars(iscal)
     allocate(s%val(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s),s%dsdtrko(n(1),n(2),n(3)))
   end do
-  !$acc enter data copyin(scalars(:))
+  !$acc        enter data copyin(scalars(:))
+  !$omp target enter data map(to:scalars(:))
   nmk = merge(nmarker,0,nmarker > 1) ! (a single marker is the phase indicator itself)
   nio = 5+nscal+nmk
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
   if(is_poisson_dtdma) then
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
     n_z_d(:) = ap_z_dtdma%shape(:)
 #else
     n_z_d(:) = dinfo_dtdma%zsz(:)
@@ -378,14 +378,21 @@ program cans
     close(iunit)
     call save_grid(datadir,'grid',ng,nh_g,zc_g,zf_g,dzc_g,dzf_g)
   end if
-  !$acc enter data copyin(lo,hi,n) async
-  !$acc enter data copyin(bforce,dl,dli,l) async
-  !$acc enter data copyin(gacc) async
-  !$acc enter data copyin(rho12,mu12,ka12,cp12,beta12) async
-  !$acc enter data copyin(zc_g,zf_g,dzc_g,dzf_g) async
-  !$acc enter data create(zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g) async
+  !$acc        enter data copyin(lo,hi,n) async
+  !$omp target enter data map(to:lo,hi,n)
+  !$acc        enter data copyin(bforce,dl,dli,l) async
+  !$omp target enter data map(to:bforce,dl,dli,l)
+  !$acc        enter data copyin(gacc) async
+  !$omp target enter data map(to:gacc)
+  !$acc        enter data copyin(rho12,mu12,ka12,cp12,beta12) async
+  !$omp target enter data map(to:rho12,mu12,ka12,cp12,beta12)
+  !$acc        enter data copyin(zc_g,zf_g,dzc_g,dzf_g) async
+  !$omp target enter data map(to:zc_g,zf_g,dzc_g,dzf_g)
+  !$acc        enter data create(zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g) async
+  !$omp target enter data map(alloc:zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g)
   !
-  !$acc parallel loop default(present) private(k) async
+  !$acc parallel     loop default(present) private(k) async
+  !$omp target teams loop                  private(k)
   do kk=lo(3)-nh_g,hi(3)+nh_g
     k = kk-(lo(3)-1)
     zc( k) = zc_g(kk)
@@ -395,15 +402,20 @@ program cans
     dzci(k) = dzc(k)**(-1)
     dzfi(k) = dzf(k)**(-1)
   end do
-  !$acc data copy(ng) async
-  !$acc parallel loop default(present) async
+  !$acc        data copy(ng) async
+  !$omp target data map(tofrom:ng)
+  !$acc parallel     loop default(present) async
+  !$omp target teams loop
   do k=1-nh_g,ng(3)+nh_g
     dzci_g(k) = dzc_g(k)**(-1)
     dzfi_g(k) = dzf_g(k)**(-1)
   end do
-  !$acc end data
-  !$acc enter data create(grid_vol_ratio_c,grid_vol_ratio_f) async
-  !$acc parallel loop default(present) async
+  !$omp end target data
+  !$acc end        data
+  !$acc        enter data create(grid_vol_ratio_c,grid_vol_ratio_f) async
+  !$omp target enter data map(alloc:grid_vol_ratio_c,grid_vol_ratio_f)
+  !$acc parallel     loop default(present) async
+  !$omp target teams loop
   do k=1-nh_g,n(3)+nh_g
     grid_vol_ratio_c(k) = dl(1)*dl(2)*dzc(k)/(l(1)*l(2)*l(3))
     grid_vol_ratio_f(k) = dl(1)*dl(2)*dzf(k)/(l(1)*l(2)*l(3))
@@ -412,14 +424,18 @@ program cans
   ! weight of cell `k` in the volume average of a cell-centered field at the face between cells `k` and `k+1`
   ! (the control volume of the vertical velocity), which is the average that conserves mass
   !
-  !$acc enter data create(wzc) async
-  !$acc parallel loop default(present) async
+  !$acc        enter data create(wzc) async
+  !$omp target enter data map(alloc:wzc)
+  !$acc parallel     loop default(present) async
+  !$omp target teams loop
   do k=1-nh_g,n(3)+nh_g
     wzc(k) = 0.5
     if(k < n(3)+nh_g) wzc(k) = dzf(k)/(dzf(k)+dzf(k+1))
   end do
-  !$acc update self(zc,zf,dzc,dzf,dzci,dzfi) async
-  !$acc exit data copyout(zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
+  !$acc        update self(zc,zf,dzc,dzf,dzci,dzfi) async
+  !$omp target update from(zc,zf,dzc,dzf,dzci,dzfi)
+  !$acc        exit data copyout(zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
+  !$omp target exit data map(from:zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g)
   !$acc wait
   !
   ! test input files before proceeding with the calculation
@@ -430,8 +446,10 @@ program cans
   !
   call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcpre,bcpre(:,:), &
                   lambdaxyp,['c','c','c'],ap,bp,cp,arrplanp,normfftp,rhsbp%x,rhsbp%y,rhsbp%z)
-  !$acc enter data copyin(lambdaxyp,ap,bp,cp) async
-  !$acc enter data copyin(rhsbp,rhsbp%x,rhsbp%y,rhsbp%z) async
+  !$acc        enter data copyin(lambdaxyp,ap,bp,cp) async
+  !$omp target enter data map(to:lambdaxyp,ap,bp,cp)
+  !$acc        enter data copyin(rhsbp,rhsbp%x,rhsbp%y,rhsbp%z) async
+  !$omp target enter data map(to:rhsbp,rhsbp%x,rhsbp%y,rhsbp%z)
   if(is_impdiff_cc) then
     call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,1),bcvel(:,:,1), &
                     lambdaxyu,['f','c','c'],au,bu,cu,arrplanu,normfftu,rhsbu%x,rhsbu%y,rhsbu%z)
@@ -439,23 +457,30 @@ program cans
                     lambdaxyv,['c','f','c'],av,bv,cv,arrplanv,normfftv,rhsbv%x,rhsbv%y,rhsbv%z)
     call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,3),bcvel(:,:,3), &
                     lambdaxyw,['c','c','f'],aw,bw,cw,arrplanw,normfftw,rhsbw%x,rhsbw%y,rhsbw%z)
-    !$acc enter data copyin(lambdaxyu,au,bu,cu,lambdaxyv,av,bv,cv,lambdaxyw,aw,bw,cw) async
-    !$acc enter data copyin(rhsbu,rhsbu%x,rhsbu%y,rhsbu%z) async
-    !$acc enter data copyin(rhsbv,rhsbv%x,rhsbv%y,rhsbv%z) async
-    !$acc enter data copyin(rhsbw,rhsbw%x,rhsbw%y,rhsbw%z) async
+    !$acc        enter data copyin(lambdaxyu,au,bu,cu,lambdaxyv,av,bv,cv,lambdaxyw,aw,bw,cw) async
+    !$omp target enter data map(to:lambdaxyu,au,bu,cu,lambdaxyv,av,bv,cv,lambdaxyw,aw,bw,cw)
+    !$acc        enter data copyin(rhsbu,rhsbu%x,rhsbu%y,rhsbu%z) async
+    !$omp target enter data map(to:rhsbu,rhsbu%x,rhsbu%y,rhsbu%z)
+    !$acc        enter data copyin(rhsbv,rhsbv%x,rhsbv%y,rhsbv%z) async
+    !$omp target enter data map(to:rhsbv,rhsbv%x,rhsbv%y,rhsbv%z)
+    !$acc        enter data copyin(rhsbw,rhsbw%x,rhsbw%y,rhsbw%z) async
+    !$omp target enter data map(to:rhsbw,rhsbw%x,rhsbw%y,rhsbw%z)
     do iscal=1,nscal
       s => scalars(iscal)
       call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcscal(:,:,iscal),bcscal(:,:,iscal), &
                       s%lambdaxy,['c','c','c'],s%a,s%b,s%c,s%arrplan,s%normfft,s%rhsb%x,s%rhsb%y,s%rhsb%z)
-      !$acc enter data copyin(s%lambdaxy,s%a,s%b,s%c) async
-      !$acc enter data copyin(s%rhsb,s%rhsb%x,s%rhsb%y,s%rhsb%z) async
+      !$acc        enter data copyin(s%lambdaxy,s%a,s%b,s%c) async
+      !$omp target enter data map(to:s%lambdaxy,s%a,s%b,s%c)
+      !$acc        enter data copyin(s%rhsb,s%rhsb%x,s%rhsb%y,s%rhsb%z) async
+      !$omp target enter data map(to:s%rhsb,s%rhsb%x,s%rhsb%y,s%rhsb%z)
     end do
   end if
   if(is_poisson_dtdma) then
-    !$acc enter data create(ap_d,cp_d) async
+    !$acc        enter data create(ap_d,cp_d) async
+    !$omp target enter data map(alloc:ap_d,cp_d)
   end if
   !$acc wait
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   !
   ! determine workspace sizes and allocate the memory
   !
@@ -683,23 +708,27 @@ program cans
       call MPI_BCAST(savecounter,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
     end if
   end if
-  !$acc enter data copyin(u,v,w,p,pp,pn,po)
-  !$acc enter data copyin(dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+  !$acc        enter data copyin(u,v,w,p,pp,pn,po)
+  !$omp target enter data map(to:u,v,w,p,pp,pn,po)
+  !$acc        enter data copyin(dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+  !$omp target enter data map(to:dudtrko,dvdtrko,dwdtrko,dpsidtrko)
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
-  !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
+  !$acc        enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
+  !$omp target enter data map(to:surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
   call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
   call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
   if(is_ifc_split) then
-    !$acc enter data copyin(uo,vo,wo,uadv,vadv,wadv)
+    !$acc        enter data copyin(uo,vo,wo,uadv,vadv,wadv)
+    !$omp target enter data map(to:uo,vo,wo,uadv,vadv,wadv)
     if(.not.is_first) then
       call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uo,vo,wo,restart)
       if(is_vof_sweep_transport) call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv,.false.)
     end if
   end if
 #if defined(_CONSTANT_COEFFS_POISSON)
-  !$acc parallel loop collapse(3) default(present) async(1)
-  !$OMP parallel do   collapse(3) DEFAULT(shared)
+  !$acc parallel     loop collapse(3) default(present) async(1)
+  !$omp target teams loop collapse(3)
   do k=1-nh_p,n(3)+nh_p
     do j=1-nh_p,n(2)+nh_p
       do i=1-nh_p,n(1)+nh_p
@@ -712,10 +741,12 @@ program cans
 #endif
   do iscal=1,nscal
     s => scalars(iscal)
-    !$acc enter data copyin(s%val,s%dsdtrko) async(1)
+    !$acc        enter data copyin(s%val,s%dsdtrko) async(1)
+    !$omp target enter data map(to:s%val,s%dsdtrko)
     call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%val)
     if(is_ifc_split) then
-      !$acc enter data copyin(s%so,s%sadv) async(1)
+      !$acc        enter data copyin(s%so,s%sadv) async(1)
+      !$omp target enter data map(to:s%so,s%sadv)
       if(.not.is_first) then
         if(is_vof_sweep_transport) then
           call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%sadv)
@@ -725,22 +756,30 @@ program cans
       end if
     end if
   end do
-  !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
+  !$acc        enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
+  !$omp target enter data map(to:psi) map(alloc:kappa,normx,normy,normz)
   if(is_sdf_normals) then
-    !$acc enter data create(phi) async(1)
+    !$acc        enter data create(phi) async(1)
+    !$omp target enter data map(alloc:phi)
   end if
-  !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
+  !$acc        enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
+  !$omp target enter data map(alloc:psio,psiflx_x,psiflx_y,psiflx_z)
   call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   if(nmk > 0) then
-    !$acc enter data copyin(markers(:))
+    !$acc        enter data copyin(markers(:))
+    !$omp target enter data map(to:markers(:))
     do imark=1,nmk
-      !$acc enter data copyin(markers(imark)%psi,markers(imark)%dpsidtrko) async(1)
-      !$acc enter data create(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
+      !$acc        enter data copyin(markers(imark)%psi,markers(imark)%dpsidtrko) async(1)
+      !$omp target enter data map(to:markers(imark)%psi,markers(imark)%dpsidtrko)
+      !$acc        enter data create(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
+      !$omp target enter data map(alloc:markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz)
       if(is_sdf_normals) then
-        !$acc enter data create(markers(imark)%phi) async(1)
+        !$acc        enter data create(markers(imark)%phi) async(1)
+        !$omp target enter data map(alloc:markers(imark)%phi)
       end if
     end do
-    !$acc enter data create(fsx,fsy,fsz) async(1)
+    !$acc        enter data create(fsx,fsy,fsz) async(1)
+    !$omp target enter data map(alloc:fsx,fsy,fsz)
     call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
   end if
   !
@@ -748,12 +787,15 @@ program cans
   !
   write(fldnum,'(i7.7)') istep
   !$acc wait ! not needed but to prevent possible future issues
-  !$acc update self(u,v,w,p,psi,kappa)
+  !$acc        update self(u,v,w,p,psi,kappa)
+  !$omp target update from(u,v,w,p,psi,kappa)
   do imark=1,nmk
-    !$acc update self(markers(imark)%psi)
+    !$acc        update self(markers(imark)%psi)
+    !$omp target update from(markers(imark)%psi)
   end do
   do iscal=1,nscal
-    !$acc update self(scalars(iscal)%val)
+    !$acc        update self(scalars(iscal)%val)
+    !$omp target update from(scalars(iscal)%val)
   end do
   if(is_output_due(istep,iout1d,tout1d,time,time,restart)) then
     include 'out1d.h90'
@@ -812,8 +854,8 @@ program cans
     !
     ! phase field update
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-nh_psi,n(3)+nh_psi
       do j=1-nh_psi,n(2)+nh_psi
         do i=1-nh_psi,n(1)+nh_psi
@@ -830,8 +872,8 @@ program cans
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                        istep,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     else
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
       do k=1-nh_ifc,n(3)+nh_ifc
         do j=1-nh_ifc,n(2)+nh_ifc
           do i=1-nh_ifc,n(1)+nh_ifc
@@ -872,7 +914,8 @@ program cans
       call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
                     bforce,is_wallturb,time,u,v,w,p)
       !$acc wait(1)
-      !$acc update device(u,v,w,p) async(1)
+      !$acc        update device(u,v,w,p) async(1)
+      !$omp target update to(u,v,w,p)
       call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
     else
       !
@@ -971,8 +1014,8 @@ program cans
       call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
     end if
 #if defined(_CONSTANT_COEFFS_POISSON)
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-nh_p,n(3)+nh_p
       do j=1-nh_p,n(2)+nh_p
         do i=1-nh_p,n(1)+nh_p
@@ -1071,34 +1114,43 @@ program cans
     write(fldnum,'(i7.7)') istep
     if(is_output_due(istep,iout1d,tout1d,time_start,time)) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa)
+      !$acc        update self(u,v,w,p,psi,kappa)
+      !$omp target update from(u,v,w,p,psi,kappa)
       do imark=1,nmk
-        !$acc update self(markers(imark)%psi)
+        !$acc        update self(markers(imark)%psi)
+        !$omp target update from(markers(imark)%psi)
       end do
       do iscal=1,nscal
-        !$acc update self(scalars(iscal)%val)
+        !$acc        update self(scalars(iscal)%val)
+        !$omp target update from(scalars(iscal)%val)
       end do
       include 'out1d.h90'
     end if
     if(is_output_due(istep,iout2d,tout2d,time_start,time)) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa)
+      !$acc        update self(u,v,w,p,psi,kappa)
+      !$omp target update from(u,v,w,p,psi,kappa)
       do imark=1,nmk
-        !$acc update self(markers(imark)%psi)
+        !$acc        update self(markers(imark)%psi)
+        !$omp target update from(markers(imark)%psi)
       end do
       do iscal=1,nscal
-        !$acc update self(scalars(iscal)%val)
+        !$acc        update self(scalars(iscal)%val)
+        !$omp target update from(scalars(iscal)%val)
       end do
       include 'out2d.h90'
     end if
     if(is_output_due(istep,iout3d,tout3d,time_start,time)) then
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa)
+      !$acc        update self(u,v,w,p,psi,kappa)
+      !$omp target update from(u,v,w,p,psi,kappa)
       do imark=1,nmk
-        !$acc update self(markers(imark)%psi)
+        !$acc        update self(markers(imark)%psi)
+        !$omp target update from(markers(imark)%psi)
       end do
       do iscal=1,nscal
-        !$acc update self(scalars(iscal)%val)
+        !$acc        update self(scalars(iscal)%val)
+        !$omp target update from(scalars(iscal)%val)
       end do
       include 'out3d.h90'
     end if
@@ -1115,31 +1167,41 @@ program cans
         end if
       end if
       !$acc wait
-      !$acc update self(u,v,w,p,psi,kappa)
+      !$acc        update self(u,v,w,p,psi,kappa)
+      !$omp target update from(u,v,w,p,psi,kappa)
       do imark=1,nmk
-        !$acc update self(markers(imark)%psi)
+        !$acc        update self(markers(imark)%psi)
+        !$omp target update from(markers(imark)%psi)
       end do
       do iscal=1,nscal
-        !$acc update self(scalars(iscal)%val)
+        !$acc        update self(scalars(iscal)%val)
+        !$omp target update from(scalars(iscal)%val)
       end do
       if(is_full_restart) then
-        !$acc update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+        !$acc        update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+        !$omp target update from(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
         do imark=1,nmk
-          !$acc update self(markers(imark)%dpsidtrko)
+          !$acc        update self(markers(imark)%dpsidtrko)
+          !$omp target update from(markers(imark)%dpsidtrko)
         end do
         do iscal=1,nscal
-          !$acc update self(scalars(iscal)%dsdtrko)
+          !$acc        update self(scalars(iscal)%dsdtrko)
+          !$omp target update from(scalars(iscal)%dsdtrko)
         end do
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
-        !$acc update self(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
+        !$acc        update self(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
+        !$omp target update from(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
         if(is_ifc_split) then
-          !$acc update self(uo,vo,wo)
+          !$acc        update self(uo,vo,wo)
+          !$omp target update from(uo,vo,wo)
           if(is_vof_sweep_transport) then
-            !$acc update self(uadv,vadv,wadv)
+            !$acc        update self(uadv,vadv,wadv)
+            !$omp target update from(uadv,vadv,wadv)
           end if
           do iscal=1,nscal
-            !$acc update self(scalars(iscal)%so,scalars(iscal)%sadv)
+            !$acc        update self(scalars(iscal)%so,scalars(iscal)%sadv)
+            !$omp target update from(scalars(iscal)%so,scalars(iscal)%sadv)
           end do
         end if
       end if
@@ -1233,7 +1295,7 @@ program cans
 #endif
   if(myid == 0.and.(.not.kill)) print*, '*** Fim ***'
   call decomp_2d_finalize
-#if defined(_OPENACC)
+#if defined(_OPENACC) || defined(_OPENMP)
   call cudecomp_finalize
 #endif
   call MPI_FINALIZE(ierr)

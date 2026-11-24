@@ -18,6 +18,7 @@ FFLAGS_DEBUG_MAX=0 # for thorough debugging
 #
 SINGLE_PRECISION=0 # perform the whole calculation in single precision
 GPU=0              # GPU build
+GPU_BACKEND=OACC   # options: OACC, OMP
 USE_HDF5=0         # HDF5 I/O support
 USE_ADIOS2=0       # ADIOS2 I/O support
 #
@@ -34,6 +35,7 @@ In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA
  * `USE_HDF5`         : enable HDF5-based I/O support
  * `USE_ADIOS2`       : enable ADIOS2-based I/O support
  * `USE_DIEZDECOMP`   : use [diezDecomp](https://github.com/Rafael10Diez/diezDecomp) as GPU communication backend instead of the default (cuDecomp), e.g., for portability in different accelerators. While diezDecomp supports CPU-CPU communication, this is not used in CaNS yet.
+ * `GPU_BACKEND`      : backend of the directive-based GPU offloading: `OACC` for OpenACC (default), and `OMP` for OpenMP target offload (the OpenMP parallelization on CPUs is then not available)
 
 and the following ones select the two-fluid method (the interface-capturing method itself, ACDI, THINC/QQ or geometric volume of fluid, is selected at run time: see `ifc_reconstruction` in [`INFO_INPUT.md`](INFO_INPUT.md)):
 
@@ -44,7 +46,7 @@ The transport of a scalar and the Boussinesq buoyancy term are selected in the i
 
 A build with `CONSTANT_COEFFS_POISSON=0` links to HYPRE, whose location is set with `HYPRE_HOME` (default: `${HOME}/software/hypre`), e.g., `make CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=[PATH_TO_HYPRE]`. The solver is chosen and tuned at run time, with the `&hypre` namelist (see [`INFO_INPUT.md`](INFO_INPUT.md)). Two-dimensional cases should use a single grid cell along the homogeneous direction, which is then left out of the linear system; otherwise, a periodic direction must have an even number of grid cells.
 
-The GPU-enabled path corresponds to the OpenACC implementation.
+The OpenMP GPU backend is selected by building with `GPU=1 GPU_BACKEND=OMP`; if `GPU_BACKEND` is not specified, the default GPU path remains `OACC`. Each OpenACC directive in the source is followed by its OpenMP counterpart, as in CaNS. With the NVIDIA compiler, the OpenMP build inlines the small procedures called from the kernels (`-Minline`): a loop that calls a procedure is otherwise parallelized across teams only.
 
 NVIDIA GPU builds generate code for the major compute capabilities selected by the compiler (`NVHPC_GPU_TARGET=ccall-major`). This can be overridden for a specific GPU, for example with `make NVHPC_GPU_TARGET=cc89`, or set to `ccnative` to target the GPUs visible on the build system.
 

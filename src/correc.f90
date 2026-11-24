@@ -50,8 +50,8 @@ module mod_correc
     factori = dt*dli(1)
     factorj = dt*dli(2)
     !factork = dt*dzci!dli(3)
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-m,n(3)+m
       do j=1-m,n(2)+m
         do i=1-m,n(1)
@@ -63,8 +63,8 @@ module mod_correc
         end do
       end do
     end do
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-m,n(3)+m
       do j=1-m,n(2)
         do i=1-m,n(1)+m
@@ -76,8 +76,8 @@ module mod_correc
         end do
       end do
     end do
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP PARALLEL DO   COLLAPSE(3) DEFAULT(shared)
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
     do k=1-m,n(3)
       do j=1-m,n(2)+m
         do i=1-m,n(1)+m
