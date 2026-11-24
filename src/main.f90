@@ -741,7 +741,7 @@ program cans
       end if
     end do
     !$acc enter data create(fsx,fsy,fsz) async(1)
-    call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
+    call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,restart,markers,psi)
   end if
   !
   ! post-process and write initial condition
@@ -750,7 +750,7 @@ program cans
   !$acc wait ! not needed but to prevent possible future issues
   !$acc update self(u,v,w,p,psi,kappa)
   do imark=1,nmk
-    !$acc update self(markers(imark)%psi)
+    !$acc update self(markers(imark)%psi,markers(imark)%kappa)
   end do
   do iscal=1,nscal
     !$acc update self(scalars(iscal)%val)
@@ -1095,7 +1095,7 @@ program cans
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
       do imark=1,nmk
-        !$acc update self(markers(imark)%psi)
+        !$acc update self(markers(imark)%psi,markers(imark)%kappa)
       end do
       do iscal=1,nscal
         !$acc update self(scalars(iscal)%val)

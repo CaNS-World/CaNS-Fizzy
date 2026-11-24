@@ -45,8 +45,8 @@ module mod_vof_split
   use mod_thinc     , only: thinc_intercept,thinc_slab
   implicit none
   private
-  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics, &
-         vof_split_contact_angle
+  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_curvature_reset, &
+         vof_split_diagnostics,vof_split_contact_angle
   !
   type, public :: vof_marker
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null() ! volume fraction of a marker (see `vof_split_advance`)
@@ -359,6 +359,7 @@ module mod_vof_split
       clip_stats(2) =  huge(1._rp)
       clip_stats(3) = -huge(1._rp)
       !$acc end serial
+      call vof_split_curvature_reset
     end if
     do isub=1,nsub
       if(nm == 0) then
@@ -1366,6 +1367,19 @@ module mod_vof_split
     end if
   end subroutine donor_fractions
   !
+  subroutine vof_split_curvature_reset
+    !
+    ! resets the counts of the curvature estimates (see `vof_split_curvature`), which are accumulated over
+    ! the calls that follow: one per time step, or one per marker
+    !
+    implicit none
+    !$acc serial default(present) async(1)
+    kappa_stats(1) = 0._rp
+    kappa_stats(2) = 0._rp
+    kappa_stats(3) = 0._rp
+    !$acc end serial
+  end subroutine vof_split_curvature_reset
+  !
   subroutine vof_split_curvature(istage,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     !
     ! interface curvature (sign convention of Fizzy: kappa = -div(n), n pointing into phase 1), in stages
@@ -1395,9 +1409,6 @@ module mod_vof_split
       !
       nlist(1) = 0
       !$acc update device(nlist) async(1)
-      !$acc serial default(present) async(1)
-      kappa_stats(1) = 0._rp
-      !$acc end serial
       !$acc parallel loop collapse(3) default(present) private(il) async(1)
       do k=1,n(3)
         do j=1,n(2)
@@ -1422,10 +1433,6 @@ module mod_vof_split
       !
       n1 = n(1)
       n2 = n(2)
-      !$acc serial default(present) async(1)
-      kappa_stats(2) = 0._rp
-      kappa_stats(3) = 0._rp
-      !$acc end serial
       !$acc parallel loop default(present) async(1)
       do il=1,nlist(1)
         lin = ilist(il)
