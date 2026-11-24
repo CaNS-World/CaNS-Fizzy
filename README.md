@@ -1,6 +1,6 @@
 ## Synopsis
 
-**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows with heat transfer. It has been designed to be an efficient Navier-Stokes solver for two fluid phases taking [CaNS](https://github.com/CaNS-World/CaNS) as its base, where it is ensured that important advancements in the base solver are easily incorporated. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. To achieve this, the Navier-Stokes equations are solved using a pressure-splitting technique that enables using fast solvers for constant-coefficients Poisson/Helmholtz equations. The interface between phases may be captured using one of two approaches: the Accurate Conservative Diffuse Interface (ACDI) method, or the THINC/QQ volume-of-fluid method. See the references below for more details.
+**CaNS-Fizzy** is a code for massively-parallel numerical simulations of two-phase flows with heat transfer. It has been designed to be an efficient Navier-Stokes solver for two fluid phases taking [CaNS](https://github.com/CaNS-World/CaNS) as its base, where it is ensured that important advancements in the base solver are easily incorporated. The code aims at solving any fluid flow of two immiscible, incompressible, Newtonian fluid phases that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. To achieve this, the Navier-Stokes equations are solved using a pressure-splitting technique that enables using fast solvers for constant-coefficients Poisson/Helmholtz equations. The interface between phases may be captured using one of three approaches, selected at run time: the Accurate Conservative Diffuse Interface (ACDI) method, the THINC/QQ algebraic volume-of-fluid method, or a geometric (PLIC) volume-of-fluid method with direction-split advection. See the references below for more details.
 
 **References**
 
@@ -14,9 +14,20 @@ S. Jain. *Accurate conservative phase-field method for simulation of two-phase f
 
 Bin & Xiao. *Toward efficient and accurate interface capturing on arbitrary hybrid unstructured grids: The THINC method with quadratic surface representation and Gaussian quadrature* *Journal of Computational Physics* 349 (2017): 415-440. [doi.org/10.1016/j.jcp.2017.08.028](https://doi.org/10.1016/j.jcp.2017.08.028)
 
+G. D. Weymouth & D. K.-P. Yue. *Conservative Volume-of-Fluid method for free-surface simulations on Cartesian-grids.* *Journal of Computational Physics* 229 (2010): 2853-2865. [doi:10.1016/j.jcp.2009.12.018](https://doi.org/10.1016/j.jcp.2009.12.018)
+
+E. Aulisa, S. Manservisi, R. Scardovelli & S. Zaleski. *Interface reconstruction with least-squares fit and split advection in three-dimensional Cartesian geometry.* *Journal of Computational Physics* 225 (2007): 2301-2319. [doi:10.1016/j.jcp.2007.03.015](https://doi.org/10.1016/j.jcp.2007.03.015)
+
+S. Popinet. *An accurate adaptive solver for surface-tension-driven interfacial flows.* *Journal of Computational Physics* 228 (2009): 5838-5866. [doi:10.1016/j.jcp.2009.04.042](https://doi.org/10.1016/j.jcp.2009.04.042)
+
 ## News
 
-**[07/03/2025]:** Fizzy has been extended with a new interface-capturing approach based on the based on the THINC/QQ volume-of-fluid method. See the updated [`docs/INFO_INPUT.md`](docs/INFO_INPUT.md) and [`docs/INFO_COMPILING.md`](docs/INFO_COMPILING.md) for more details on how to switch between interface capturing approaches.
+### _Major Update:_ `Fizzy 2.0` _is out!_ :tada:
+See the [Release Notes](https://github.com/CaNS-World/CaNS-Fizzy/releases/tag/v2.0.0) for more details.
+
+**[xx/xx/2026]:** Fizzy has been extended with a geometric (PLIC) volume-of-fluid method, and the interface-capturing approach is now selected at run time, in one executable. The code is in sync with CaNS again, and gained implicit diffusion, static contact angles, Navier slip, Marangoni stresses, and the transport of several scalars. See the updated [`docs/INFO_INPUT.md`](docs/INFO_INPUT.md) and [`docs/INFO_COMPILING.md`](docs/INFO_COMPILING.md) for more details.
+
+**[07/03/2025]:** Fizzy has been extended with a new interface-capturing approach based on the THINC/QQ volume-of-fluid method.
 
 ## Features
 
@@ -24,21 +35,28 @@ Some features are:
 
  * MPI parallelization
  * FFTW guru interface / cuFFT used for computing multi-dimensional vectors of 1D transforms
- * The right type of transformation (Fourier, cosine, sine, etc) is automatically determined form the input file
+ * The right type of transformation (Fourier, cosine, sine, etc) is automatically determined from the input file
  * [cuDecomp](https://github.com/NVIDIA/cuDecomp) pencil decomposition library for _hardware-adaptive_ distributed memory calculations on _many GPUs_
  * [2DECOMP&FFT](https://github.com/xcompact3d/2decomp-fft) library used for performing global data transpositions on CPUs and some of the data I/O
  * GPU acceleration using OpenACC directives (and option to switch to OpenMP target offload in the [`openmp-port` branch](https://github.com/CaNS-World/CaNS-Fizzy/tree/openmp-port))
  * A different canonical flow can be simulated just by changing the input files
  * Mass transport-consistent discretization of advection terms that enable simulations at high density contrasts
- * Three options for interface-capturing algorithms, selected at run time: ACDI (diffuse interface method), THINC/QQ (volume-of-fluid method), and a geometric (PLIC) volume-of-fluid method with direction-split advection
+ * Three options for interface-capturing algorithms, selected at run time: ACDI (diffuse interface method), THINC/QQ (volume-of-fluid method), and a geometric (PLIC) volume-of-fluid method with direction-split advection and height-function curvature
+ * Surface tension with a balanced pressure splitting, static contact angles at walls, and Marangoni stresses (surface tension that varies with a scalar)
+ * Transport of an arbitrary number of scalars (e.g., temperature), with Boussinesq buoyancy
+ * Optional implicit integration of the diffusion terms, along one or all directions
+ * Optional variable-coefficient pressure solver based on the HYPRE library (CPUs)
+ * Navier slip at walls, and a forcing that keeps the net acceleration of the two-fluid mixture at zero
+ * Two-dimensional runs with a single grid cell along the homogeneous direction
+ * Checkpoints that restart the time integration exactly
 
 ## Motivation
 
-This numerical tool serves as an efficient base Navier-Stokes solver for high-resolution simulations of turbulent flows with two immiscible incompressible fluid phases. It enables the simulation of two-phase flow in canonical configurations on modern (GPU-based) parallel computing architectures, taking advantage of the efficiency of the base single-phase solver that was used as the starting point. The interface-capruting methods have been selected due to their accuracy and suitability for GPU-based simulations. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies to, for instance, introduce complex geometries (such as immersed-boundary methods). Future extensions of the solver with other interface-capturing methods are planned.
+This numerical tool serves as an efficient base Navier-Stokes solver for high-resolution simulations of turbulent flows with two immiscible incompressible fluid phases. It enables the simulation of two-phase flow in canonical configurations on modern (GPU-based) parallel computing architectures, taking advantage of the efficiency of the base single-phase solver that was used as the starting point. The interface-capturing methods have been selected due to their accuracy and suitability for GPU-based simulations. The one-fluid formulation, combined with the one-equation transport of the phase field, facilitates the extension of the code to more complex numerical strategies to, for instance, introduce complex geometries (such as immersed-boundary methods). Future extensions of the solver with other interface-capturing methods are planned.
 
 ## Method
 
-The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a staggered grid arrangement. The interface between the two fluid phases is represented by a diffuse interface of specified thickness, and advected with a second-order finite difference scheme. Time is advanced with a three-step low storage Runge-Kutta scheme, with several possible options concerning the discretiation of the advective terms. A pressure splitting technique may be used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS; by default, the residual between the pressure gradient and the surface tension force is split, rather than the pressure gradient alone. See the references above for details.
+The two-phase flow is described by a one-fluid formulation, and is solved with a second-order finite difference incremental pressure correction scheme, discretized in a staggered grid arrangement. The interface between the two fluid phases is captured by a phase indicator: either a smooth one (ACDI, THINC/QQ), a diffuse interface of specified thickness advected with a second-order finite-difference scheme, or the volume fraction of a geometric volume-of-fluid method, with a piecewise-linear interface in each cut cell that is advected with a conservative direction-split scheme. Time is advanced with the second-order Adams-Bashforth scheme, and momentum and scalars are transported with the mass fluxes of the phase indicator, so that mass and momentum transport are consistent. The diffusion terms may be integrated implicitly. A pressure splitting technique may be used to convert the problem of solving a variable-coefficients Poisson equation to a constant-coefficients one that can leverage the fast Poisson solver in CaNS; by default, the residual between the pressure gradient and the surface tension force is split, rather than the pressure gradient alone. See the references above for details.
 
 ## Usage
 
@@ -48,7 +66,7 @@ Since *Fizzy* loads the external pencil decomposition libraries as Git Submodule
 ```bash
 git clone --recursive https://github.com/CaNS-World/CaNS-Fizzy
 ```
-so the libraries are downloaded too. Alternatively, in case the repository has already been cloned without the Submodules (i.e., folders `cuDecomp` and `2decomp-fft` under `dependencies/` are empty), the following command can be used to update them:
+so the libraries are downloaded too. Alternatively, in case the repository has already been cloned without the Submodules (i.e., the folders of the libraries under `dependencies/` are empty), the following command can be used to update them:
 ```bash
 git submodule update --init --recursive
 ```
@@ -84,7 +102,7 @@ Files `out1d.h90`, `out2d.h90` and `out3d.h90` in `src/` set which data are writ
 
 ### Running the code
 
-Run the executable with `mpirun` with a number of tasks complying to what has been set in the input file `input.nml`. Data will be written by default in a folder named `data/`, which must be located where the executable is run (by default in the `run/` folder).
+Run the executable with `mpirun` with a number of tasks complying to what has been set in the input file `input.nml`, e.g., `mpirun -n 4 ./cans`. Another input file may be given as an argument, e.g., `mpirun -n 4 ./cans input-case-01.nml`. Data will be written by default in a folder named `data/`, which must be located where the executable is run (by default in the `run/` folder).
 
 ### Visualizing field data
 
@@ -92,7 +110,7 @@ See [`INFO_VISU.md`](docs/INFO_VISU.md).
 
 ## Contributing
 
-We appreciate any contributions and feedback that can improve the code. If you wish to contribute to the tool, please get in touch with the maintainers or open an Issue in the repository / a thread in Discussions. Pull Requests are welcome, but please propose/discuss the changes in an linked Issue first.
+We appreciate any contributions and feedback that can improve the code. If you wish to contribute to the tool, please get in touch with the maintainers or open an Issue in the repository. Pull Requests are welcome, but please propose/discuss the changes in a linked Issue first.
 
 ## Final notes
 
