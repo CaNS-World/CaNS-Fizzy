@@ -830,17 +830,6 @@ program cans
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                        istep,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     else
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
-      do k=1-nh_ifc,n(3)+nh_ifc
-        do j=1-nh_ifc,n(2)+nh_ifc
-          do i=1-nh_ifc,n(1)+nh_ifc
-            psiflx_x(i,j,k) = 0.
-            psiflx_y(i,j,k) = 0.
-            psiflx_z(i,j,k) = 0.
-          end do
-        end do
-      end do
       call ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                   u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     end if

@@ -132,7 +132,7 @@ is_solve_ns = T, is_track_interface = T
 
 `is_solve_ns`, if true, enables the solution of the Navier-Stokes momentum equation. It can be set to false when a prescribed velocity field is desired.
 
-`is_track_interface`, if true, enables the advection of the two-fluid interface.
+`is_track_interface`, if true, enables the advection of the two-fluid interface. If false, the phase indicator keeps its initial value, and momentum and scalars are transported with the mass fluxes of that fixed field: exact for a single fluid (`inipsi = 'uni'` or `'zer'`), while for an interface that is held fixed in a flow that crosses it, mass and momentum transport cannot be consistent.
 
 The viscosities and densities of the two fluids are set in the `&two_fluid` namelist (see below).
 

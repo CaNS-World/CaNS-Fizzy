@@ -26,7 +26,7 @@ on:
       tests_default:
         description: "JSON array of the tests of the default variant; a suffix -thinc, -plic or -thincsplit selects that interface method"
         type: string
-        default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "marangoni_layer", "markers", "marangoni_markers"]'
+        default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "marangoni_layer", "markers", "marangoni_markers", "single_fluid"]'
 
 jobs:
   default:

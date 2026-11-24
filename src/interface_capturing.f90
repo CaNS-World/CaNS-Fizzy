@@ -408,10 +408,12 @@ module mod_interface_capturing
   subroutine ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                     u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars)
     !
-    ! advecting velocity of a time step in which the interface is not tracked (geometric volume-of-fluid
-    ! method only); with `is_vof_sweep_transport`, the velocity (and the scalars) is transported with the
-    ! sweeps, without updating the phase indicator, and returned in uadv, vadv, wadv (and in `sadv` of each
-    ! scalar) instead
+    ! phase fluxes of a time step in which the interface is not tracked: those of a frozen phase indicator
+    ! carried across the faces by the velocity (see `frozen_fluxes`), such that the mass fluxes of the
+    ! transport of momentum and scalars are those of the local fluid; with the direction-split advection,
+    ! also the advecting velocity, or, with `is_vof_sweep_transport`, the velocity (and the scalars)
+    ! transported with the sweeps, without updating the phase indicator, returned in uadv, vadv, wadv (and in
+    ! `sadv` of each scalar) instead
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -431,7 +433,11 @@ module mod_interface_capturing
     real(rp), dimension(3) :: cfl
     integer :: is
     !
-    if(.not.is_ifc_split) return
+    if(.not.is_ifc_split) then
+      call frozen_fluxes(n,nh_v,nh_psi,nh_ifc,nh_g,wzc,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z)
+      call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+      return
+    end if
     do is=1,max(nscal,1)
       rhocp12(:,is) = rho12(:)*cp12(:,is)
     end do
@@ -445,8 +451,37 @@ module mod_interface_capturing
       end do
     else
       call vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,uadv,vadv,wadv,cfl)
+      call frozen_fluxes(n,nh_v,nh_psi,nh_ifc,nh_g,wzc,uadv,vadv,wadv,psi,psiflx_x,psiflx_y,psiflx_z)
+      call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
     end if
   end subroutine ifc_advecting_velocity
+  !
+  subroutine frozen_fluxes(n,nh_v,nh_psi,nh_ifc,nh_g,wzc,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z)
+    !
+    ! phase fluxes of a phase indicator that is not advanced: its value at each face, interpolated with the
+    ! weights of the density of the staggered control volumes, times the face velocity; exact for a uniform
+    ! phase indicator (a single fluid)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(1-nh_g:) :: wzc
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
+    integer :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          psiflx_x(i,j,k) = 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)
+          psiflx_y(i,j,k) = 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)
+          psiflx_z(i,j,k) = (wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1))*w(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine frozen_fluxes
   !
   subroutine ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
     !
