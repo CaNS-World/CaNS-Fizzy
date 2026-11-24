@@ -95,7 +95,7 @@ module mod_vof_split
   !
   real(rp), dimension(3) :: clip_stats = [0._rp,0._rp,1._rp] ! accumulated volume added by clipping, and extrema
                                                              ! (minimum, maximum) before clipping in the last step
-  real(rp), dimension(3) :: clip_sweep          ! the same, for one sweep
+  real(rp), dimension(3) :: clip_sweep = [0._rp,0._rp,1._rp] ! the same, for one sweep
   real(rp), dimension(3) :: cfl_last = 0._rp    ! CFL numbers of the advecting velocity in the last step
   integer  :: nsub_last = 0                     ! number of sub-steps in the last step
   real(rp), dimension(3) :: kappa_stats = 0._rp ! interfacial cells with curvature from height functions,
@@ -193,7 +193,7 @@ module mod_vof_split
         !$acc enter data create(ca_pl)
       end if
     end if
-    !$acc enter data copyin(clip_stats,kappa_stats) create(clip_sweep)
+    !$acc enter data copyin(clip_stats,clip_sweep,kappa_stats)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)+1
       do j=0,n(2)+1
