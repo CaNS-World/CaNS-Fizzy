@@ -148,7 +148,7 @@ program cans
                                          xc_g,xf_g,yc_g,yf_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f,wzc
   real(rp), dimension(3) :: dpdl,meanvel,momentum,momentum_o,wall_force_imp
-  real(rp), dimension(3,6) :: force_balance
+  real(rp), dimension(3,7) :: force_balance
   real(rp), dimension(2) :: tm_coeff
   !
   ! scalar fields (see `mod_scal`)
@@ -1052,7 +1052,8 @@ program cans
         var(11:13) = force_balance(:,4)
         var(14:16) = force_balance(:,5)
         var(17:19) = force_balance(:,6)
-        call out0d(trim(datadir)//'forcing_balance.out',19,var)
+        var(20:22) = force_balance(:,7)
+        call out0d(trim(datadir)//'forcing_balance.out',22,var)
       end if
       !
       call ifc_write_log(istep,time,n,nh_psi,nh_g,dl,dzf,gam,seps,psi)

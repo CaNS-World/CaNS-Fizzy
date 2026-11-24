@@ -6,11 +6,13 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_cc_mom_rhs,impdiff_cc_scal_rhs,impdiff_wall_force
+  use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_cc_mom_rhs,impdiff_cc_scal_rhs,impdiff_wall_force, &
+                         impdiff_updt_forcing
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
-  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,marker_fields
+  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum, &
+                         marker_fields
   use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0, &
                          dsigma_ds,s_ref,is_brackbill_normalization
   use mod_types
@@ -69,7 +71,7 @@ module mod_rk
     real(rp), intent(inout), dimension(3)                   :: wall_force_old
     real(rp), intent(inout), dimension(:,:,:)               :: dudtrko,dvdtrko,dwdtrko
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)           :: u,v,w
-    real(rp), intent(out  ), dimension(3,6)                 :: force_balance
+    real(rp), intent(out  ), dimension(3,7)                 :: force_balance
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
     real(rp), intent(in   ), dimension(:,:,:), optional :: fsx,fsy,fsz
     type(marker_fields), intent(in), dimension(:), optional :: mfields
@@ -77,7 +79,7 @@ module mod_rk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
     real(rp) :: factor1,factor2,factor12
-    real(rp), dimension(3) :: taux,tauy,tauz,wall_force,wall_force_imp,dwall_force_old
+    real(rp), dimension(3) :: taux,tauy,tauz,wall_force,wall_force_imp,dwall_force_old,momentum,momentum_o
     integer :: i,j,k,m
     !
     factor1  = rkpar(1)*dt
@@ -230,6 +232,9 @@ module mod_rk
     ! surface tension that varies with the first scalar: the force of the interface, or that of each marker
     ! (with the fluid properties of the total phase indicator)
     !
+    if(dsigma_ds /= 0._rp .and. any(is_forced(:))) then
+      call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum_o)
+    end if
     if(dsigma_ds /= 0._rp .and. .not.present(mfields)) then
       call mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma_ds,s_ref, &
                              is_brackbill_normalization,psi,psi,kappa,s,factor12,u,v,w)
@@ -238,6 +243,17 @@ module mod_rk
         call mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma_ds,s_ref, &
                                is_brackbill_normalization,psi,mfields(m)%psi,mfields(m)%kappa,s,factor12,u,v,w)
       end do
+    end if
+    if(dsigma_ds /= 0._rp .and. any(is_forced(:))) then
+      !
+      ! zero-net-acceleration forcing: the mean of this force is the momentum that it has just added, over
+      ! the time step; it is balanced with the uniform force that takes that momentum back
+      !
+      call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
+      momentum(:) = momentum_o(:)-momentum(:)
+      call impdiff_updt_forcing(n,nh_v,nh_psi,nh_g,wzc,rho12,psi,momentum,u,v,w)
+      force_balance(:,7) = -momentum(:)/factor12
+      force_balance(:,5) = force_balance(:,5) + momentum(:)/factor12
     end if
   end subroutine rk
   !

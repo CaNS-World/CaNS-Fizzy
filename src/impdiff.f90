@@ -762,7 +762,8 @@ module mod_impdiff
   subroutine impdiff_updt_forcing(n,nh_v,nh_psi,nh_g,wzc,rho12,psi,dtf,u,v,w)
     !
     ! adds a uniform force per unit volume, times the time step (`dtf`), to the velocity; it is used by
-    ! the zero-net-acceleration forcing to balance the wall shear of the terms integrated implicitly
+    ! the zero-net-acceleration forcing to balance the wall shear of the terms integrated implicitly, and
+    ! the force of a variable surface tension (see `rk`)
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
