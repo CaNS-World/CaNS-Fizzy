@@ -57,6 +57,7 @@ cp12(1:2,1)       =  1., 1.
 beta12(1:2)       =  0., 0.
 psi_thickness_factor = 0.51
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
+nmarker = 1
 is_sdf_normals = T, is_hf_normals = F
 is_brackbill_normalization = T
 /
@@ -560,6 +561,7 @@ Note: the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`, see b
 
 ```fortran
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
+nmarker = 1
 is_sdf_normals = T, is_hf_normals = F
 is_brackbill_normalization = T
 ```
@@ -593,6 +595,15 @@ The valid combinations are:
 | `plic` | `split` | `one-step` or `sweeps` |
 
 Any other one stops the run with a message.
+
+`nmarker` sets the number of **markers**: phase indicators over which the dispersed phase (the drops or bubbles of the initial condition) is distributed. The default is one. With more, each marker is advanced on its own, as the phase indicator of a run with its drops only, so that drops of different markers do not merge when they come within a few grid cells of each other, as drops of the same marker do; the fluid properties follow the total phase indicator, and the surface tension forces of the markers are summed. The marker of each drop is the fifth, optional column of the file `spheres.in` (1 if absent):
+
+```
+0.5 0.3 0.5 0.18 1
+0.5 0.7 0.5 0.18 2
+```
+
+Where two markers overlap, the total phase indicator is clipped, and the markers are left as they are, each conserving its volume; there is no model of the film between two drops, which simply stay apart. Besides the total phase indicator (`psi_fld_*`, `fld_psi`), each marker is written to `psi_NNN_fld_*` and saved in the checkpoint file `fld_psi_NNN`. Several markers need an initial condition made of spheres (`inipsi = 'bub*'`, `'drp*'` or `'dis*'`), and are available with `ifc_advection = 'ab2'` and a uniform surface tension (`dsigma_ds = 0.`) for now.
 
 `is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
 

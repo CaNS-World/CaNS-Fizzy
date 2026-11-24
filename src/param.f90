@@ -103,6 +103,7 @@ real(rp), protected               :: psi_thickness_factor
 ! the valid combinations are checked in `mod_sanity`
 !
 character(len=10), protected :: ifc_reconstruction,ifc_advection,ifc_transport
+integer , protected :: nmarker ! number of markers (phase fields) that the dispersed phase is distributed over
 logical , protected :: is_sdf_normals ! normals (and THINC/QQ reconstruction) from a signed-distance function
 logical , protected :: is_brackbill_normalization ! density-based scaling of the surface tension force (Brackbill et al.)
 logical , protected :: is_hf_normals  ! normals of the geometric reconstruction from height functions
@@ -221,6 +222,7 @@ contains
                         ka12,cp12,beta12, &
                         psi_thickness_factor, &
                         ifc_reconstruction,ifc_advection,ifc_transport, &
+                        nmarker, &
                         is_sdf_normals,is_hf_normals, &
                         is_brackbill_normalization
     namelist /numerics/ &
@@ -268,6 +270,7 @@ contains
     beta12(:) = 1.
     psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
+    nmarker = 1
     is_sdf_normals = .true.; is_hf_normals = .false.
     is_brackbill_normalization = .true.
     !
