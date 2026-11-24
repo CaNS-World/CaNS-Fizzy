@@ -139,10 +139,6 @@ module mod_sanity
     if(nmarker < 1) then
       if(myid == 0)  print*, 'ERROR: `nmarker` must be positive.'; call abortit
     end if
-    if(nmarker > 1 .and. trim(ifc_transport) == 'sweeps') then
-      if(myid == 0)  print*, 'ERROR: several markers (`nmarker > 1`) are not available yet with the transport along &
-                                     &with the sweeps (`ifc_transport = sweeps`).'; call abortit
-    end if
     if(nmarker > 1 .and. dsigma_ds /= 0.) then
       if(myid == 0)  print*, 'ERROR: several markers (`nmarker > 1`) are not available yet with a surface tension that &
                                      &varies with the scalar (`dsigma_ds`).'; call abortit

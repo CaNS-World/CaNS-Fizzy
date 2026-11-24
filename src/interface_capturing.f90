@@ -178,11 +178,11 @@ module mod_interface_capturing
   end subroutine ifc_advance
   !
   subroutine advance_split(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto,u,v,w,psi, &
-                           psiflx_x,psiflx_y,psiflx_z,is_first,istep,uo,vo,wo,uadv,vadv,wadv,scalars,psi_m)
+                           psiflx_x,psiflx_y,psiflx_z,is_first,istep,uo,vo,wo,uadv,vadv,wadv,scalars,psi_m,nm_off)
     !
-    ! direction-split advection of the phase indicator, or of those of several markers (`psi_m`, see
-    ! `vof_split_advance`), followed by the boundary conditions of the phase fluxes or, with the transport
-    ! along with the sweeps, of the transported velocity and scalars
+    ! direction-split advection of the phase indicator, or of those of several markers (`psi_m`, with the
+    ! offset `nm_off` of their total; see `vof_split_advance`), followed by the boundary conditions of the
+    ! phase fluxes or, with the transport along with the sweeps, of the transported velocity and scalars
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -199,6 +199,7 @@ module mod_interface_capturing
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: uo,vo,wo,uadv,vadv,wadv
     type(scalar), intent(inout), dimension(:), optional :: scalars
     type(vof_marker), intent(in), dimension(:), optional :: psi_m
+    integer , intent(in   ), optional :: nm_off
     real(rp), dimension(2,max(nscal,1)) :: rhocp12
     integer :: is
     !
@@ -207,7 +208,7 @@ module mod_interface_capturing
     end do
     call vof_split_advance(tm_coeff,is_first,.true.,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                            cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
-                           uo,vo,wo,uadv,vadv,wadv,scalars,psi_m)
+                           uo,vo,wo,uadv,vadv,wadv,scalars,psi_m,nm_off)
     if(.not.is_vof_sweep_transport) then
       call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
     else
@@ -244,7 +245,7 @@ module mod_interface_capturing
   end subroutine ifc_markers_init
   !
   subroutine ifc_markers_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
-                                 is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv)
+                                 is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars)
     !
     ! advances each marker over one time step, as `ifc_advance` does for a single phase indicator, and returns
     ! the total phase indicator and the total phase fluxes (with their boundary conditions); with the
@@ -264,6 +265,7 @@ module mod_interface_capturing
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
+    type(scalar), intent(inout), dimension(:), optional :: scalars
     type(vof_marker), dimension(size(markers)) :: psi_m
     integer :: m,nm
     !
@@ -288,13 +290,19 @@ module mod_interface_capturing
         psi_m(m)%psi => markers(m)%psi
       end do
       call advance_split(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto,u,v,w,psi, &
-                         psiflx_x,psiflx_y,psiflx_z,is_first,istep,uo,vo,wo,uadv,vadv,wadv,psi_m=psi_m)
+                         psiflx_x,psiflx_y,psiflx_z,is_first,istep,uo,vo,wo,uadv,vadv,wadv,scalars,psi_m,markers_offset(nm))
       do m=1,nm
         call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
                           markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
-        call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+        if(.not.is_vof_sweep_transport) call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
       end do
-      call markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,uadv,vadv,wadv,psiflx_x,psiflx_y,psiflx_z)
+      !
+      ! (with the transport along with the sweeps, the total phase indicator is formed there, and the phase
+      ! fluxes are not used)
+      !
+      if(.not.is_vof_sweep_transport) then
+        call markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,uadv,vadv,wadv,psiflx_x,psiflx_y,psiflx_z)
+      end if
     end if
   end subroutine ifc_markers_advance
   !
@@ -344,6 +352,17 @@ module mod_interface_capturing
     end do
   end subroutine markers_add
   !
+  integer function markers_offset(nm)
+    !
+    ! offset of the sum of the phase indicators of nm markers with respect to the total one (see `markers_total`)
+    !
+    implicit none
+    integer, intent(in) :: nm
+    !
+    markers_offset = 0
+    if(inipsi(1:3) == 'bub') markers_offset = nm-1
+  end function markers_offset
+  !
   subroutine markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,u,v,w,psiflx_x,psiflx_y,psiflx_z)
     !
     ! total phase indicator (and, if present, total phase fluxes) from the sum over the nm markers: if the
@@ -362,8 +381,7 @@ module mod_interface_capturing
     real(rp) :: offset
     integer  :: i,j,k,nh
     !
-    offset = 0._rp
-    if(inipsi(1:3) == 'bub') offset = nm-1._rp
+    offset = markers_offset(nm)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1-nh_psi,n(3)+nh_psi
       do j=1-nh_psi,n(2)+nh_psi
