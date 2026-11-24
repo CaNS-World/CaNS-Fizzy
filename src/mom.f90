@@ -11,7 +11,7 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum
+  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum,cmpt_capillary_force
   contains
   !
   subroutine momx_a(nx,ny,nz,nh_v,nh_g,dxi,dyi,dzfi,u,v,w,dudt)
@@ -1067,10 +1067,11 @@ module mod_mom
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                         factor,u,v,w)
+                         factor,u,v,w,fsx,fsy,fsz)
     !
     ! pressure, surface tension and body forces: integrated over the time `factor` and added to the velocity,
-    ! divided by the face density
+    ! divided by the face density; if present, fsx, fsy and fsz are the surface tension force at the faces,
+    ! computed beforehand (several markers, see `cmpt_capillary_force`), which replaces the one computed here
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
@@ -1093,6 +1094,7 @@ module mod_mom
 #endif
     real(rp), intent(in   ) :: factor
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in   ), dimension(:,:,:), optional :: fsx,fsy,fsz
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta,rho0i
     real(rp) :: dxi,dyi
@@ -1115,9 +1117,10 @@ module mod_mom
 #endif
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     real(rp) :: surf_factor
-    logical  :: is_buoyant,is_brack
+    logical  :: is_buoyant,is_brack,is_fs
     !
     is_buoyant = is_boussinesq_buoyancy.and.present(s)
+    is_fs = present(fsx)
     is_brack = is_brackbill_normalization
     rho     = rho12(2); drho = rho12(1)-rho12(2)
     rho0i   = 1._rp/rho0
@@ -1201,6 +1204,11 @@ module mod_mom
           surfx = skappaxp*(c_pcc-c_ccc)*dxi
           surfy = skappayp*(c_cpc-c_ccc)*dyi
           surfz = skappazp*(c_ccp-c_ccc)*dzci_c
+          if(is_fs) then
+            surfx = fsx(i,j,k)
+            surfy = fsy(i,j,k)
+            surfz = fsz(i,j,k)
+          end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
           !
           ! split and extrapolate the balanced residual grad(p)-f_sigma, instead of grad(p) alone, which jumps
@@ -1266,7 +1274,7 @@ module mod_mom
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                             surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                            fgrav,fsurf,fbuoy,momentum)
+                            fgrav,fsurf,fbuoy,momentum,fsx,fsy,fsz)
     !
     ! computes signed volume averages of the non-pressure body-force
     ! densities exactly as they are applied in mom_xyz_oth.
@@ -1290,6 +1298,7 @@ module mod_mom
                                               surfx_o,surfy_o,surfz_o
 #endif
     real(rp), intent(out), dimension(3) :: fgrav,fsurf,fbuoy,momentum
+    real(rp), intent(in ), dimension(:,:,:), optional :: fsx,fsy,fsz ! (see `mom_xyz_oth`)
     real(rp) :: rho,drho,rhobeta,drhobeta,surf_factor,rho0i
     real(rp) :: dxi,dyi,dzci_c,weight_f,weight_c
     real(rp) :: c_ccc,c_pcc,c_cpc,c_ccp,k_ccc,k_pcc,k_cpc,k_ccp
@@ -1307,11 +1316,12 @@ module mod_mom
     real(rp) :: gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz
     real(rp) :: momx,momy,momz,force(3,4)
     logical :: is_cmptx,is_cmpty,is_cmptz
-    logical :: is_buoyant,is_brack
+    logical :: is_buoyant,is_brack,is_fs
     integer :: i,j,k,ierr
     !
     is_buoyant = is_boussinesq_buoyancy.and.present(s)
     is_brack = is_brackbill_normalization
+    is_fs = present(fsx)
     rho = rho12(2); drho = rho12(1)-rho12(2)
     rho0i = 1._rp/rho0
     rhobeta = rho12(2)*beta12(2)
@@ -1370,6 +1380,11 @@ module mod_mom
           surfx = skappaxp*(c_pcc-c_ccc)*dxi
           surfy = skappayp*(c_cpc-c_ccc)*dyi
           surfz = skappazp*(c_ccp-c_ccc)*dzci_c
+          if(is_fs) then
+            surfx = fsx(i,j,k)
+            surfy = fsy(i,j,k)
+            surfz = fsz(i,j,k)
+          end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
           surfx_e = (1._rp+dt_r)*surfx_n(i,j,k)-dt_r*surfx_o(i,j,k)
           surfy_e = (1._rp+dt_r)*surfy_n(i,j,k)-dt_r*surfy_o(i,j,k)
@@ -1733,6 +1748,66 @@ module mod_mom
     tauy(:) = tau(:,2)
     tauz(:) = tau(:,3)
   end subroutine cmpt_wallshear
+  !
+  subroutine cmpt_capillary_force(n,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,sigma,rho12,psi,psi_m,kappa_m,is_init,fsx,fsy,fsz)
+    !
+    ! surface tension force at the faces of one marker, sigma*kappa_m*grad(psi_m), with the density weighting
+    ! of `mom_xyz_oth` (from the total phase indicator psi) if `is_brackbill_normalization`, exactly as it is
+    ! computed there for a single marker; the force is stored in fsx, fsy, fsz if `is_init`, and added to them
+    ! otherwise: with several markers, the forces of all of them are summed, such that interfaces of different
+    ! markers that share a cell keep their own curvature
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   ) :: nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
+    real(rp), intent(in   ) :: sigma
+    real(rp), intent(in   ), dimension(2) :: rho12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psi_m
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa_m
+    logical , intent(in   ) :: is_init
+    real(rp), intent(inout), dimension(:,:,:) :: fsx,fsy,fsz
+    real(rp) :: rho,drho,dxi,dyi,dzci_c,surf_factor,skappaxp,skappayp,skappazp,surfx,surfy,surfz
+    logical  :: is_brack
+    integer  :: i,j,k
+    !
+    is_brack = is_brackbill_normalization
+    rho = rho12(2); drho = rho12(1)-rho12(2)
+    dxi = dli(1)
+    dyi = dli(2)
+    surf_factor = sigma
+    if(is_brack) surf_factor = sigma*2._rp/(rho12(1)+rho12(2))
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(dzci_c,skappaxp,skappayp,skappazp,surfx,surfy,surfz) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          dzci_c = dzci(k)
+          skappaxp = 0.5*(kappa_m(i+1,j,k)+kappa_m(i,j,k))*surf_factor
+          skappayp = 0.5*(kappa_m(i,j+1,k)+kappa_m(i,j,k))*surf_factor
+          skappazp = 0.5*(kappa_m(i,j,k+1)+kappa_m(i,j,k))*surf_factor
+          if(is_brack) then
+            skappaxp = skappaxp*(rho + drho*0.5*(psi(i+1,j,k)+psi(i,j,k)))
+            skappayp = skappayp*(rho + drho*0.5*(psi(i,j+1,k)+psi(i,j,k)))
+            skappazp = skappazp*(rho + drho*(wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1)))
+          end if
+          surfx = skappaxp*(psi_m(i+1,j,k)-psi_m(i,j,k))*dxi
+          surfy = skappayp*(psi_m(i,j+1,k)-psi_m(i,j,k))*dyi
+          surfz = skappazp*(psi_m(i,j,k+1)-psi_m(i,j,k))*dzci_c
+          if(is_init) then
+            fsx(i,j,k) = surfx
+            fsy(i,j,k) = surfy
+            fsz(i,j,k) = surfz
+          else
+            fsx(i,j,k) = fsx(i,j,k) + surfx
+            fsy(i,j,k) = fsy(i,j,k) + surfy
+            fsz(i,j,k) = fsz(i,j,k) + surfz
+          end if
+        end do
+      end do
+    end do
+  end subroutine cmpt_capillary_force
   !
   subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,is_brack,psi,kappa,s, &
                                factor,u,v,w)

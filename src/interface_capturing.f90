@@ -29,8 +29,9 @@ module mod_interface_capturing
                             acdi_gam_factor,acdi_gam_min,vof_thinc_beta, &
                             rho12,cp12,nscal,cbcscal,bcscal, &
                             is_ifc_acdi,is_ifc_thinc,is_ifc_plic,is_ifc_split,is_sdf_normals,is_vof_sweep_transport, &
-                            is_hf_normals
+                            is_hf_normals,sigma,inipsi
   use mod_bound     , only: boundp,bounduvw
+  use mod_mom       , only: cmpt_capillary_force
   use mod_output    , only: out0d
   use mod_two_fluid , only: init2fl,init2fl_sharp,cmpt_norm_curv => cmpt_norm_curv_youngs
   use mod_rk        , only: rk_2fl
@@ -43,6 +44,17 @@ module mod_interface_capturing
   implicit none
   private
   public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity,ifc_update_params,ifc_write_log
+  public marker,ifc_markers_init,ifc_markers_advance,ifc_markers_force
+  !
+  ! several markers: the dispersed phase (drops or bubbles) is distributed over phase indicators that are
+  ! advanced separately, each as the phase indicator of a run with its drops only, such that interfaces of
+  ! different markers do not merge; the fluid properties follow the total phase indicator, and the surface
+  ! tension forces of the markers are summed
+  !
+  type marker
+    real(rp), allocatable, dimension(:,:,:) :: psi,dpsidtrko,kappa,normx,normy,normz,phi
+  end type marker
+  real(rp), allocatable, dimension(:,:,:) :: wflx_x,wflx_y,wflx_z ! phase fluxes of one marker
   real(rp) :: vol0 ! initial volume of phase 1 (geometric volume-of-fluid method)
   contains
   subroutine ifc_init_params(dl,nh_g,dzfi,psi_thickness_factor,seps)
@@ -58,10 +70,11 @@ module mod_interface_capturing
     call acdi_set_epsilon(dl,nh_g,dzfi,psi_thickness_factor,seps)
   end subroutine ifc_init_params
   !
-  subroutine ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
+  subroutine ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi,imarker)
     !
     ! initial condition for the phase indicator: a smooth profile of width `seps`, or
-    ! the exact volume fractions for the geometric volume-of-fluid method
+    ! the exact volume fractions for the geometric volume-of-fluid method; with `imarker`, that of the spheres
+    ! of that marker alone
     !
     implicit none
     character(len=*), intent(in) :: inipsi
@@ -71,10 +84,11 @@ module mod_interface_capturing
     real(rp), intent(in ), dimension(3)        :: l,dl
     real(rp), intent(in ), dimension(1-nh_g:)  :: zc_g,dzf_g
     real(rp), intent(out), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
+    integer , intent(in ), optional :: imarker
     if(.not.is_ifc_plic) then
-      call init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi)
+      call init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi,imarker)
     else
-      call init2fl_sharp(inipsi,cbcpsi,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
+      call init2fl_sharp(inipsi,cbcpsi,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi,imarker)
     end if
   end subroutine ifc_init_field
   !
@@ -176,6 +190,155 @@ module mod_interface_capturing
     end if
     call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
   end subroutine ifc_advance
+  !
+  subroutine ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
+    !
+    ! initialization of the markers from their initial (or loaded) phase indicators, already present on the
+    ! device: boundary conditions, normals and curvature of each, and the total phase indicator
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl,dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
+    real(rp), intent(in   ) :: seps
+    type(marker), intent(inout), dimension(:) :: markers
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    integer :: m
+    !
+    do m=1,size(markers)
+      call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,markers(m)%psi)
+      call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
+                        markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
+      call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+    end do
+    call markers_total(n,nh_v,nh_psi,nh_ifc,size(markers),psi)
+  end subroutine ifc_markers_init
+  !
+  subroutine ifc_markers_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
+                                 is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z)
+    !
+    ! advances each marker over one time step, as `ifc_advance` does for a single phase indicator, and returns
+    ! the total phase indicator and the total phase fluxes (with their boundary conditions)
+    !
+    implicit none
+    real(rp), intent(in   ), dimension(2) :: tm_coeff
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl,dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
+    real(rp), intent(in   ) :: dt,dto,gam,seps
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    logical , intent(in   ) :: is_first
+    integer , intent(in   ) :: istep
+    type(marker), intent(inout), dimension(:) :: markers
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
+    integer :: m
+    !
+    if(.not.allocated(wflx_x)) then
+      allocate(wflx_x,wflx_y,wflx_z,mold=psiflx_x)
+      !$acc enter data create(wflx_x,wflx_y,wflx_z)
+    end if
+    do m=1,size(markers)
+      call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
+                       markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%phi,markers(m)%kappa,markers(m)%psi, &
+                       wflx_x,wflx_y,wflx_z,is_first,markers(m)%dpsidtrko,istep)
+      call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+      call markers_add(n,nh_ifc,m == 1,wflx_x,psiflx_x)
+      call markers_add(n,nh_ifc,m == 1,wflx_y,psiflx_y)
+      call markers_add(n,nh_ifc,m == 1,wflx_z,psiflx_z)
+    end do
+    call markers_total(n,nh_v,nh_psi,nh_ifc,size(markers),psi,u,v,w,psiflx_x,psiflx_y,psiflx_z)
+  end subroutine ifc_markers_advance
+  !
+  subroutine ifc_markers_force(n,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,markers,psi,fsx,fsy,fsz)
+    !
+    ! surface tension force at the faces, summed over the markers (see `cmpt_capillary_force`)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
+    type(marker), intent(in), dimension(:) :: markers
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(:,:,:) :: fsx,fsy,fsz
+    integer :: m
+    !
+    do m=1,size(markers)
+      call cmpt_capillary_force(n,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,sigma,rho12,psi,markers(m)%psi,markers(m)%kappa,m == 1, &
+                                fsx,fsy,fsz)
+    end do
+  end subroutine ifc_markers_force
+  !
+  subroutine markers_add(n,nh,is_init,a_m,a)
+    !
+    ! copies (if `is_init`) or adds the field of a marker to the total, halo layers included
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh
+    logical , intent(in   )               :: is_init
+    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: a_m
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: a
+    integer :: i,j,k
+    !
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1-nh,n(3)+nh
+      do j=1-nh,n(2)+nh
+        do i=1-nh,n(1)+nh
+          if(is_init) then
+            a(i,j,k) = a_m(i,j,k)
+          else
+            a(i,j,k) = a(i,j,k) + a_m(i,j,k)
+          end if
+        end do
+      end do
+    end do
+  end subroutine markers_add
+  !
+  subroutine markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,u,v,w,psiflx_x,psiflx_y,psiflx_z)
+    !
+    ! total phase indicator (and, if present, total phase fluxes) from the sum over the nm markers: if the
+    ! dispersed phase is phase 1 (drops, psi = 1 inside), the sum itself; if it is phase 2 (bubbles, psi = 0
+    ! inside), each marker is 1 outside its own bubbles, and the total is the sum minus nm-1 (for the fluxes,
+    ! minus nm-1 times the velocity); the total phase indicator, which sets the fluid properties, is clipped
+    ! to [0,1] where markers overlap, while the markers themselves are left as they are
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nm
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)      , optional :: u,v,w
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp) :: offset
+    integer  :: i,j,k,nh
+    !
+    offset = 0._rp
+    if(inipsi(1:3) == 'bub') offset = nm-1._rp
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1-nh_psi,n(3)+nh_psi
+      do j=1-nh_psi,n(2)+nh_psi
+        do i=1-nh_psi,n(1)+nh_psi
+          psi(i,j,k) = min(max(psi(i,j,k)-offset,0._rp),1._rp)
+        end do
+      end do
+    end do
+    if(present(psiflx_x) .and. offset /= 0._rp) then
+      nh = min(nh_v,nh_ifc)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=1-nh,n(3)+nh
+        do j=1-nh,n(2)+nh
+          do i=1-nh,n(1)+nh
+            psiflx_x(i,j,k) = psiflx_x(i,j,k) - offset*u(i,j,k)
+            psiflx_y(i,j,k) = psiflx_y(i,j,k) - offset*v(i,j,k)
+            psiflx_z(i,j,k) = psiflx_z(i,j,k) - offset*w(i,j,k)
+          end do
+        end do
+      end do
+    end if
+  end subroutine markers_total
   !
   subroutine ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                     u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars)

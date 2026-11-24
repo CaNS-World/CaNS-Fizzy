@@ -25,7 +25,7 @@ module mod_rk
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
                 psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
-                uadv,vadv,wadv)
+                uadv,vadv,wadv,fsx,fsy,fsz)
     !
     ! AB2 scheme for time integration of the momentum equations
     !
@@ -37,6 +37,8 @@ module mod_rk
     ! `vadv`, `wadv` (extrapolated to the middle of the time step), which is also the transported velocity;
     ! with `is_vof_sweep_transport`, the velocity has been transported along with the sweeps of the volume
     ! fraction instead, and `uadv`, `vadv`, `wadv` is the transported velocity
+    !
+    ! with several markers, `fsx`, `fsy`, `fsz` is the surface tension force summed over them (see `mom_xyz_oth`)
     !
     implicit none
     real(rp), intent(in), dimension(2) :: rkpar
@@ -68,6 +70,7 @@ module mod_rk
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)           :: u,v,w
     real(rp), intent(out  ), dimension(3,6)                 :: force_balance
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
+    real(rp), intent(in   ), dimension(:,:,:), optional :: fsx,fsy,fsz
     real(rp), allocatable, dimension(:,:,:), save :: dudtrk,dvdtrk,dwdtrk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
@@ -103,7 +106,7 @@ module mod_rk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                           surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                          force_balance(:,2),force_balance(:,3),force_balance(:,4),force_balance(:,6))
+                          force_balance(:,2),force_balance(:,3),force_balance(:,4),force_balance(:,6),fsx,fsy,fsz)
       where(is_forced(:))
         bforce_eff(:) = force_balance(:,1)-force_balance(:,2)-force_balance(:,3)-force_balance(:,4)
       end where
@@ -220,7 +223,7 @@ module mod_rk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
-                     factor12,u,v,w)
+                     factor12,u,v,w,fsx,fsy,fsz)
     !
     ! surface tension that varies with the first scalar
     !

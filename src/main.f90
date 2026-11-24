@@ -48,7 +48,8 @@ program cans
 #endif
   use mod_initsolver         , only: initsolver
   use mod_interface_capturing, only: ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity, &
-                                     ifc_update_params,ifc_write_log
+                                     ifc_update_params,ifc_write_log, &
+                                     marker,ifc_markers_init,ifc_markers_advance,ifc_markers_force
   use mod_load               , only: load_one
   use mod_mom                , only: cmpt_momentum
   use mod_rk                 , only: tm => rk,tm_scal => rk_scal
@@ -67,7 +68,7 @@ program cans
                                      cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpre,bcpre, &
                                      cbcscal,bcscal, &
                                      is_forced,bforce,ssource, &
-                                     gacc,nscal, &
+                                     gacc,nscal,nmarker, &
                                      rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
                                      psi_thickness_factor, &
                                      dims, &
@@ -163,6 +164,13 @@ program cans
   real(rp), target, allocatable, dimension(:,:,:) :: psi
   real(rp), allocatable, dimension(:,:,:) :: psio,phi,kappa,normx,normy,normz, &
                                              psiflx_x,psiflx_y,psiflx_z
+  !
+  ! several markers (see `mod_interface_capturing`): psi is then the total phase indicator
+  !
+  type(marker), target, allocatable, dimension(:) :: markers
+  real(rp), allocatable, dimension(:,:,:) :: fsx,fsy,fsz ! surface tension force summed over the markers
+  integer :: imark,nmk
+  character(len=3) :: marknum
   real(rp), target, allocatable, dimension(:,:,:) :: uadv,vadv,wadv ! advecting (or transported) velocity of the geometric
                                                                     ! VoF method
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
@@ -231,7 +239,8 @@ program cans
     allocate(s%val(1-nh_s:n(1)+nh_s,1-nh_s:n(2)+nh_s,1-nh_s:n(3)+nh_s),s%dsdtrko(n(1),n(2),n(3)))
   end do
   !$acc enter data copyin(scalars(:))
-  nio = 5+nscal
+  nmk = merge(nmarker,0,nmarker > 1) ! (a single marker is the phase indicator itself)
+  nio = 5+nscal+nmk
   allocate(lambdaxyp(n_z(1),n_z(2)))
   allocate(ap(n_z(3)),bp(n_z(3)),cp(n_z(3)))
   if(is_poisson_dtdma) then
@@ -302,6 +311,14 @@ program cans
   allocate(kappa(1-nh_ifc:n(1)+nh_ifc,1-nh_ifc:n(2)+nh_ifc,1-nh_ifc:n(3)+nh_ifc))
   allocate(normx,normy,normz,mold=kappa)
   if(is_sdf_normals) allocate(phi,mold=kappa) ! (otherwise an absent argument of the routines that take it)
+  allocate(markers(nmk))
+  do imark=1,nmk
+    allocate(markers(imark)%psi,mold=psi)
+    allocate(markers(imark)%dpsidtrko(n(1),n(2),n(3)))
+    allocate(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz,mold=kappa)
+    if(is_sdf_normals) allocate(markers(imark)%phi,mold=kappa)
+  end do
+  if(nmk > 0) allocate(fsx(n(1),n(2),n(3)),fsy(n(1),n(2),n(3)),fsz(n(1),n(2),n(3)))
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=kappa)
   if(is_ifc_split) then
     allocate(uadv,vadv,wadv,uo,vo,wo,mold=u)
@@ -459,7 +476,7 @@ program cans
   !
   nio_s = nio
   if(is_full_restart) then
-    nio_s = nio + 5 + nscal
+    nio_s = nio + 5 + nscal + nmk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     nio_s = nio_s + 6
 #endif
@@ -468,7 +485,7 @@ program cans
       if(is_vof_sweep_transport) nio_s = nio_s + 3
     end if
   end if
-  allocate(io_vars(nio_s),c_io_vars(nio_s),nh_io(3,nio_s)) ! u,v,w,p,psi,scalars
+  allocate(io_vars(nio_s),c_io_vars(nio_s),nh_io(3,nio_s)) ! u,v,w,p,psi,scalars,markers
   nh_io(:,1:3) = nh_v; nh_io(:,4) = nh_p; nh_io(:,5) = nh_psi
   io_vars(1)%arr => u  ; c_io_vars(1) = 'u'
   io_vars(2)%arr => v  ; c_io_vars(2) = 'v'
@@ -479,6 +496,11 @@ program cans
     write(scalnum,'(i3.3)') iscal
     nh_io(:,5+iscal) = nh_s
     io_vars(5+iscal)%arr => scalars(iscal)%val; c_io_vars(5+iscal) = 's_'//scalnum
+  end do
+  do imark=1,nmk
+    write(marknum,'(i3.3)') imark
+    nh_io(:,5+nscal+imark) = nh_psi
+    io_vars(5+nscal+imark)%arr => markers(imark)%psi; c_io_vars(5+nscal+imark) = 'psi_'//marknum
   end do
   if(is_full_restart) then
     is = nio
@@ -492,6 +514,11 @@ program cans
     do iscal=1,nscal
       write(scalnum,'(i3.3)') iscal
       io_vars(is+1)%arr => scalars(iscal)%dsdtrko; c_io_vars(is+1) = 'dsdtrko_'//scalnum
+      is = is + 1
+    end do
+    do imark=1,nmk
+      write(marknum,'(i3.3)') imark
+      io_vars(is+1)%arr => markers(imark)%dpsidtrko; c_io_vars(is+1) = 'dpsidtrko_'//marknum
       is = is + 1
     end do
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
@@ -571,6 +598,10 @@ program cans
     scalars(iscal)%val(:,:,:) = 0.
   end do
   psi(:,:,:) = 0.
+  do imark=1,nmk
+    markers(imark)%psi(:,:,:) = 0.
+    markers(imark)%dpsidtrko(:,:,:) = 0.
+  end do
   psio(:,:,:) = 0.
   kappa(:,:,:) = 0.
   normx(:,:,:) = 0.
@@ -589,6 +620,9 @@ program cans
       call initscal(iniscal(iscal),bcscal(:,:,iscal),ng,lo,nh_s,nh_g,l,dl,zc,dzf,scalars(iscal)%val)
     end do
     call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
+    do imark=1,nmk
+      call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,markers(imark)%psi,imark)
+    end do
     if(myid == 0) print*, '*** Initial condition successfully set ***'
   else
     do is=1,nio
@@ -684,12 +718,27 @@ program cans
   end if
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
   call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
+  if(nmk > 0) then
+    !$acc enter data copyin(markers(:))
+    do imark=1,nmk
+      !$acc enter data copyin(markers(imark)%psi,markers(imark)%dpsidtrko) async(1)
+      !$acc enter data create(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
+      if(is_sdf_normals) then
+        !$acc enter data create(markers(imark)%phi) async(1)
+      end if
+    end do
+    !$acc enter data create(fsx,fsy,fsz) async(1)
+    call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
+  end if
   !
   ! post-process and write initial condition
   !
   write(fldnum,'(i7.7)') istep
   !$acc wait ! not needed but to prevent possible future issues
   !$acc update self(u,v,w,p,psi,kappa)
+  do imark=1,nmk
+    !$acc update self(markers(imark)%psi)
+  end do
   do iscal=1,nscal
     !$acc update self(scalars(iscal)%val)
   end do
@@ -759,7 +808,10 @@ program cans
         end do
       end do
     end do
-    if(is_track_interface) then
+    if(is_track_interface .and. nmk > 0) then
+      call ifc_markers_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
+                               is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z)
+    else if(is_track_interface) then
       call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                        istep,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
@@ -829,6 +881,7 @@ program cans
       ! flow, and runs with different numbers of tasks stay identical)
       !
       where(is_cmpt_rho_av(:) .and. cbcpre(0,:)//cbcpre(1,:) == 'NN') rho_av(:) = real(real(rho_av(:),sp),rp)
+      if(nmk > 0) call ifc_markers_force(n,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,markers,psi,fsx,fsy,fsz)
       call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
               grid_vol_ratio_c,grid_vol_ratio_f, &
               dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,scalars(1)%val, &
@@ -836,7 +889,7 @@ program cans
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
               psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
-              uadv,vadv,wadv)
+              uadv,vadv,wadv,fsx,fsy,fsz)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
       end if
@@ -1005,6 +1058,9 @@ program cans
     if(is_output_due(istep,iout1d,tout1d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
+      do imark=1,nmk
+        !$acc update self(markers(imark)%psi)
+      end do
       do iscal=1,nscal
         !$acc update self(scalars(iscal)%val)
       end do
@@ -1013,6 +1069,9 @@ program cans
     if(is_output_due(istep,iout2d,tout2d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
+      do imark=1,nmk
+        !$acc update self(markers(imark)%psi)
+      end do
       do iscal=1,nscal
         !$acc update self(scalars(iscal)%val)
       end do
@@ -1021,6 +1080,9 @@ program cans
     if(is_output_due(istep,iout3d,tout3d,time_start,time)) then
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
+      do imark=1,nmk
+        !$acc update self(markers(imark)%psi)
+      end do
       do iscal=1,nscal
         !$acc update self(scalars(iscal)%val)
       end do
@@ -1040,11 +1102,17 @@ program cans
       end if
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
+      do imark=1,nmk
+        !$acc update self(markers(imark)%psi)
+      end do
       do iscal=1,nscal
         !$acc update self(scalars(iscal)%val)
       end do
       if(is_full_restart) then
         !$acc update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+        do imark=1,nmk
+          !$acc update self(markers(imark)%dpsidtrko)
+        end do
         do iscal=1,nscal
           !$acc update self(scalars(iscal)%dsdtrko)
         end do
