@@ -27,7 +27,7 @@ Some features are:
  * The right type of transformation (Fourier, cosine, sine, etc) is automatically determined form the input file
  * [cuDecomp](https://github.com/NVIDIA/cuDecomp) pencil decomposition library for _hardware-adaptive_ distributed memory calculations on _many GPUs_
  * [2DECOMP&FFT](https://github.com/xcompact3d/2decomp-fft) library used for performing global data transpositions on CPUs and some of the data I/O
- * GPU acceleration using OpenACC directives
+ * GPU acceleration using OpenACC directives (and option to switch to OpenMP target offload in the [`openmp-port` branch](https://github.com/CaNS-World/CaNS-Fizzy/tree/openmp-port))
  * A different canonical flow can be simulated just by changing the input files
  * Mass transport-consistent discretization of advection terms that enable simulations at high density contrasts
  * Three options for interface-capturing algorithms, selected at run time: ACDI (diffuse interface method), THINC/QQ (volume-of-fluid method), and a geometric (PLIC) volume-of-fluid method with direction-split advection
