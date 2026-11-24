@@ -601,6 +601,11 @@ program cans
   do imark=1,nmk
     markers(imark)%psi(:,:,:) = 0.
     markers(imark)%dpsidtrko(:,:,:) = 0.
+    markers(imark)%kappa(:,:,:) = 0.
+    markers(imark)%normx(:,:,:) = 0.
+    markers(imark)%normy(:,:,:) = 0.
+    markers(imark)%normz(:,:,:) = 0.
+    if(is_sdf_normals) markers(imark)%phi(:,:,:) = 0.
   end do
   psio(:,:,:) = 0.
   kappa(:,:,:) = 0.
