@@ -53,9 +53,14 @@ module mod_vof_split
   end type vof_marker
   !
   real(rp), parameter :: cfl_max = 0.5_rp    ! maximum CFL number of a sweep
-  real(rp), parameter :: f_eps   = 1.e-12_rp ! cells with f_eps < f < 1-f_eps are reconstructed
+  !
+  ! (the two tolerances on the volume fraction sit above its round-off: their double-precision values, or a
+  ! multiple of the machine epsilon in single precision, 1.2e-4 and 1.2e-3)
+  !
+  real(rp), parameter :: f_eps   = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! cells with f_eps < f < 1-f_eps are reconstructed
   integer , parameter :: nq_hf   = 4         ! half-length of the height-function columns (nine cells)
-  real(rp), parameter :: eps_hf  = 1.e-6_rp  ! tolerance for pure cells at the ends of the height-function columns
+  real(rp), parameter :: eps_hf  = max(1.e-6_rp ,1.e4_rp*epsilon(1._rp)) ! tolerance for pure cells at the ends of the
+                                                                         ! height-function columns
   real(rp), parameter :: kappa_undef = huge(1._rp) ! marks cells without a curvature estimate (intermediate stages)
   integer , parameter :: nh_mom     = 2      ! halo width of the fields transported with the sweeps (donor-region slopes)
   integer , parameter :: lim_band   = 3      ! slope limiter in the interface band: van Leer (1), MC (2), superbee (3)
@@ -192,7 +197,7 @@ module mod_vof_split
     if(.not.is_thinc) then
       ca_cos(:,:) = cos(theta_c(:,:)*acos(-1._rp)/180._rp)
       ca_sin(:,:) = sin(theta_c(:,:)*acos(-1._rp)/180._rp)
-      is_ca(:,:)  = abs(ca_cos(:,:)) > 1.e-12_rp
+      is_ca(:,:)  = abs(ca_cos(:,:)) > f_eps
       is_ca_any   = any(is_ca(:,:))
       if(is_ca_any) then
         allocate(ca_pl(0:3,1-nh_psi:maxval(n(:))+nh_psi,1-nh_psi:maxval(n(:))+nh_psi))
@@ -1326,7 +1331,7 @@ module mod_vof_split
     real(rp), intent(in ) :: beta
     real(rp), intent(in ) :: cfl_p,cfl_m
     real(rp), intent(out) :: frac_p,frac_m
-    real(rp), parameter :: a_min = 1.e-12_rp
+    real(rp), parameter :: a_min = f_eps
     real(rp), dimension(3) :: o,s
     real(rp) :: alpha,a,d
     !$acc routine seq

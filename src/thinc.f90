@@ -307,7 +307,7 @@ module mod_thinc
     !
     implicit none
     integer , parameter :: itermax = 8
-    real(rp), parameter :: resmax = 1.e-12
+    real(rp), parameter :: resmax = max(1.e-12_rp,10._rp*epsilon(1._rp))
     real(rp), intent(in) :: psi,beta
     real(rp), intent(in) :: normx,normy,normz
     real(rp) :: d

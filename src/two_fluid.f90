@@ -208,7 +208,7 @@ module mod_two_fluid
       do idir=1,3
         do ib=0,1
           cs = cos(theta_c(ib,idir)*acos(-1._rp)/180._rp)
-          if(.not.is_bound(ib,idir) .or. abs(cs) <= 1.e-12_rp) cycle
+          if(.not.is_bound(ib,idir) .or. abs(cs) <= max(1.e-12_rp,1.e3_rp*epsilon(1._rp))) cycle
           sn = sin(theta_c(ib,idir)*acos(-1._rp)/180._rp)
           cn = -cs*merge(1._rp,-1._rp,ib == 0) ! component along the direction, for a unit tangential part
           iw = ib*n(idir)                      ! index of the vertices on the wall
