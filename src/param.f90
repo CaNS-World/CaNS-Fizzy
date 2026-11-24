@@ -456,6 +456,15 @@ contains
         close(iunit)
         error stop
       end if
+      if(any(rho12(:) <= 0.) .or. any(mu12(:) < 0.) .or. (nscal > 0 .and. any(cp12(:,:) <= 0.)) .or. &
+         psi_thickness_factor == 0.) then
+        if(myid == 0) print*, 'ERROR: reading the input file: `rho12` and, with `nscal > 0`, `cp12` must be positive, &
+                                     &`mu12` must not be negative, and `psi_thickness_factor` must not be zero.'
+        if(myid == 0) print*, 'Aborting...'
+        call MPI_FINALIZE(ierr)
+        close(iunit)
+        error stop
+      end if
       !
       ! interface method: defaults of the blank entries, and what follows from it
       !

@@ -504,6 +504,8 @@ The following options are available:
 
 The corresponding BC **values** (dummy for a periodic direction) are set in `bcpsi`.
 
+The volume fraction must be periodic along the periodic directions of the pressure (`cbcpre`), and only along those; the default, if `cbcpsi` is not set, is periodic in all directions.
+
 The conditions of the interface normal and of the curvature follow from these: periodic where the volume fraction is periodic, and, at a boundary with a Neumann condition for the volume fraction, zero wall-normal component of the interface normal and zero gradient of its other two components (the interface meets the wall at 90 degrees).
 
 Note: to conserve mass in the domain, a solid wall boundary requires a homogeneous Neumann BC for the volume fraction.
@@ -528,8 +530,8 @@ sigma           = 1.
 dsigma_ds       = 0., s_ref = 0.
 rho12(1:2)      = 10., 1.
 mu12(1:2)       = 1.e-2, 1.e-3
-ka12(1:2,1)     = 0., 0.
-cp12(1:2,1)     = 0., 0.
+ka12(1:2,1)     = 0.01, 0.01
+cp12(1:2,1)     = 1., 1.
 beta12(1:2)     = 0., 0.
 ```
 
@@ -537,10 +539,10 @@ These lines specify the physical and transport properties of the two-phase syste
 
 * `sigma` sets the value of the surface tension coefficient at the two-phase interface.
 * `dsigma_ds` and `s_ref` make the surface tension vary linearly with the first scalar (e.g., the temperature): `sigma + dsigma_ds*(s - s_ref)`; the default, `dsigma_ds = 0.`, is a constant surface tension. It requires `nscal > 0` (see below).
-* `rho12` sets the value of the density of each phase. (Note: the initial conditions assume `rho12(1)` as the densest phase)
+* `rho12` sets the value of the density of each phase, which must be positive. (Note: the initial conditions assume `rho12(1)` as the densest phase)
 * `mu12` sets the value of the dynamic viscosity of each phase.
 * `ka12` sets the value of the thermal conductivity of each phase, for each scalar (last subscript).
-* `cp12` sets the value of the constant pressure specfic heat capacity of each phase, for each scalar (last subscript).
+* `cp12` sets the value of the constant pressure specific heat capacity of each phase, for each scalar (last subscript); it must be positive when scalars are transported.
 * `beta12` sets the value of the thermal expansion coeffcient of each phase.
 
 With `dsigma_ds /= 0.`, the gradient of the surface tension along the interface drives a flow (Marangoni or thermocapillary effect): the normal and tangential forces of the variation of the surface tension are added to the force of `sigma`, the tangential one weighted with the local viscosity over the mean viscosity of the two phases. Choose `s_ref` close to the mean value of the scalar at the interface. See the examples `thermocapillary_migration_2d` and `thermocapillary_migration_3d`.
@@ -602,6 +604,8 @@ Any other one stops the run with a message.
 0.5 0.3 0.5 0.18 1
 0.5 0.7 0.5 0.18 2
 ```
+
+With several markers the file `spheres.in` is required, and its markers must lie between 1 and `nmarker`; with a single one, the fifth column is ignored. Blank lines of the file are skipped.
 
 Where two markers overlap, the total phase indicator is clipped, and the markers are left as they are, each conserving its volume; there is no model of the film between two drops, which simply stay apart. Besides the total phase indicator (`psi_fld_*`, `fld_psi`), each marker is written to `psi_NNN_fld_*` and saved in the checkpoint file `fld_psi_NNN`. Several markers need an initial condition made of spheres (`inipsi = 'bub*'`, `'drp*'` or `'dis*'`).
 

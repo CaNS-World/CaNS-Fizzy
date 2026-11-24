@@ -28,7 +28,7 @@ jobs:
       compiler: "GNU"
       cpu_target: "x86-64"
       variants: '["default", "unbalanced", "hypre"]'
-      tests_default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "plic_unit", "plic_advection", "plic_momentum", "viscosity_limiter", "contact_angle", "rising_bubble-plic", "restart_two_fluid-plic", "rising_bubble-thincsplit", "restart_two_fluid-thincsplit", "zero_net_acceleration", "implicit_diffusion-plic", "implicit_diffusion-thincsplit", "marangoni_layer", "markers", "markers-plic", "markers-thincsplit", "marangoni_markers", "single_precision"]'
+      tests_default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "plic_unit", "plic_advection", "plic_momentum", "viscosity_limiter", "contact_angle", "rising_bubble-plic", "restart_two_fluid-plic", "rising_bubble-thincsplit", "restart_two_fluid-thincsplit", "zero_net_acceleration", "implicit_diffusion-plic", "implicit_diffusion-thincsplit", "marangoni_layer", "markers", "markers-plic", "markers-thincsplit", "marangoni_markers", "single_precision", "input_checks"]'
 
   INTEL:
     uses: ./.github/workflows/run-compiler.yml

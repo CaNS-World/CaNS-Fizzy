@@ -38,7 +38,7 @@ METHOD[plic]="ifc_reconstruction = 'plic'"
 METHOD[thincsplit]="ifc_reconstruction = 'thinc', ifc_advection = 'split'"
 TESTS_OF[acdi]="lid_driven_cavity differentially_heated_cavity deforming_circle rising_bubble \
                 start_stop restart_two_fluid implicit_diffusion poisson taylor_green_vortex_2d navier_slip \
-                zero_net_acceleration markers single_precision"
+                zero_net_acceleration markers single_precision input_checks"
 TESTS_OF[thinc]="deforming_circle rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[thincsplit]="rising_bubble restart_two_fluid implicit_diffusion markers"
 TESTS_OF[unbalanced]="rising_bubble restart_two_fluid"
