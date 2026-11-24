@@ -12,6 +12,11 @@ module mod_mom
   implicit none
   private
   public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum,cmpt_capillary_force
+  !
+  type, public :: marker_fields
+    real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null(),kappa => null() ! phase indicator and curvature of a
+                                                                                     ! marker (see `rk`)
+  end type marker_fields
   contains
   !
   subroutine momx_a(nx,ny,nz,nh_v,nh_g,dxi,dyi,dzfi,u,v,w,dudt)
@@ -1809,7 +1814,7 @@ module mod_mom
     end do
   end subroutine cmpt_capillary_force
   !
-  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,is_brack,psi,kappa,s, &
+  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,is_brack,psi_p,psi,kappa,s, &
                                factor,u,v,w)
     !
     ! capillary force of the variation of the surface tension with the first scalar,
@@ -1823,6 +1828,8 @@ module mod_mom
     !    viscosity over the mean one: it is balanced by viscous stresses, and an even split between the two
     !    fluids makes the less viscous one slip at the interface (the analogue, for the tangential force,
     !    of the density weighting of the normal force)
+    ! the fluid properties follow the phase indicator psi_p, and the interface is that of psi, with curvature
+    ! kappa: the same one, or, with several markers, the total phase indicator and that of one marker
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
@@ -1832,7 +1839,7 @@ module mod_mom
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ) :: dsigma,s_ref
     logical , intent(in   ) :: is_brack
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi_p,psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     real(rp), intent(in   ) :: factor
@@ -1868,7 +1875,7 @@ module mod_mom
           !
           ! x face
           !
-          psif = 0.5*(psi(i+1,j,k)+psi(i,j,k))
+          psif = 0.5*(psi_p(i+1,j,k)+psi_p(i,j,k))
           ga = (psi(i+1,j,k)-psi(i,j,k))*dxi
           gb = 0.25*((psi(i,j+1,k)-psi(i,j-1,k))+(psi(i+1,j+1,k)-psi(i+1,j-1,k)))*dyi
           gc = 0.5*((psi(i,j,k+1)-psi(i,j,k-1))+(psi(i+1,j,k+1)-psi(i+1,j,k-1)))*hz_c
@@ -1883,7 +1890,7 @@ module mod_mom
           !
           ! y face
           !
-          psif = 0.5*(psi(i,j+1,k)+psi(i,j,k))
+          psif = 0.5*(psi_p(i,j+1,k)+psi_p(i,j,k))
           ga = (psi(i,j+1,k)-psi(i,j,k))*dyi
           gb = 0.25*((psi(i+1,j,k)-psi(i-1,j,k))+(psi(i+1,j+1,k)-psi(i-1,j+1,k)))*dxi
           gc = 0.5*((psi(i,j,k+1)-psi(i,j,k-1))+(psi(i,j+1,k+1)-psi(i,j+1,k-1)))*hz_c
@@ -1898,7 +1905,7 @@ module mod_mom
           !
           ! z face
           !
-          psif = (wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1))
+          psif = (wzc(k)*psi_p(i,j,k)+(1.-wzc(k))*psi_p(i,j,k+1))
           ga = (psi(i,j,k+1)-psi(i,j,k))*dzci(k)
           gb = 0.25*((psi(i+1,j,k)-psi(i-1,j,k))+(psi(i+1,j,k+1)-psi(i-1,j,k+1)))*dxi
           gc = 0.25*((psi(i,j+1,k)-psi(i,j-1,k))+(psi(i,j+1,k+1)-psi(i,j-1,k+1)))*dyi
