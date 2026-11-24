@@ -99,15 +99,13 @@ module mod_vof_split
   !
   ! diagnostics (local to the task, accumulated on the device; reduced by `vof_split_diagnostics`)
   !
-  real(rp) :: clip_vol = 0._rp                  ! accumulated volume added by clipping
-  real(rp) :: fmin_raw = 0._rp,fmax_raw = 1._rp ! extrema before clipping in the last step
-  real(rp) :: clip_s,fmin_s,fmax_s              ! the same, for one sweep
-  !$acc declare create(clip_vol,fmin_raw,fmax_raw,clip_s,fmin_s,fmax_s)
+  real(rp), dimension(3) :: clip_stats = [0._rp,0._rp,1._rp] ! accumulated volume added by clipping, and extrema
+                                                             ! (minimum, maximum) before clipping in the last step
+  real(rp), dimension(3) :: clip_sweep = [0._rp,0._rp,1._rp] ! the same, for one sweep
   real(rp), dimension(3) :: cfl_last = 0._rp    ! CFL numbers of the advecting velocity in the last step
   integer  :: nsub_last = 0                     ! number of sub-steps in the last step
   real(rp), dimension(3) :: kappa_stats = 0._rp ! interfacial cells with curvature from height functions,
                                                 ! from neighbouring height functions, and without estimate
-  !$acc declare create(kappa_stats)
   contains
   subroutine vof_split_init(ng,n,nh_psi,is_thinc_reconstruction,beta,is_hf_normals,is_sweep_transport,nscal,theta_c)
     !
@@ -201,7 +199,7 @@ module mod_vof_split
         !$acc enter data create(ca_pl)
       end if
     end if
-    !$acc update device(clip_vol,fmin_raw,fmax_raw)
+    !$acc enter data copyin(clip_stats,clip_sweep,kappa_stats)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=0,n(3)+1
       do j=0,n(2)+1
@@ -352,9 +350,9 @@ module mod_vof_split
     end if
     !
     if(is_track) then
-      !$acc serial async(1)
-      fmin_raw =  huge(1._rp)
-      fmax_raw = -huge(1._rp)
+      !$acc serial default(present) async(1)
+      clip_stats(2) =  huge(1._rp)
+      clip_stats(3) = -huge(1._rp)
       !$acc end serial
     end if
     do isub=1,nsub
@@ -684,8 +682,8 @@ module mod_vof_split
     ! one directional sweep: geometric donor-region fluxes, and conservative update with the dilatation term,
     ! of indicator cc (that of the volume fraction being swept);
     ! the face fluxes, times scl, are stored in psiflx if is_init, and accumulated otherwise; the extrema of
-    ! the volume fraction before clipping and the clipped volume are accumulated in fmin_raw, fmax_raw and
-    ! clip_vol; mx_hf, my_hf, mz_hf are the work arrays of the height-function normals, present if these are used
+    ! the volume fraction before clipping and the clipped volume are accumulated in `clip_stats`;
+    ! mx_hf, my_hf, mz_hf are the work arrays of the height-function normals, present if these are used
     !
     implicit none
     integer , intent(in   ) :: idir
@@ -808,10 +806,10 @@ module mod_vof_split
     ! (the extrema start from 0 and 1, and only the few values out of these bounds, the ones clipped, update
     ! them and the clipped volume, with atomics instead of reductions over the whole domain)
     !
-    !$acc serial async(1)
-    fmin_s = 0._rp
-    fmax_s = 1._rp
-    clip_s = 0._rp
+    !$acc serial default(present) async(1)
+    clip_sweep(1) = 0._rp
+    clip_sweep(2) = 0._rp
+    clip_sweep(3) = 1._rp
     !$acc end serial
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
@@ -824,11 +822,11 @@ module mod_vof_split
           fcl  = min(max(fnew,0._rp),1._rp)
           if(fcl /= fnew) then
             !$acc atomic update
-            fmin_s = min(fmin_s,fnew)
+            clip_sweep(2) = min(clip_sweep(2),fnew)
             !$acc atomic update
-            fmax_s = max(fmax_s,fnew)
+            clip_sweep(3) = max(clip_sweep(3),fnew)
             !$acc atomic update
-            clip_s = clip_s+(fcl-fnew)*dx*dy*dzf(k)
+            clip_sweep(1) = clip_sweep(1)+(fcl-fnew)*dx*dy*dzf(k)
           end if
           psi(i,j,k) = fcl
           if(is_flx) then
@@ -843,10 +841,10 @@ module mod_vof_split
         end do
       end do
     end do
-    !$acc serial async(1)
-    fmin_raw = min(fmin_raw,fmin_s)
-    fmax_raw = max(fmax_raw,fmax_s)
-    clip_vol = clip_vol+clip_s
+    !$acc serial default(present) async(1)
+    clip_stats(1) = clip_stats(1)+clip_sweep(1)
+    clip_stats(2) = min(clip_stats(2),clip_sweep(2))
+    clip_stats(3) = max(clip_stats(3),clip_sweep(3))
     !$acc end serial
   end subroutine sweep
   !
@@ -1392,7 +1390,7 @@ module mod_vof_split
       !
       nlist(1) = 0
       !$acc update device(nlist) async(1)
-      !$acc serial async(1)
+      !$acc serial default(present) async(1)
       kappa_stats(1) = 0._rp
       !$acc end serial
       !$acc parallel loop collapse(3) default(present) private(il) async(1)
@@ -1419,7 +1417,7 @@ module mod_vof_split
       !
       n1 = n(1)
       n2 = n(2)
-      !$acc serial async(1)
+      !$acc serial default(present) async(1)
       kappa_stats(2) = 0._rp
       kappa_stats(3) = 0._rp
       !$acc end serial
@@ -1681,12 +1679,12 @@ module mod_vof_split
         end do
       end do
     end do
-    !$acc update self(clip_vol,fmin_raw,fmax_raw,kappa_stats) async(1)
+    !$acc update self(clip_stats,kappa_stats) async(1)
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,vol,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-    call MPI_ALLREDUCE(clip_vol,clip,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-    call MPI_ALLREDUCE(fmin_raw,fmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
-    call MPI_ALLREDUCE(fmax_raw,fmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
+    call MPI_ALLREDUCE(clip_stats(1),clip,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call MPI_ALLREDUCE(clip_stats(2),fmin,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
+    call MPI_ALLREDUCE(clip_stats(3),fmax,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
     call MPI_ALLREDUCE(kappa_stats,kstats,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     cfl(:) = cfl_last(:)
     nsub = nsub_last
