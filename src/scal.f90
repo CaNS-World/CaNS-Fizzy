@@ -42,7 +42,7 @@ module mod_scal
     real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
-    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s

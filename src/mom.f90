@@ -587,7 +587,7 @@ module mod_mom
     real(rp), intent(in ), dimension(2) :: rho12,mu12
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
     real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta,nu1,nu2
@@ -1069,7 +1069,7 @@ module mod_mom
   end subroutine mom_xyz_a_cons
   !
   subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,psi,kappa,s,pn,po, &
+                         p,psi,kappa,s,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
@@ -1093,7 +1093,7 @@ module mod_mom
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)           :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
-    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: po
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
@@ -1152,10 +1152,10 @@ module mod_mom
           p_ccp = p(i  ,j  ,k+1)
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
-          q_ccc = (1.+dt_r)*pn(i  ,j  ,k  )-dt_r*po(i  ,j  ,k  )
-          q_pcc = (1.+dt_r)*pn(i+1,j  ,k  )-dt_r*po(i+1,j  ,k  )
-          q_cpc = (1.+dt_r)*pn(i  ,j+1,k  )-dt_r*po(i  ,j+1,k  )
-          q_ccp = (1.+dt_r)*pn(i  ,j  ,k+1)-dt_r*po(i  ,j  ,k+1)
+          q_ccc = (1.+dt_r)*p_ccc-dt_r*po(i  ,j  ,k  )
+          q_pcc = (1.+dt_r)*p_pcc-dt_r*po(i+1,j  ,k  )
+          q_cpc = (1.+dt_r)*p_cpc-dt_r*po(i  ,j+1,k  )
+          q_ccp = (1.+dt_r)*p_ccp-dt_r*po(i  ,j  ,k+1)
 #endif
           !
           if(is_buoyant) then
