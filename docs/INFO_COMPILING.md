@@ -29,7 +29,7 @@ BALANCED_CAPILLARY_PRESSURE_SPLIT=1 # balanced residual of pressure gradient and
 
 In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA` (`nvfortran`), or `CRAY` (`ftn`); the predefined profiles for compiler options can be selected by choosing one of the `FFLAGS_*` options; finer control of the compiler flags may be achieved by building with, e.g., `make FFLAGS+=[OTHER_FLAGS]`, or by tweaking the profiles directly under `configs/flags.mk`. Similarly, the library paths (e.g., for *FFTW*) may need to be adapted in the `Makefile` (`LIBS` variable) or by building with `make LIBS+='-L[PATH_TO_LIB] -l[NAME_OF_LIB]'`. Finally, the following pre-processing options are available:
 
- * `SINGLE_PRECISION` : calculation will be carried out in single precision (the default precision is double)
+ * `SINGLE_PRECISION` : calculation will be carried out in single precision (the default precision is double); all interface methods can be used, with the geometric one less accurate than the others in this precision (the test `single_precision` prints the differences with respect to double precision for a few cases)
  * `GPU`              : enable GPU accelerated runs
  * `USE_HDF5`         : enable HDF5-based I/O support
  * `USE_ADIOS2`       : enable ADIOS2-based I/O support
