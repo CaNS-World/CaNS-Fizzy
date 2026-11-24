@@ -51,7 +51,7 @@ program cans
                                      ifc_update_params,ifc_write_log, &
                                      marker,ifc_markers_init,ifc_markers_advance,ifc_markers_force
   use mod_load               , only: load_one
-  use mod_mom                , only: cmpt_momentum
+  use mod_mom                , only: cmpt_momentum,marker_fields
   use mod_rk                 , only: tm => rk,tm_scal => rk_scal
   use mod_output             , only: is_output_due, &
                                      out0d,gen_alias,out1d,out1d_chan,out2d,out3d,write_log_output,write_visu_2d,write_visu_3d
@@ -168,6 +168,7 @@ program cans
   ! several markers (see `mod_interface_capturing`): psi is then the total phase indicator
   !
   type(marker), target, allocatable, dimension(:) :: markers
+  type(marker_fields) , allocatable, dimension(:) :: mfields
   real(rp), allocatable, dimension(:,:,:) :: fsx,fsy,fsz ! surface tension force summed over the markers
   integer :: imark,nmk
   character(len=3) :: marknum
@@ -318,7 +319,14 @@ program cans
     allocate(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz,mold=kappa)
     if(is_sdf_normals) allocate(markers(imark)%phi,mold=kappa)
   end do
-  if(nmk > 0) allocate(fsx(n(1),n(2),n(3)),fsy(n(1),n(2),n(3)),fsz(n(1),n(2),n(3)))
+  if(nmk > 0) then
+    allocate(fsx(n(1),n(2),n(3)),fsy(n(1),n(2),n(3)),fsz(n(1),n(2),n(3)))
+    allocate(mfields(nmk))
+    do imark=1,nmk
+      mfields(imark)%psi   => markers(imark)%psi
+      mfields(imark)%kappa => markers(imark)%kappa
+    end do
+  end if
   allocate(psiflx_x,psiflx_y,psiflx_z,mold=kappa)
   if(is_ifc_split) then
     allocate(uadv,vadv,wadv,uo,vo,wo,mold=u)
@@ -895,7 +903,7 @@ program cans
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
               psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
-              uadv,vadv,wadv,fsx,fsy,fsz)
+              uadv,vadv,wadv,fsx,fsy,fsz,mfields)
       if(is_forced_hit) then
         call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
       end if

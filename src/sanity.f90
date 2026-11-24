@@ -139,10 +139,6 @@ module mod_sanity
     if(nmarker < 1) then
       if(myid == 0)  print*, 'ERROR: `nmarker` must be positive.'; call abortit
     end if
-    if(nmarker > 1 .and. dsigma_ds /= 0.) then
-      if(myid == 0)  print*, 'ERROR: several markers (`nmarker > 1`) are not available yet with a surface tension that &
-                                     &varies with the scalar (`dsigma_ds`).'; call abortit
-    end if
     if(nmarker > 1 .and. .not.any(inipsi(1:3) == ['bub','drp','dis'])) then
       if(myid == 0)  print*, 'ERROR: several markers (`nmarker > 1`) need an initial condition made of spheres &
                                      &(`inipsi` = `bub*`, `drp*` or `dis*`).'; call abortit

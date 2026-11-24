@@ -44,7 +44,7 @@ TESTS_OF[thincsplit]="rising_bubble restart_two_fluid implicit_diffusion markers
 TESTS_OF[unbalanced]="rising_bubble restart_two_fluid"
 TESTS_OF[hypre]="rising_bubble restart_two_fluid implicit_diffusion"
 TESTS_OF[plic]="plic_unit plic_advection plic_momentum viscosity_limiter contact_angle rising_bubble restart_two_fluid implicit_diffusion marangoni_layer \
-                markers"
+                markers marangoni_markers"
 #
 if [ $# -gt 0 ]; then VARIANTS="$*"; fi
 for variant in $VARIANTS; do
