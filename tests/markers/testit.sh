@@ -23,6 +23,10 @@ for name in one same split; do
   cp spheres-same.in spheres.in
   if [ $name = one   ]; then sed -i "s/^nmarker = 2/nmarker = 1/" input.nml; fi
   if [ $name = split ]; then cp spheres-split.in spheres.in; fi
+  #
+  # interface method of the variant under test, if set (see `tests/testall.sh`): a line for the `two_fluid` namelist
+  #
+  if [ -n "$TEST_TWO_FLUID_INPUT" ]; then sed -i "/^&two_fluid/a $TEST_TWO_FLUID_INPUT" input.nml; fi
   set +e
   ${MPIRUN} ./cans 1> log_file.log 2> err_log.log
   status=$?

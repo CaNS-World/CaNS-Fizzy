@@ -603,7 +603,7 @@ Any other one stops the run with a message.
 0.5 0.7 0.5 0.18 2
 ```
 
-Where two markers overlap, the total phase indicator is clipped, and the markers are left as they are, each conserving its volume; there is no model of the film between two drops, which simply stay apart. Besides the total phase indicator (`psi_fld_*`, `fld_psi`), each marker is written to `psi_NNN_fld_*` and saved in the checkpoint file `fld_psi_NNN`. Several markers need an initial condition made of spheres (`inipsi = 'bub*'`, `'drp*'` or `'dis*'`), and are available with `ifc_advection = 'ab2'` and a uniform surface tension (`dsigma_ds = 0.`) for now.
+Where two markers overlap, the total phase indicator is clipped, and the markers are left as they are, each conserving its volume; there is no model of the film between two drops, which simply stay apart. Besides the total phase indicator (`psi_fld_*`, `fld_psi`), each marker is written to `psi_NNN_fld_*` and saved in the checkpoint file `fld_psi_NNN`. Several markers need an initial condition made of spheres (`inipsi = 'bub*'`, `'drp*'` or `'dis*'`), and are not available yet with the transport along with the sweeps (`ifc_transport = 'sweeps'`), nor with a surface tension that varies with the scalar (`dsigma_ds`).
 
 `is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
 

@@ -601,6 +601,11 @@ program cans
   do imark=1,nmk
     markers(imark)%psi(:,:,:) = 0.
     markers(imark)%dpsidtrko(:,:,:) = 0.
+    markers(imark)%kappa(:,:,:) = 0.
+    markers(imark)%normx(:,:,:) = 0.
+    markers(imark)%normy(:,:,:) = 0.
+    markers(imark)%normz(:,:,:) = 0.
+    if(is_sdf_normals) markers(imark)%phi(:,:,:) = 0.
   end do
   psio(:,:,:) = 0.
   kappa(:,:,:) = 0.
@@ -810,7 +815,7 @@ program cans
     end do
     if(is_track_interface .and. nmk > 0) then
       call ifc_markers_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
-                               is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z)
+                               is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv)
     else if(is_track_interface) then
       call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &

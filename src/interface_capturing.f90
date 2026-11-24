@@ -39,7 +39,7 @@ module mod_interface_capturing
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
   use mod_scal      , only: scalar
   use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_contact_angle, &
-                            vof_split_diagnostics
+                            vof_split_diagnostics,vof_marker
   use mod_thinc     , only: thinc_cmpt_phi
   implicit none
   private
@@ -164,32 +164,59 @@ module mod_interface_capturing
     integer , intent(in   ) :: istep
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
     type(scalar), intent(inout), dimension(:), optional :: scalars
-    real(rp), dimension(2,max(nscal,1)) :: rhocp12
-    integer :: is
     !
-    do is=1,max(nscal,1)
-      rhocp12(:,is) = rho12(:)*cp12(:,is)
-    end do
     if(.not.is_ifc_split) then
       call rk_2fl(tm_coeff,n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,gam,seps,vof_thinc_beta,u,v,w,normx,normy,normz,phi,psi, &
                   psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
       call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
       call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
     else
-      call vof_split_advance(tm_coeff,is_first,.true.,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
-                             cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
-                             uo,vo,wo,uadv,vadv,wadv,scalars)
-      if(.not.is_vof_sweep_transport) then
-        call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
-      else
-        call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
-        do is=1,nscal
-          call boundp(cbcscal(:,:,is),n,nh_s,nh_g,bcscal(:,:,is),nb,is_bound,dl,dzc,scalars(is)%sadv)
-        end do
-      end if
+      call advance_split(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto,u,v,w,psi, &
+                         psiflx_x,psiflx_y,psiflx_z,is_first,istep,uo,vo,wo,uadv,vadv,wadv,scalars)
     end if
     call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
   end subroutine ifc_advance
+  !
+  subroutine advance_split(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto,u,v,w,psi, &
+                           psiflx_x,psiflx_y,psiflx_z,is_first,istep,uo,vo,wo,uadv,vadv,wadv,scalars,psi_m)
+    !
+    ! direction-split advection of the phase indicator, or of those of several markers (`psi_m`, see
+    ! `vof_split_advance`), followed by the boundary conditions of the phase fluxes or, with the transport
+    ! along with the sweeps, of the transported velocity and scalars
+    !
+    implicit none
+    real(rp), intent(in   ), dimension(2) :: tm_coeff
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
+    real(rp), intent(in   ) :: dt,dto
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
+    real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
+    logical , intent(in   ) :: is_first
+    integer , intent(in   ) :: istep
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: uo,vo,wo,uadv,vadv,wadv
+    type(scalar), intent(inout), dimension(:), optional :: scalars
+    type(vof_marker), intent(in), dimension(:), optional :: psi_m
+    real(rp), dimension(2,max(nscal,1)) :: rhocp12
+    integer :: is
+    !
+    do is=1,max(nscal,1)
+      rhocp12(:,is) = rho12(:)*cp12(:,is)
+    end do
+    call vof_split_advance(tm_coeff,is_first,.true.,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
+                           cbcpsi,bcpsi,nb,is_bound,rho12,rhocp12,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z, &
+                           uo,vo,wo,uadv,vadv,wadv,scalars,psi_m)
+    if(.not.is_vof_sweep_transport) then
+      call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+    else
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,uadv,vadv,wadv)
+      do is=1,nscal
+        call boundp(cbcscal(:,:,is),n,nh_s,nh_g,bcscal(:,:,is),nb,is_bound,dl,dzc,scalars(is)%sadv)
+      end do
+    end if
+  end subroutine advance_split
   !
   subroutine ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
     !
@@ -208,6 +235,7 @@ module mod_interface_capturing
     !
     do m=1,size(markers)
       call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,markers(m)%psi)
+      if(is_ifc_split) call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,markers(m)%psi)
       call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
                         markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
       call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
@@ -216,10 +244,11 @@ module mod_interface_capturing
   end subroutine ifc_markers_init
   !
   subroutine ifc_markers_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
-                                 is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z)
+                                 is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv)
     !
     ! advances each marker over one time step, as `ifc_advance` does for a single phase indicator, and returns
-    ! the total phase indicator and the total phase fluxes (with their boundary conditions)
+    ! the total phase indicator and the total phase fluxes (with their boundary conditions); with the
+    ! direction-split advection, all the markers go through the sweeps together (see `vof_split_advance`)
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -231,25 +260,42 @@ module mod_interface_capturing
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     logical , intent(in   ) :: is_first
     integer , intent(in   ) :: istep
-    type(marker), intent(inout), dimension(:) :: markers
+    type(marker), intent(inout), target, dimension(:) :: markers
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
-    integer :: m
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
+    type(vof_marker), dimension(size(markers)) :: psi_m
+    integer :: m,nm
     !
-    if(.not.allocated(wflx_x)) then
-      allocate(wflx_x,wflx_y,wflx_z,mold=psiflx_x)
-      !$acc enter data create(wflx_x,wflx_y,wflx_z)
+    nm = size(markers)
+    if(.not.is_ifc_split) then
+      if(.not.allocated(wflx_x)) then
+        allocate(wflx_x,wflx_y,wflx_z,mold=psiflx_x)
+        !$acc enter data create(wflx_x,wflx_y,wflx_z)
+      end if
+      do m=1,nm
+        call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
+                         markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%phi,markers(m)%kappa,markers(m)%psi, &
+                         wflx_x,wflx_y,wflx_z,is_first,markers(m)%dpsidtrko,istep)
+        call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+        call markers_add(n,nh_ifc,m == 1,wflx_x,psiflx_x)
+        call markers_add(n,nh_ifc,m == 1,wflx_y,psiflx_y)
+        call markers_add(n,nh_ifc,m == 1,wflx_z,psiflx_z)
+      end do
+      call markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,u,v,w,psiflx_x,psiflx_y,psiflx_z)
+    else
+      do m=1,nm
+        psi_m(m)%psi => markers(m)%psi
+      end do
+      call advance_split(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto,u,v,w,psi, &
+                         psiflx_x,psiflx_y,psiflx_z,is_first,istep,uo,vo,wo,uadv,vadv,wadv,psi_m=psi_m)
+      do m=1,nm
+        call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
+                          markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
+        call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+      end do
+      call markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,uadv,vadv,wadv,psiflx_x,psiflx_y,psiflx_z)
     end if
-    do m=1,size(markers)
-      call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
-                       markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%phi,markers(m)%kappa,markers(m)%psi, &
-                       wflx_x,wflx_y,wflx_z,is_first,markers(m)%dpsidtrko,istep)
-      call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
-      call markers_add(n,nh_ifc,m == 1,wflx_x,psiflx_x)
-      call markers_add(n,nh_ifc,m == 1,wflx_y,psiflx_y)
-      call markers_add(n,nh_ifc,m == 1,wflx_z,psiflx_z)
-    end do
-    call markers_total(n,nh_v,nh_psi,nh_ifc,size(markers),psi,u,v,w,psiflx_x,psiflx_y,psiflx_z)
   end subroutine ifc_markers_advance
   !
   subroutine ifc_markers_force(n,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,markers,psi,fsx,fsy,fsz)
@@ -303,8 +349,9 @@ module mod_interface_capturing
     ! total phase indicator (and, if present, total phase fluxes) from the sum over the nm markers: if the
     ! dispersed phase is phase 1 (drops, psi = 1 inside), the sum itself; if it is phase 2 (bubbles, psi = 0
     ! inside), each marker is 1 outside its own bubbles, and the total is the sum minus nm-1 (for the fluxes,
-    ! minus nm-1 times the velocity); the total phase indicator, which sets the fluid properties, is clipped
-    ! to [0,1] where markers overlap, while the markers themselves are left as they are
+    ! minus nm-1 times the velocity, the advecting one with the direction-split advection); the total phase
+    ! indicator, which sets the fluid properties, is clipped to [0,1] where markers overlap, while the markers
+    ! themselves are left as they are
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
