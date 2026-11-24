@@ -50,7 +50,7 @@ module mod_scal
     integer :: i,j,k
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
-    real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c
+    real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm
     real(rp) :: ka,dka,rhocp,drhocp
     logical  :: is_adv,is_harm

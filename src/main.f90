@@ -138,7 +138,7 @@ program cans
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
   logical :: is_impdiff_cc
   !
-  real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
   real(rp), dimension(2) :: dt_restart
   real(rp) :: gam,seps
   integer :: istep,iunit
@@ -782,7 +782,6 @@ program cans
     dto = dt_restart(2)
   end if
   if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
-  dti = 1./dt
   kill = .false.
   force_balance(:,:) = 0._rp
   force_balance(:,5) = bforce(:)
@@ -1003,7 +1002,6 @@ program cans
       dt = min(cfl*dt_cfl,dtmax)
       if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
-      dti = 1./dt
       call chkdiv(lo,hi,nh_v,nh_g,l,dli,dzfi,u,v,w,divtot,divmax)
       if(myid == 0) print*, 'Velocity divergence norms: Mean = ', divtot, '| Maximum = ', divmax
       if((divmax > small.and..not.is_mask_divergence_check).or.is_nan(divtot)) then
