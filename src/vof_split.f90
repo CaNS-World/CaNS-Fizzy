@@ -1272,13 +1272,16 @@ module mod_vof_split
         !
         ! ghost cells: volume fraction of the plane of the nearest wall cell with an interface
         !
-        !$acc parallel loop collapse(3) default(present) async(1)
+        !$acc parallel loop gang vector collapse(3) default(present) &
+        !$acc private(ipb,iqb,d2b,d2,ig,gi,gj,gk,pi,pj,pk,o3,s3) async(1)
         do l=1,nh_psi
           do ib=1,nb_
             do ia=1,na
               ipb = 0; iqb = 0
               d2b = huge(1._rp)
+              !$acc loop seq
               do iq=-nr_ca,nr_ca
+                !$acc loop seq
                 do ip=-nr_ca,nr_ca
                   d2 = real(ip**2+iq**2,rp)
                   if(d2 < d2b .and. abs(ca_pl(1,ia+ip,ib+iq))+abs(ca_pl(2,ia+ip,ib+iq))+abs(ca_pl(3,ia+ip,ib+iq)) > 0._rp) then
@@ -1301,6 +1304,7 @@ module mod_vof_split
                 ! box of the ghost cell in the cell-scaled coordinates of the wall cell (non-uniform along z)
                 !
                 o3 = 0._rp
+                !$acc loop seq
                 do kk=min(gk,pk),max(gk,pk)-1
                   o3 = o3+dzf(kk)
                 end do
