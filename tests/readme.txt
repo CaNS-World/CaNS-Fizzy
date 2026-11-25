@@ -19,7 +19,7 @@ environment variables:
                         methods, e.g., "ifc_reconstruction = 'plic'" (set by `testall.sh` and by the CI)
   TEST_SHORT          : if set, the three long cases (`lid_driven_cavity`, `differentially_heated_cavity`,
                         `deforming_circle`) run a fraction of their time steps without their comparison, and
-                        `single_precision` is skipped (the debug builds of the CI)
+                        `single_precision` is skipped (the debug builds and the NVIDIA build of the CI)
   see `testall.sh` for those of that script (BUILD_FLAGS, TESTS, NJOBS)
 
 the tests, and what each checks:
