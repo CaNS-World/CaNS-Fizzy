@@ -594,25 +594,37 @@ module mod_output
   !
   ! two-fluid diagnostics
   !
-  subroutine velstats(fname,n,nh_v,nh_p,nh_s,nh_psi,nh_g,dl,l,zc,u,v,w,p,s,psi)
+  subroutine velstats(fname,ng,nh_v,nh_p,nh_s,nh_psi,nh_g,lo,hi,l,dl,z_g,u,v,w,p,s,psi)
     !
-    ! computes a few volume-averaged profiles
+    ! writes profiles along z of a few quantities weighted with the volume fraction of each phase and
+    ! averaged over x and y: the first (*_1) and second (*_2) moments of the velocity at the cell centres,
+    ! of the pressure, of a scalar and of the weight itself, for phase 1 (weight psi; u1, v1, ...) and
+    ! phase 2 (weight 1-psi; u2, v2, ...); the mean of a quantity in a phase at a height is its column
+    ! divided by that of the weight (c1_1 or c2_1)
+    !
+    ! fname -> name of the file
+    ! ng    -> global domain sizes
+    ! lo,hi -> lower and upper extents of the input arrays
+    ! l,dl  -> domain lengths and uniform grid spacing arrays
+    ! z_g   -> global z coordinate array of the cell centres
+    ! s     -> a scalar field, e.g. scalars(1)%val
+    !
+    ! runs on the host, as out1d_chan
     !
     implicit none
     character(len=*), intent(in) :: fname
-    integer, intent(in), dimension(3) :: n
+    integer , intent(in), dimension(3) :: ng,lo,hi
     integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_g
-    real(rp), intent(in), dimension(3) :: dl,l
-    real(rp), intent(in), dimension(1-nh_g:) :: zc
-    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in), dimension(1-nh_p:,1-nh_p:,1-nh_p:) :: p
-    real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
-    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in), dimension(3) :: l,dl
+    real(rp), intent(in), dimension(1-nh_g:) :: z_g
+    real(rp), intent(in), dimension(lo(1)-nh_v:,lo(2)-nh_v:,lo(3)-nh_v:) :: u,v,w
+    real(rp), intent(in), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p
+    real(rp), intent(in), dimension(lo(1)-nh_s:,lo(2)-nh_s:,lo(3)-nh_s:) :: s
+    real(rp), intent(in), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
     real(rp), allocatable, dimension(:) :: u1_1,u1_2,v1_1,v1_2,w1_1,w1_2,p1_1,p1_2,s1_1,s1_2,c1_1,c1_2, &
                                            u2_1,u2_2,v2_1,v2_2,w2_1,w2_2,p2_1,p2_2,s2_1,s2_2,c2_1,c2_2
-    integer :: i,j,k,ii,jj
+    integer :: i,j,k
     integer :: iunit
-    integer, dimension(3) :: ng
     integer :: nn
     real(rp) :: grid_area_ratio
     !
@@ -621,8 +633,8 @@ module mod_output
              u1_2(nn),v1_2(nn),w1_2(nn),p1_2(nn),s1_2(nn),c1_2(nn), &
              u2_1(nn),v2_1(nn),w2_1(nn),p2_1(nn),s2_1(nn),c2_1(nn), &
              u2_2(nn),v2_2(nn),w2_2(nn),p2_2(nn),s2_2(nn),c2_2(nn))
-    grid_area_ratio = dl(1)*dl(2)/l(1)*l(2)
-    do k=1,n(3)
+    grid_area_ratio = dl(1)*dl(2)/(l(1)*l(2))
+    do k=1,nn
       u1_1(k)  = 0.
       v1_1(k)  = 0.
       w1_1(k)  = 0.
@@ -647,8 +659,10 @@ module mod_output
       p2_2(k)  = 0.
       s2_2(k)  = 0.
       c2_2(k)  = 0.
-      do j=1,n(2)
-        do i=1,n(1)
+    end do
+    do k=lo(3),hi(3)
+      do j=lo(2),hi(2)
+        do i=lo(1),hi(1)
           u1_1(k)  = u1_1(k) + grid_area_ratio*(   psi(i,j,k))*(0.5*(u(i,j,k)+u(i-1,j,k)))
           u1_2(k)  = u1_2(k) + grid_area_ratio*(   psi(i,j,k))*(0.5*(u(i,j,k)+u(i-1,j,k)))**2
           v1_1(k)  = v1_1(k) + grid_area_ratio*(   psi(i,j,k))*(0.5*(v(i,j,k)+v(i,j-1,k)))
@@ -680,26 +694,30 @@ module mod_output
     call mpi_allreduce(MPI_IN_PLACE,v1_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,w1_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,p1_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call mpi_allreduce(MPI_IN_PLACE,s1_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,c1_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,u1_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,v1_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,w1_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,p1_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call mpi_allreduce(MPI_IN_PLACE,s1_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,c1_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,u2_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,v2_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,w2_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,p2_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call mpi_allreduce(MPI_IN_PLACE,s2_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,c2_1,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,u2_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,v2_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,w2_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,p2_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call mpi_allreduce(MPI_IN_PLACE,s2_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,c2_2,nn,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     if(myid == 0) then
       open(newunit=iunit,file=fname)
       do k=1,nn
-        write(iunit,fmt_rp) zc(k), &
+        write(iunit,fmt_rp) z_g(k), &
                             u1_1(k),v1_1(k),w1_1(k),p1_1(k),s1_1(k),c1_1(k), &
                             u1_2(k),v1_2(k),w1_2(k),p1_2(k),s1_2(k),c1_2(k), &
                             u2_1(k),v2_1(k),w2_1(k),p2_1(k),s2_1(k),c2_1(k), &
@@ -711,11 +729,15 @@ module mod_output
   !
   subroutine cmpt_total_area(n,nh_psi,nh_g,dli,dzci,dzfi,psi,area)
     !
-    ! computes some volume-averaged profiles along z (assumes constant grid spacing)
+    ! computes the total area of the interface, as the volume integral of the magnitude of the gradient
+    ! of psi; the gradient at the cell centre is the average of those at the eight corners of the cell,
+    ! as in Youngs' method
+    !
+    ! runs on the host, as the other diagnostics below
     !
     implicit none
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_g
+    integer , intent(in )               :: nh_psi,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
@@ -766,25 +788,25 @@ module mod_output
           mz(2) = 0.25*((psi(i  ,j  ,k+1)+psi(i+1,j  ,k+1)+psi(i  ,j-1,k+1)+psi(i+1,j-1,k+1)) - &
                         (psi(i  ,j  ,k  )+psi(i+1,j  ,k  )+psi(i  ,j-1,k  )+psi(i+1,j-1,k  )))*dzci(k  )
           mz(3) = 0.25*((psi(i  ,j  ,k  )+psi(i+1,j  ,k  )+psi(i  ,j+1,k  )+psi(i+1,j+1,k  )) - &
-                        (psi(i  ,j  ,k-1)+psi(i+1,j  ,k-1)+psi(i  ,j+1,k-1)+psi(i+1,j+1,k-1)))*dzci(k  )
+                        (psi(i  ,j  ,k-1)+psi(i+1,j  ,k-1)+psi(i  ,j+1,k-1)+psi(i+1,j+1,k-1)))*dzci(k-1)
           mz(4) = 0.25*((psi(i  ,j  ,k  )+psi(i+1,j  ,k  )+psi(i  ,j-1,k  )+psi(i+1,j-1,k  )) - &
-                        (psi(i  ,j  ,k-1)+psi(i+1,j  ,k-1)+psi(i  ,j-1,k-1)+psi(i+1,j-1,k-1)))*dzci(k  )
+                        (psi(i  ,j  ,k-1)+psi(i+1,j  ,k-1)+psi(i  ,j-1,k-1)+psi(i+1,j-1,k-1)))*dzci(k-1)
           mz(5) = 0.25*((psi(i  ,j  ,k+1)+psi(i-1,j  ,k+1)+psi(i  ,j+1,k+1)+psi(i-1,j+1,k+1)) - &
-                        (psi(i  ,j  ,k  )+psi(i-1,j  ,k  )+psi(i  ,j+1,k  )+psi(i-1,j+1,k  )))*dzci(k+1)
+                        (psi(i  ,j  ,k  )+psi(i-1,j  ,k  )+psi(i  ,j+1,k  )+psi(i-1,j+1,k  )))*dzci(k  )
           mz(6) = 0.25*((psi(i  ,j  ,k+1)+psi(i-1,j  ,k+1)+psi(i  ,j-1,k+1)+psi(i-1,j-1,k+1)) - &
-                        (psi(i  ,j  ,k  )+psi(i-1,j  ,k  )+psi(i  ,j-1,k  )+psi(i-1,j-1,k  )))*dzci(k+1)
+                        (psi(i  ,j  ,k  )+psi(i-1,j  ,k  )+psi(i  ,j-1,k  )+psi(i-1,j-1,k  )))*dzci(k  )
           mz(7) = 0.25*((psi(i  ,j  ,k  )+psi(i-1,j  ,k  )+psi(i  ,j+1,k  )+psi(i-1,j+1,k  )) - &
-                        (psi(i  ,j  ,k-1)+psi(i-1,j  ,k-1)+psi(i  ,j+1,k-1)+psi(i-1,j+1,k-1)))*dzci(k  )
+                        (psi(i  ,j  ,k-1)+psi(i-1,j  ,k-1)+psi(i  ,j+1,k-1)+psi(i-1,j+1,k-1)))*dzci(k-1)
           mz(8) = 0.25*((psi(i  ,j  ,k  )+psi(i-1,j  ,k  )+psi(i  ,j-1,k  )+psi(i-1,j-1,k  )) - &
-                        (psi(i  ,j  ,k-1)+psi(i-1,j  ,k-1)+psi(i  ,j-1,k-1)+psi(i-1,j-1,k-1)))*dzci(k  )
+                        (psi(i  ,j  ,k-1)+psi(i-1,j  ,k-1)+psi(i  ,j-1,k-1)+psi(i-1,j-1,k-1)))*dzci(k-1)
           !
           dpsidx = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
           dpsidy = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
           dpsidz = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
           area = area + sqrt(dpsidx**2+dpsidy**2+dpsidz**2)/(dli(1)*dli(2)*dzfi(k))
-        enddo
-      enddo
-    enddo
+        end do
+      end do
+    end do
     call MPI_ALLREDUCE(MPI_IN_PLACE,area,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_total_area
   !
