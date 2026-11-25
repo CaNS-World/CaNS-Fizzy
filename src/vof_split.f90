@@ -330,7 +330,6 @@ module mod_vof_split
         call set_zero(psiflx_z)
         is_psiflx_set = .true.
       end if
-      if(.not.is_track) call set_zero(fl)
     end if
     !
     ! advecting velocity, and CFL numbers along each direction
@@ -401,10 +400,13 @@ module mod_vof_split
         if(is_sweep) then
           select case(idir)
           case(1)
+            if(.not.is_track) call frozen_flux(1,n,nh_v,nh_psi,nh_g,wzc,dts,ua,psi)
             call transport_all(1,ua)
           case(2)
+            if(.not.is_track) call frozen_flux(2,n,nh_v,nh_psi,nh_g,wzc,dts,va,psi)
             call transport_all(2,va)
           case(3)
+            if(.not.is_track) call frozen_flux(3,n,nh_v,nh_psi,nh_g,wzc,dts,wa,psi)
             call transport_all(3,wa)
           end select
           call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
@@ -1656,6 +1658,37 @@ module mod_vof_split
       end if
     end do
   end subroutine hf_list
+  !
+  subroutine frozen_flux(idir,n,nh_v,nh_psi,nh_g,wzc,dt,vel,psi)
+    !
+    ! face fluxes of a sweep along direction idir for a volume fraction that is not advanced: its value at
+    ! each face, interpolated with the weights of the density of the staggered control volumes, times the
+    ! volume swept by the face (see `frozen_fluxes` of `mod_interface_capturing`)
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: idir,nh_v,nh_psi,nh_g
+    real(rp), intent(in), dimension(1-nh_g:) :: wzc
+    real(rp), intent(in) :: dt
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: w1
+    integer  :: i,j,k,di,dj,dk
+    !
+    di = merge(1,0,idir == 1)
+    dj = merge(1,0,idir == 2)
+    dk = merge(1,0,idir == 3)
+    !$acc parallel loop collapse(3) default(present) private(w1) async(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          w1 = 0.5_rp
+          if(idir == 3) w1 = wzc(k)
+          fl(i,j,k) = (w1*psi(i,j,k)+(1._rp-w1)*psi(i+di,j+dj,k+dk))*vel(i,j,k)*dt
+        end do
+      end do
+    end do
+  end subroutine frozen_flux
   !
   subroutine set_zero(p)
     implicit none

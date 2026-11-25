@@ -147,7 +147,7 @@ program cans
                                          xc_g,xf_g,yc_g,yf_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f,wzc
   real(rp), dimension(3) :: dpdl,meanvel,momentum,momentum_o,wall_force_imp
-  real(rp), dimension(3,6) :: force_balance
+  real(rp), dimension(3,7) :: force_balance
   real(rp), dimension(2) :: tm_coeff
   !
   ! scalar fields (see `mod_scal`)
@@ -827,17 +827,6 @@ program cans
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                        istep,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     else
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
-      do k=1-nh_ifc,n(3)+nh_ifc
-        do j=1-nh_ifc,n(2)+nh_ifc
-          do i=1-nh_ifc,n(1)+nh_ifc
-            psiflx_x(i,j,k) = 0.
-            psiflx_y(i,j,k) = 0.
-            psiflx_z(i,j,k) = 0.
-          end do
-        end do
-      end do
       call ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                   u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     end if
@@ -1048,7 +1037,8 @@ program cans
         var(11:13) = force_balance(:,4)
         var(14:16) = force_balance(:,5)
         var(17:19) = force_balance(:,6)
-        call out0d(trim(datadir)//'forcing_balance.out',19,var)
+        var(20:22) = force_balance(:,7)
+        call out0d(trim(datadir)//'forcing_balance.out',22,var)
       end if
       !
       call ifc_write_log(istep,time,n,nh_psi,nh_g,dl,dzf,gam,seps,psi)

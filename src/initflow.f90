@@ -197,7 +197,7 @@ module mod_initflow
         reb   = (retau/.09)**(1./.88)
         ubulk = reb*visc/(2*lref)
       else                 ! laminar flow
-        ubulk = (bforce(idir_s)*lref**2/(3.*visc))
+        ubulk = (bforce(idir_s)*lref**2/(3.*mu))
       end if
       call poiseuille(n(idir_n),rn/lprof,ubulk,u1d_n)
       is_mean = .true.
