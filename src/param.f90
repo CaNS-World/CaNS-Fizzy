@@ -21,6 +21,8 @@ public
 real(rp), parameter :: pi = acos(-1._rp)
 real(rp), parameter :: eps = epsilon(1._rp)
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
+real(rp), parameter :: psi_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! cells with psi_eps < psi < 1-psi_eps hold an
+                                                                       ! interface (1.2e-4 in single precision)
 character(len=100), parameter :: datadir = 'data/'
 !
 ! variables to be determined from the input file

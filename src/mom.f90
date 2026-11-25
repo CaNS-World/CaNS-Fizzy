@@ -7,7 +7,7 @@
 module mod_mom
   use mpi
   use mod_param, only: is_boussinesq_buoyancy,is_harmonic_interpolation,is_ifc_split,is_visc_limiter, &
-                       is_brackbill_normalization
+                       is_brackbill_normalization,psi_eps
   use mod_types
   implicit none
   private
@@ -606,8 +606,6 @@ module mod_mom
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     logical  :: is_adv,is_harm,is_lim,is_lim_c
     real(rp) :: c_min,c_max
-    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! full and empty cells for the viscosity
-                                                                         ! limiter (as for the reconstruction)
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     is_harm = is_harmonic_interpolation
@@ -691,13 +689,13 @@ module mod_mom
           c_pcp = psi(i+1,j  ,k+1)
           !
           ! the viscosity limiter only matters where the two phases meet: it is skipped where all the cells of
-          ! the stencil are full, or all empty, to the tolerance `c_eps`
+          ! the stencil are full, or all empty, to the tolerance `psi_eps`
           !
           is_lim_c = is_lim
           if(is_lim) then
             c_min = min(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
             c_max = max(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
-            is_lim_c = c_min < 1._rp-c_eps .and. c_max > c_eps
+            is_lim_c = c_min < 1._rp-psi_eps .and. c_max > psi_eps
           end if
           !
           flx_x_mcc = rho*u_mcc + drho*psiflx_x(i-1,j  ,k  )
@@ -1849,7 +1847,6 @@ module mod_mom
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp) :: rho,drho,mu,dmu,bfac,mfac,dxi,dyi,hz_c
     real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif,c_min,c_max
-    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! (as for the reconstruction and the limiter)
     integer  :: i,j,k
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
@@ -1873,7 +1870,7 @@ module mod_mom
                       psi(i+1,j+1,k  ),psi(i+1,j-1,k  ),psi(i-1,j+1,k  ), &
                       psi(i  ,j  ,k+1),psi(i+1,j  ,k+1),psi(i-1,j  ,k+1),psi(i  ,j+1,k+1),psi(i  ,j-1,k+1), &
                       psi(i  ,j  ,k-1),psi(i+1,j  ,k-1),psi(i  ,j+1,k-1))
-          if(c_max-c_min <= c_eps) cycle
+          if(c_max-c_min <= psi_eps) cycle
           hz_c = dzci(k)*dzci(k-1)/(dzci(k)+dzci(k-1)) ! (factor of the centred difference along z)
           !
           ! x face

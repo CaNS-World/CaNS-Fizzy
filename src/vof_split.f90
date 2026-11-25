@@ -40,6 +40,7 @@ module mod_vof_split
   use, intrinsic :: iso_fortran_env, only: int8
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
+  use mod_param     , only: psi_eps ! (cells with psi_eps < f < 1-psi_eps are reconstructed)
   use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature,hf_normal
   use mod_scal      , only: scalar
   use mod_thinc     , only: thinc_intercept,thinc_slab
@@ -54,10 +55,9 @@ module mod_vof_split
   !
   real(rp), parameter :: cfl_max = 0.5_rp    ! maximum CFL number of a sweep
   !
-  ! (the two tolerances on the volume fraction sit above its round-off: their double-precision values, or a
-  ! multiple of the machine epsilon in single precision, 1.2e-4 and 1.2e-3)
+  ! (the two tolerances on the volume fraction, `psi_eps` of `mod_param` and `eps_hf`, sit above its round-off:
+  ! their double-precision values, or a multiple of the machine epsilon in single precision, 1.2e-4 and 1.2e-3)
   !
-  real(rp), parameter :: f_eps   = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! cells with f_eps < f < 1-f_eps are reconstructed
   integer , parameter :: nq_hf   = 4         ! half-length of the height-function columns (nine cells)
   real(rp), parameter :: eps_hf  = max(1.e-6_rp ,1.e4_rp*epsilon(1._rp)) ! tolerance for pure cells at the ends of the
                                                                          ! height-function columns
@@ -197,7 +197,7 @@ module mod_vof_split
     if(.not.is_thinc) then
       ca_cos(:,:) = cos(theta_c(:,:)*acos(-1._rp)/180._rp)
       ca_sin(:,:) = sin(theta_c(:,:)*acos(-1._rp)/180._rp)
-      is_ca(:,:)  = abs(ca_cos(:,:)) > f_eps
+      is_ca(:,:)  = abs(ca_cos(:,:)) > psi_eps
       is_ca_any   = any(is_ca(:,:))
       if(is_ca_any) then
         allocate(ca_pl(0:3,1-nh_psi:maxval(n(:))+nh_psi,1-nh_psi:maxval(n(:))+nh_psi))
@@ -766,7 +766,7 @@ module mod_vof_split
             fc = min(max(psi(i,j,k),0._rp),1._rp)
             if(is_own_p) fl(i,j,k) = fc*vp*dt
             if(is_own_m) fl(i-di,j-dj,k-dk) = fc*vm*dt
-            if(fc > f_eps .and. fc < 1._rp-f_eps) then
+            if(fc > psi_eps .and. fc < 1._rp-psi_eps) then
               !$acc atomic capture
               nlist(1) = nlist(1)+1
               il = nlist(1)
@@ -892,8 +892,8 @@ module mod_vof_split
   subroutine transport_prepare(n,nh_psi,psi)
     !
     ! volume fraction before a sweep, and interface band: cells whose 3x3x3 neighbourhood contains
-    ! interfacial cells, or both full and empty cells, i.e., cells with phase 1 (f > f_eps) and cells with
-    ! phase 2 (f < 1-f_eps); the presence of the two phases is first stored as one-byte flags (bits 0 and 1)
+    ! interfacial cells, or both full and empty cells, i.e., cells with phase 1 (f > psi_eps) and cells with
+    ! phase 2 (f < 1-psi_eps); the presence of the two phases is first stored as one-byte flags (bits 0 and 1)
     !
     implicit none
     integer , intent(in), dimension(3) :: n
@@ -906,7 +906,7 @@ module mod_vof_split
     do k=-1,n(3)+3
       do j=-1,n(2)+3
         do i=-1,n(1)+3
-          bflag(i,j,k) = merge(1_int8,0_int8,psi(i,j,k) > f_eps)+merge(2_int8,0_int8,psi(i,j,k) < 1._rp-f_eps)
+          bflag(i,j,k) = merge(1_int8,0_int8,psi(i,j,k) > psi_eps)+merge(2_int8,0_int8,psi(i,j,k) < 1._rp-psi_eps)
           f_prev(i,j,k) = psi(i,j,k)
         end do
       end do
@@ -1242,7 +1242,7 @@ module mod_vof_split
             ca_pl(1,ia,ib) = 0._rp
             ca_pl(2,ia,ib) = 0._rp
             ca_pl(3,ia,ib) = 0._rp
-            if(fw > f_eps .and. fw < 1._rp-f_eps) then
+            if(fw > psi_eps .and. fw < 1._rp-psi_eps) then
               act(:) = [is_act1,is_act2,is_act3]
               do kc=-1,1
                 do jc=-1,1
@@ -1346,7 +1346,7 @@ module mod_vof_split
     real(rp), intent(in ) :: beta
     real(rp), intent(in ) :: cfl_p,cfl_m
     real(rp), intent(out) :: frac_p,frac_m
-    real(rp), parameter :: a_min = f_eps
+    real(rp), parameter :: a_min = psi_eps
     real(rp), dimension(3) :: o,s
     real(rp) :: alpha,a,d
     !$acc routine seq
@@ -1429,7 +1429,7 @@ module mod_vof_split
           do i=1,n(1)
             kappa(i,j,k) = 0._rp
             fc = psi(i,j,k)
-            if(fc > f_eps .and. fc < 1._rp-f_eps) then
+            if(fc > psi_eps .and. fc < 1._rp-psi_eps) then
               !$acc atomic capture
               nlist(1) = nlist(1)+1
               il = nlist(1)
@@ -1460,7 +1460,7 @@ module mod_vof_split
             do jj=-1,1
               do ii=-1,1
                 fc = psi(i+ii,j+jj,k+kk)
-                if(fc > f_eps .and. fc < 1._rp-f_eps .and. kappa(i+ii,j+jj,k+kk) /= kappa_undef) then
+                if(fc > psi_eps .and. fc < 1._rp-psi_eps .and. kappa(i+ii,j+jj,k+kk) /= kappa_undef) then
                   ksum = ksum + kappa(i+ii,j+jj,k+kk)
                   kcnt = kcnt + 1._rp
                 end if
@@ -1498,7 +1498,7 @@ module mod_vof_split
         do j=1,n(2)
           do i=1,n(1)
             fc = psi(i,j,k)
-            if(.not.(fc > f_eps .and. fc < 1._rp-f_eps)) then
+            if(.not.(fc > psi_eps .and. fc < 1._rp-psi_eps)) then
               ksum = 0._rp
               kcnt = 0._rp
               do q=1,6
@@ -1506,7 +1506,7 @@ module mod_vof_split
                 jj = merge(merge(-1,1,q == 3),0,q == 3 .or. q == 4)
                 kk = merge(merge(-1,1,q == 5),0,q >= 5)
                 fc = psi(i+ii,j+jj,k+kk)
-                if(fc > f_eps .and. fc < 1._rp-f_eps) then
+                if(fc > psi_eps .and. fc < 1._rp-psi_eps) then
                   ksum = ksum + kappa(i+ii,j+jj,k+kk)
                   kcnt = kcnt + 1._rp
                 end if
