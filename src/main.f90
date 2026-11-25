@@ -41,7 +41,7 @@ program cans
   use mod_initflow           , only: initflow,initscal
   use mod_initgrid           , only: initgrid,save_grid
   use mod_initmpi            , only: initmpi
-  use mod_impdiff            , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing, &
+  use mod_impdiff            , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_updt_forcing, &
                                      impdiff_cc_mom_updt,impdiff_cc_scal_updt
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff            , only: impdiff_vc_mom_updt,impdiff_vc_mom_solve,impdiff_vc_scal_updt,impdiff_vc_scal_solve
@@ -887,7 +887,7 @@ program cans
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
               psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
-              uadv,vadv,wadv,fsx,fsy,fsz,mfields)
+              wall_force_imp,uadv,vadv,wadv,fsx,fsy,fsz,mfields)
       if(is_forced_hit) then
         call lscale_forcing(forced_hit_type,lo,hi,nh_v,nh_g,forced_hit_amp,dtrk,l,dl,zc,u,v,w)
       end if
@@ -898,11 +898,9 @@ program cans
         if(any(is_forced(:))) then
           !
           ! zero-net-acceleration forcing: the wall shear of the terms integrated implicitly is balanced
-          ! here, first with its value at the old time level, before the solve
+          ! here, first with its value at the old time level (returned by `tm`), before the solve
           !
           call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum_o)
-          call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &
-                                  wall_force_imp,momentum)
           wall_force_imp(:) = wall_force_imp(:)*dtrk
           call impdiff_updt_forcing(n,nh_v,nh_psi,nh_g,wzc,rho12,psi,wall_force_imp,u,v,w)
         end if
