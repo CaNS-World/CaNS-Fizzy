@@ -111,6 +111,7 @@ program cans
   real(rp), target, allocatable, dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko,dpsidtrko
   real(rp), target, allocatable, dimension(:,:,:) :: uo,vo,wo ! previous velocity (direction-split advection)
   real(rp), dimension(3) :: wall_force_old
+  logical , dimension(3) :: is_velf ! direction whose initial mean velocity is set from `velf` (see `initflow`)
   logical :: is_first
   real(rp), dimension(3) :: rho_av
   logical , dimension(3) :: is_cmpt_rho_av
@@ -642,7 +643,7 @@ program cans
     istep = 0
     time = 0.
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
-                  is_forced,velf,bforce,is_wallturb,time,u,v,w,p)
+                  is_forced,velf,bforce,is_wallturb,time,u,v,w,p,is_velf)
     do iscal=1,nscal
       call initscal(iniscal(iscal),bcscal(:,:,iscal),ng,lo,nh_s,nh_g,l,dl,zc,dzf,is_sforced(iscal),scalf(iscal), &
                     scalars(iscal)%val)
@@ -756,12 +757,16 @@ program cans
     !$acc enter data create(phi) async(1)
   end if
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
-  if(.not.restart .and. any(is_forced(:))) then
-    !
-    ! bulk velocity of the initial condition along a forced direction, before the interface method uses the velocity
-    !
-    call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
-    call set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_forced,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
+  if(.not.restart .and. is_solve_ns) then
+    if(any(is_velf(:))) then
+      !
+      ! bulk velocity of the initial condition along a forced direction, before the interface method uses the
+      ! velocity (not with a prescribed velocity field, which stays the one of `initflow`, as at every time step)
+      !
+      call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
+      call set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_velf,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
+    end if
   end if
   call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   if(nmk > 0) then
@@ -924,7 +929,7 @@ program cans
     end do
     if(.not.is_solve_ns) then
       call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
-                    is_forced,velf,bforce,is_wallturb,time,u,v,w,p)
+                    is_forced,velf,bforce,is_wallturb,time,u,v,w,p,is_velf)
       !$acc wait(1)
       !$acc update device(u,v,w,p) async(1)
       call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
