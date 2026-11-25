@@ -6,9 +6,9 @@
 ! -
 module mod_acdi
   use mpi
-  use mod_common_mpi, only:ierr
+  use mod_common_mpi, only: ierr
+  use mod_param     , only: eps,is_sdf_normals
   use mod_types
-  use mod_param , only: eps,is_sdf_normals
   implicit none
   private
   public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi
@@ -18,10 +18,10 @@ module mod_acdi
     ! computes the acdi epsilon parameter
     !
     implicit none
-    real(rp), intent(in), dimension(3) :: dl
-    integer , intent(in) :: nh_g
-    real(rp), intent(in), dimension(1-nh_g:) :: dzfi
-    real(rp), intent(in)  :: seps_factor
+    real(rp), intent(in ), dimension(3) :: dl
+    integer , intent(in ) :: nh_g
+    real(rp), intent(in ), dimension(1-nh_g:) :: dzfi
+    real(rp), intent(in )  :: seps_factor
     real(rp), intent(out) :: seps
     real(rp), save :: dlmax
     !
@@ -35,10 +35,10 @@ module mod_acdi
     ! computes the acdi gamma parameter
     !
     implicit none
-    integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_v
-    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in) :: gam_factor
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in ) :: nh_v
+    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in ) :: gam_factor
     real(rp), intent(out) :: gam
     real(rp) :: uc,vc,wc,vel,velmax
     integer :: i,j,k
@@ -70,7 +70,7 @@ module mod_acdi
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzci,dzfi
     real(rp), intent(in   )                      :: gam,seps
@@ -270,7 +270,7 @@ module mod_acdi
     !
     implicit none
     integer , intent(in ), dimension(3)           :: n
-    integer , intent(in) :: nh_psi,nh_ifc
+    integer , intent(in ) :: nh_psi,nh_ifc
     real(rp), intent(in )                         :: seps
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
     real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: phi
@@ -289,7 +289,6 @@ module mod_acdi
   end subroutine acdi_cmpt_phi
   !
   pure elemental real(rp) function acdi_phi(psi,seps) result(phi)
-    use mod_param, only:eps
     !$acc routine seq
     !
     ! computes the signed-distance field phi from the smoothed volume fraction field psi

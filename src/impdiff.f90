@@ -6,15 +6,24 @@
 ! -
 module mod_impdiff
   !
-  ! implicit integration of the diffusion along z (`is_impdiff_1d = T`)
+  ! implicit integration of the diffusion terms (Crank-Nicolson), in three variants:
   !
-  ! the part of the viscous term that is integrated implicitly is the diffusion of each velocity component
-  ! along z due to its own gradient,
-  !   d/dz(mu du/dz), d/dz(mu dv/dz) and d/dz(2 mu dw/dz),
-  ! with the local viscosity and density, i.e., one tridiagonal system with variable coefficients per line
-  ! along z; the remaining viscous terms are integrated explicitly; likewise for the scalar, d/dz(ka ds/dz)
+  ! - along z (`is_impdiff_1d = T`, routines `impdiff_z_*`): the part of the viscous term that is integrated
+  !   implicitly is the diffusion of each velocity component along z due to its own gradient,
+  !     d/dz(mu du/dz), d/dz(mu dv/dz) and d/dz(2 mu dw/dz),
+  !   with the local viscosity and density, i.e., one tridiagonal system with variable coefficients per line
+  !   along z; the remaining viscous terms are integrated explicitly; likewise for the scalar, d/dz(ka ds/dz)
+  ! - in all directions with constant coefficients (`is_impdiff = T` with the FFT-based pressure solver, routines
+  !   `impdiff_cc_*`): the Laplacian of each velocity component, and of the scalar, times a reference diffusivity,
+  !   solved with the Helmholtz solver of CaNS; the remainder of the diffusion terms is integrated explicitly
+  ! - in all directions with variable coefficients (`is_impdiff = T` with the HYPRE solver, routines `impdiff_vc_*`):
+  !   the diffusion of each velocity component due to its own gradient, and that of the scalar, with the local
+  !   properties
+  !
+  ! the viscosity limiter (`is_visc_limiter`) only acts on the terms that are integrated explicitly
   !
   use mpi
+  use mod_param    , only: is_impdiff_1d,is_harmonic_interpolation
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_solver_vc, only: solver_vc_helmholtz
 #endif
@@ -33,17 +42,18 @@ module mod_impdiff
   contains
   subroutine impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudt,dvdt,dwdt)
     !
-    ! computes the terms that are integrated implicitly, discretized exactly as in `mom_xyz_ad`,
+    ! computes the terms that are integrated implicitly, discretized as in `mom_xyz_ad` (without its viscosity
+    ! limiter),
     ! takes them out of the terms that are integrated explicitly (`dudt`, `dvdt`, `dwdt`),
     ! and keeps them for the explicit half of the Crank-Nicolson scheme (see `impdiff_z_mom_solve`)
     !
     implicit none
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in )               :: nh_v,nh_psi,nh_g
-    real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi
-    real(rp), intent(in ), dimension(2) :: mu12
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(2) :: mu12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(inout), dimension(:,:,:) :: dudt,dvdt,dwdt
     real(rp) :: mu,dmu,muzp,muzm
     logical  :: is_harm
@@ -89,7 +99,7 @@ module mod_impdiff
     implicit none
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_v,nh_psi,nh_g
-    character(len=1), intent(in), dimension(0:1,3,3) :: cbc
+    character(len=1), intent(in   ), dimension(0:1,3,3) :: cbc
     real(rp), intent(in   ), dimension(0:1,3,3)      :: bc
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
@@ -252,7 +262,7 @@ module mod_impdiff
     ! variable-coefficient implicit diffusion in all directions: the terms that are integrated implicitly
     ! are the diffusion of each velocity component due to its own gradient,
     !   div(mu grad u_q) + d/dx_q(mu du_q/dx_q),
-    ! discretized exactly as in `mom_xyz_ad`; they are computed here, taken out of the terms that are
+    ! discretized as in `mom_xyz_ad` (without its viscosity limiter); they are computed here, taken out of the terms that are
     ! integrated explicitly, and kept for the explicit half of the Crank-Nicolson scheme
     ! (see `impdiff_vc_mom_updt`)
     !
@@ -395,8 +405,8 @@ module mod_impdiff
     implicit none
     integer , intent(in   ), dimension(3) :: ng,lo,hi,n
     integer , intent(in   )               :: nh_v,nh_psi,nh_g
-    character(len=1), intent(in), dimension(0:1,3,3) :: cbc
-    character(len=1), intent(in), dimension(0:1,3)   :: cbcpre
+    character(len=1), intent(in   ), dimension(0:1,3,3) :: cbc
+    character(len=1), intent(in   ), dimension(0:1,3)   :: cbcpre
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
@@ -522,7 +532,7 @@ module mod_impdiff
     implicit none
     integer , intent(in   ), dimension(3) :: ng,lo,hi,n
     integer , intent(in   )               :: nh_s,nh_psi,nh_g
-    character(len=1), intent(in), dimension(0:1,3) :: cbc,cbcpre
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbc,cbcpre
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
@@ -566,7 +576,7 @@ module mod_impdiff
     implicit none
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_psi,nh_g,iq
-    character(len=1), intent(in), dimension(0:1,3) :: cbc
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbc
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
@@ -677,7 +687,6 @@ module mod_impdiff
     ! are per unit mass, and `dwall_force_old` is the change of the force of the previous step due to the
     ! update of its density (zero otherwise)
     !
-    use mod_param, only: is_impdiff_1d
     implicit none
     integer , intent(in ), dimension(3) :: n
     integer , intent(in )               :: nh_psi,nh_g
@@ -779,12 +788,12 @@ module mod_impdiff
     ! of the Crank-Nicolson scheme (see `impdiff_z_scal_solve`)
     !
     implicit none
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in )               :: nh_s,nh_psi,nh_g
-    real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi
-    real(rp), intent(in ), dimension(2) :: ka12
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_s,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(2) :: ka12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
     real(rp), intent(inout), dimension(:,:,:) :: dsdt
     real(rp) :: ka,dka,kazp,kazm
     logical  :: is_harm
@@ -818,7 +827,7 @@ module mod_impdiff
     implicit none
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_s,nh_psi,nh_g
-    character(len=1), intent(in), dimension(0:1,3) :: cbc
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbc
     real(rp), intent(in   ), dimension(0:1,3)      :: bc
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzci,dzfi
     real(rp), intent(in   )               :: theta
@@ -843,7 +852,7 @@ module mod_impdiff
     implicit none
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh,nh_psi,nh_g,di,dj
-    character(len=1), intent(in), dimension(0:1) :: cbc
+    character(len=1), intent(in   ), dimension(0:1) :: cbc
     real(rp), intent(in   ), dimension(0:1)      :: bc
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzci,dzfi
     real(rp), intent(in   )               :: theta
@@ -927,7 +936,7 @@ module mod_impdiff
     implicit none
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh,nh_psi,nh_g
-    character(len=1), intent(in), dimension(0:1) :: cbc
+    character(len=1), intent(in   ), dimension(0:1) :: cbc
     real(rp), intent(in   ), dimension(0:1)      :: bc
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzf,dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
@@ -1016,7 +1025,6 @@ module mod_impdiff
   end subroutine bc_ghost
   !
   subroutine visc_coeffs(mu12,mu,dmu,is_harm)
-    use mod_param, only: is_harmonic_interpolation
     !
     ! coefficients of the interpolation of the viscosity between the two fluids (see `visc`),
     ! and whether it is harmonic

@@ -16,8 +16,8 @@ module mod_interface_capturing
   !   ifc_init_field    -> initial phase indicator
   !   ifc_init          -> initialization from the initial (or loaded) phase indicator
   !   ifc_advance       -> one time step of the phase indicator, returning the (volumetric) phase fluxes
-  !                        used for the mass-consistent transport of momentum and scalars, and, for the
-  !                        geometric volume-of-fluid method, the advecting velocity of the time step
+  !                        used for the mass-consistent transport of momentum and scalars, and, with the
+  !                        direction-split advection, the advecting velocity of the time step
   !                        (ifc_advecting_velocity returns the latter when the interface is not tracked)
   !   ifc_update_params -> update of the method parameters after each time step
   !   ifc_write_log     -> log file of the method
@@ -36,16 +36,15 @@ module mod_interface_capturing
   use mod_output    , only: out0d
   use mod_two_fluid , only: init2fl,init2fl_sharp,cmpt_norm_curv => cmpt_norm_curv_youngs
   use mod_rk        , only: rk_2fl
-  use mod_acdi      , only: acdi_set_epsilon
-  use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
+  use mod_acdi      , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
   use mod_scal      , only: scalar
   use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_contact_angle, &
                             vof_split_diagnostics,vof_split_curvature_reset,vof_marker,markers_sum
   use mod_thinc     , only: thinc_cmpt_phi
   implicit none
   private
-  public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity,ifc_update_params,ifc_write_log
-  public marker,ifc_markers_init,ifc_markers_advance,ifc_markers_force
+  public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity,ifc_update_params,ifc_write_log, &
+         marker,ifc_markers_init,ifc_markers_advance,ifc_markers_force
   !
   ! several markers: the dispersed phase (drops or bubbles) is distributed over phase indicators that are
   ! advanced separately, each as the phase indicator of a run with its drops only, such that interfaces of
@@ -56,7 +55,7 @@ module mod_interface_capturing
     real(rp), allocatable, dimension(:,:,:) :: psi,dpsidtrko,kappa,normx,normy,normz,phi
   end type marker
   real(rp), allocatable, dimension(:,:,:) :: wflx_x,wflx_y,wflx_z ! phase fluxes of one marker
-  real(rp) :: vol0 ! initial volume of phase 1 (geometric volume-of-fluid method)
+  real(rp) :: vol0 ! initial volume of phase 1 (direction-split advection)
   contains
   subroutine ifc_init_params(dl,nh_g,dzfi,psi_thickness_factor,seps)
     !
@@ -78,7 +77,7 @@ module mod_interface_capturing
     ! of that marker alone
     !
     implicit none
-    character(len=*), intent(in) :: inipsi
+    character(len=*), intent(in ) :: inipsi
     real(rp), intent(in ) :: seps
     integer , intent(in ), dimension(3)        :: lo,hi
     integer , intent(in )                      :: nh_psi,nh_g
@@ -153,8 +152,8 @@ module mod_interface_capturing
                          istep,uo,vo,wo,uadv,vadv,wadv,scalars)
     !
     ! advances the phase indicator over one time step, returns the phase fluxes (with their boundary
-    ! conditions), and updates the interface normals and curvature; with the geometric volume-of-fluid
-    ! method and `is_vof_sweep_transport`, the velocity (and the scalars) is transported along with the
+    ! conditions), and updates the interface normals and curvature; with the direction-split
+    ! advection and `is_vof_sweep_transport`, the velocity (and the scalars) is transported along with the
     ! phase indicator, and returned in uadv, vadv, wadv (and in `sadv` of each scalar) instead of the advecting
     ! velocity
     !
@@ -210,7 +209,7 @@ module mod_interface_capturing
     integer , intent(in   ) :: istep
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: uo,vo,wo,uadv,vadv,wadv
     type(scalar), intent(inout), dimension(:), optional :: scalars
-    type(vof_marker), intent(in), dimension(:), optional :: psi_m
+    type(vof_marker), intent(in   ), dimension(:), optional :: psi_m
     integer , intent(in   ), optional :: nm_off
     real(rp), dimension(2,max(nscal,1)) :: rhocp12
     integer :: is
@@ -369,7 +368,7 @@ module mod_interface_capturing
     integer , intent(in   )               :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
-    type(marker), intent(in), dimension(:) :: markers
+    type(marker), intent(in   ), dimension(:) :: markers
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(:,:,:) :: fsx,fsy,fsz
     integer :: m

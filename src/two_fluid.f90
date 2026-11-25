@@ -6,7 +6,9 @@
 ! -
 module mod_two_fluid
   use mpi
-  use mod_param, only: pi,is_contact_angle
+  use mod_common_mpi, only: myid
+  use mod_param     , only: pi,is_contact_angle,nmarker
+  use mod_plic      , only: plic_volume
   use mod_types
   implicit none
   private
@@ -63,8 +65,12 @@ module mod_two_fluid
     rmin = minmax(1); rmax = minmax(2)
     !
     !$acc parallel loop collapse(3) default(present) firstprivate(rmin,rmax) async(1)
-    do concurrent(k=1-nh3:n3+nh3,j=1-nh2:n2+nh2,i=1-nh1:n1+nh1)
-      p(i,j,k) = min(max(rmin,p(i,j,k)),rmax)
+    do k=1-nh3,n3+nh3
+      do j=1-nh2,n2+nh2
+        do i=1-nh1,n1+nh1
+          p(i,j,k) = min(max(rmin,p(i,j,k)),rmax)
+        end do
+      end do
     end do
   end subroutine clip_field
   !
@@ -72,15 +78,13 @@ module mod_two_fluid
     !
     ! compute the mean value of an observable over the entire domain
     !
-    use mpi
-    use mod_types
     implicit none
-    integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_g
-    integer , intent(in)               :: idir
-    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio,wzc
-    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in), dimension(2)        :: p12
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in ) :: nh_psi,nh_g
+    integer , intent(in )               :: idir
+    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio,wzc
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(2)        :: p12
     real(rp), intent(out) :: mean
     real(rp) :: psi_loc
     integer  :: i,j,k
@@ -159,7 +163,7 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
+    integer , intent(in ) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
@@ -295,21 +299,20 @@ module mod_two_fluid
   end subroutine cmpt_norm_curv_youngs
   !
   subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi,imarker)
-    use mod_common_mpi, only: myid
     !
     ! computes initial conditions for the volume fraction field psi; with `imarker`, only the spheres of that
     ! marker are initialized (none, if the file holds no sphere of that marker)
     !
     implicit none
-    character(len=*), intent(in) :: inipsi
-    character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
-    real(rp), intent(in)                :: seps
-    integer , intent(in), dimension(3)  :: lo,hi
-    integer , intent(in) :: nh_psi,nh_g
-    real(rp), intent(in), dimension(3)  :: l,dl
-    real(rp), intent(in), dimension(1-nh_g:) :: zc_g
-    real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
-    integer , intent(in), optional :: imarker
+    character(len=*), intent(in ) :: inipsi
+    character(len=*), intent(in ), dimension(0:1,3) :: cbcpsi
+    real(rp), intent(in )                :: seps
+    integer , intent(in ), dimension(3)  :: lo,hi
+    integer , intent(in ) :: nh_psi,nh_g
+    real(rp), intent(in ), dimension(3)  :: l,dl
+    real(rp), intent(in ), dimension(1-nh_g:) :: zc_g
+    real(rp), intent(out), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
+    integer , intent(in ), optional :: imarker
     integer  :: i,j,k,ii,jj,kk,q
     real(rp) :: x,y,z,xx,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
@@ -464,7 +467,7 @@ module mod_two_fluid
     !
     if(is_sphere) then
       if(nspheres == 0 .and. .not.present(imarker)) then
-        if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
+        if(myid == 0) print*, 'Warning: `spheres.in` file not found.'
         if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
         nspheres = nspheres + 1
         allocate(spheres(nspheres))
@@ -510,8 +513,6 @@ module mod_two_fluid
   end subroutine init2fl
   !
   subroutine init2fl_sharp(inipsi,cbcpsi,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi,imarker)
-    use mod_common_mpi, only: myid
-    use mod_plic      , only: plic_volume
     !
     ! computes a sharp initial condition for the volume fraction field psi, i.e., the exact volume
     ! fraction of phase 1 in each cell, for the same initial geometries as in `init2fl`; the interface
@@ -521,14 +522,14 @@ module mod_two_fluid
     !
     implicit none
     integer, parameter :: maxlevel = 5
-    character(len=*), intent(in) :: inipsi
-    character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
-    integer , intent(in), dimension(3)  :: lo,hi
-    integer , intent(in) :: nh_psi,nh_g
-    real(rp), intent(in), dimension(3)  :: l,dl
-    real(rp), intent(in), dimension(1-nh_g:) :: zc_g,dzf_g
-    real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
-    integer , intent(in), optional :: imarker
+    character(len=*), intent(in ) :: inipsi
+    character(len=*), intent(in ), dimension(0:1,3) :: cbcpsi
+    integer , intent(in ), dimension(3)  :: lo,hi
+    integer , intent(in ) :: nh_psi,nh_g
+    real(rp), intent(in ), dimension(3)  :: l,dl
+    real(rp), intent(in ), dimension(1-nh_g:) :: zc_g,dzf_g
+    real(rp), intent(out), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
+    integer , intent(in ), optional :: imarker
     type(sphere), allocatable, dimension(:) :: spheres
     integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
@@ -587,7 +588,7 @@ module mod_two_fluid
       is_swap_pf = ini(1:3) == 'drp' .or. ini(1:3) == 'dis'
       call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       if(nspheres == 0 .and. .not.present(imarker)) then
-        if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
+        if(myid == 0) print*, 'Warning: `spheres.in` file not found.'
         if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
         nspheres = 1
         allocate(spheres(nspheres))
@@ -710,10 +711,8 @@ module mod_two_fluid
     ! only the spheres of that marker are returned, and the file must exist and hold markers between 1 and
     ! `nmarker` only; blank lines are skipped
     !
-    use mod_common_mpi, only: myid
-    use mod_param     , only: nmarker
     implicit none
-    character(len=*), intent(in) :: fname
+    character(len=*), intent(in ) :: fname
     type(sphere), allocatable, intent(out), dimension(:) :: spheres
     integer, intent(out) :: nspheres
     integer, intent(in ), optional :: imarker
@@ -781,7 +780,6 @@ module mod_two_fluid
   end subroutine read_sphere_file
   !
   pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
-    use mod_param, only:pi
     !$acc routine seq
     !
     ! smooth step function based on trigonometric functions
@@ -837,7 +835,6 @@ module mod_two_fluid
   end function smooth_sign
   !
   pure elemental real(rp) function smooth_impulse(r,eps) result(res)
-    use mod_param, only:pi
     !$acc routine seq
     !
     ! smooth impulse Dirac delta function using trigonometric functions

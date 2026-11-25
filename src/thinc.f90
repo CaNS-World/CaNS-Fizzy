@@ -58,7 +58,7 @@ module mod_thinc
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzfi
     real(rp), intent(in   )                      :: beta
@@ -166,7 +166,7 @@ module mod_thinc
     !
     implicit none
     integer , intent(in ), dimension(3)        :: n
-    integer , intent(in) :: nh_psi,nh_ifc
+    integer , intent(in ) :: nh_psi,nh_ifc
     real(rp), intent(in )                      :: beta
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: phi
@@ -195,7 +195,7 @@ module mod_thinc
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzfi
     real(rp), intent(in   )                      :: vofmin,beta

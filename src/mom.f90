@@ -11,9 +11,10 @@ module mod_mom
   use mod_types
   implicit none
   private
-  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum,cmpt_capillary_force
+  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum, &
+         cmpt_capillary_force,marker_fields
   !
-  type, public :: marker_fields
+  type :: marker_fields
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null(),kappa => null() ! phase indicator and curvature of a
                                                                                      ! marker (see `rk`)
   end type marker_fields

@@ -47,9 +47,9 @@ module mod_vof_split
   implicit none
   private
   public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_curvature_reset, &
-         vof_split_diagnostics,vof_split_contact_angle,markers_sum
+         vof_split_diagnostics,vof_split_contact_angle,markers_sum,vof_marker
   !
-  type, public :: vof_marker
+  type :: vof_marker
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null() ! volume fraction of a marker (see `vof_split_advance`)
   end type vof_marker
   !
@@ -248,7 +248,7 @@ module mod_vof_split
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
     real(rp), intent(in   ) :: dt,dto
-    character(len=1), intent(in), dimension(0:1,3) :: cbcpsi
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbcpsi
     real(rp), intent(in   ), dimension(0:1,3) :: bcpsi
     integer , intent(in   ), dimension(0:1,3) :: nb
     logical , intent(in   ), dimension(0:1,3) :: is_bound
@@ -259,7 +259,7 @@ module mod_vof_split
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: uo,vo,wo,ua,va,wa
     type(scalar), intent(inout), dimension(:), optional :: scalars
-    type(vof_marker), intent(in), dimension(:), optional :: psi_m
+    type(vof_marker), intent(in   ), dimension(:), optional :: psi_m
     integer , intent(in   ), optional :: nm_off
     character(len=1), dimension(0:1,3) :: cbc_tr
     logical , dimension(0:1,3) :: is_bound_tr,is_bound_phys
@@ -959,20 +959,20 @@ module mod_vof_split
     ! is kept
     !
     implicit none
-    integer , intent(in ) :: idir
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in )               :: nh_v,nh_s,nh_psi,nh_g
-    real(rp), intent(in ), dimension(3) :: dl
-    real(rp), intent(in ), dimension(1-nh_g:) :: dzf,dzci,dzfi,wzc
-    real(rp), intent(in ) :: dt,tc
-    real(rp), intent(in ), dimension(2) :: rho12,rhocp12
-    logical , intent(in ), dimension(0:1,3) :: is_bound_phys
-    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel,u,v,w
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    integer , intent(in ) :: iq_lo,iq_hi
+    integer , intent(in   ) :: idir
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_s,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzf,dzci,dzfi,wzc
+    real(rp), intent(in   ) :: dt,tc
+    real(rp), intent(in   ), dimension(2) :: rho12,rhocp12
+    logical , intent(in   ), dimension(0:1,3) :: is_bound_phys
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel,u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    integer , intent(in   ) :: iq_lo,iq_hi
     real(rp), intent(inout), dimension(1-nh_mom:,1-nh_mom:,1-nh_mom:) :: sbq
     real(rp), intent(in   ), dimension(0:,0:,0:) :: asq
-    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
     real(rp) :: c2,dc,c2m,dcm,c2s,dcs,dl_d,dli_d,w1,w2,w1d,rext,ext_d,mf,mass,dil1,dil1m,dil1s,dil2,rh1,rh2, &
                 rho_o,rho_n,qm,q0,qp,qa,qn
     integer  :: i,j,k,iq,di,dj,dk,qi,qj,qk,off,id,jd,kd,dd,nd,n1,n2,n3
@@ -1197,7 +1197,7 @@ module mod_vof_split
     integer , intent(in   )               :: nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf
-    character(len=1), intent(in), dimension(0:1,3) :: cbcpsi
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbcpsi
     real(rp), intent(in   ), dimension(0:1,3) :: bcpsi
     integer , intent(in   ), dimension(0:1,3) :: nb
     logical , intent(in   ), dimension(0:1,3) :: is_bound

@@ -5,6 +5,7 @@
 !
 ! -
 module mod_forcing
+  use mod_param, only: pi
   use mod_types
   implicit none
   private
@@ -24,15 +25,14 @@ module mod_forcing
     !
     ! with f0 = alpha*(2*pi/l(3))**2, and alpha the input `forced_hit_amp`
     !
-    use mod_param, only: pi
     implicit none
     real(rp), parameter :: a = 1._rp, b = 1._rp, c = 1._rp, k0 = 2._rp
-    character(len=*), intent(in) :: ftype
-    integer , intent(in), dimension(3) :: lo,hi
-    integer , intent(in) :: nh_v,nh_g
-    real(rp), intent(in) :: alpha,dt
-    real(rp), intent(in), dimension(3) :: l,dl
-    real(rp), intent(in), dimension(lo(3)-nh_g:) :: zc
+    character(len=*), intent(in   ) :: ftype
+    integer , intent(in   ), dimension(3) :: lo,hi
+    integer , intent(in   ) :: nh_v,nh_g
+    real(rp), intent(in   ) :: alpha,dt
+    real(rp), intent(in   ), dimension(3) :: l,dl
+    real(rp), intent(in   ), dimension(lo(3)-nh_g:) :: zc
     real(rp), intent(inout), dimension(lo(1)-nh_v:,lo(2)-nh_v:,lo(3)-nh_v:) :: u,v,w
     !
     real(rp) :: f0,factor

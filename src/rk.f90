@@ -6,15 +6,19 @@
 ! -
 #define _FAST_MOM_KERNELS
 module mod_rk
-  use mod_impdiff, only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_cc_mom_rhs,impdiff_cc_scal_rhs,impdiff_wall_force, &
-                         impdiff_updt_forcing
+  use mod_acdi     , only: acdi_transport_pf
+  use mod_impdiff  , only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_cc_mom_rhs,impdiff_cc_scal_rhs,impdiff_wall_force, &
+                           impdiff_updt_forcing
 #if !defined(_CONSTANT_COEFFS_POISSON)
-  use mod_impdiff, only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
+  use mod_impdiff  , only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
-  use mod_mom    , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum, &
-                         marker_fields
-  use mod_param  , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0, &
-                         dsigma_ds,s_ref
+  use mod_mom      , only: mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum, &
+                           marker_fields
+  use mod_param    , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0, &
+                           dsigma_ds,s_ref
+  use mod_scal     , only: scal_ad,scal_a_cons
+  use mod_thinc    , only: thinc_transport_psi
+  use mod_two_fluid, only: clip_field
   use mod_types
   implicit none
   private
@@ -47,13 +51,13 @@ module mod_rk
     ! and `mfields` points to the phase indicator and curvature of each (see `mom_xyz_marangoni`)
     !
     implicit none
-    real(rp), intent(in), dimension(2) :: rkpar
-    integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
-    logical , intent(in), dimension(0:1,3) :: is_bound
-    logical , intent(in), dimension(3) :: is_forced
-    real(rp), intent(in), dimension(3) :: l,dli
-    real(rp), intent(in) :: dt,dt_r
+    real(rp), intent(in   ), dimension(2) :: rkpar
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   ) :: nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
+    logical , intent(in   ), dimension(0:1,3) :: is_bound
+    logical , intent(in   ), dimension(3) :: is_forced
+    real(rp), intent(in   ), dimension(3) :: l,dli
+    real(rp), intent(in   ) :: dt,dt_r
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc,grid_vol_ratio_c,grid_vol_ratio_f
     real(rp), intent(in   ), dimension(3)  :: bforce,gacc
     real(rp), intent(in   )                :: sigma,rho_av(3)
@@ -78,7 +82,7 @@ module mod_rk
     real(rp), intent(out  ), dimension(3)                   :: wall_force_imp
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
     real(rp), intent(in   ), dimension(:,:,:), optional :: fsx,fsy,fsz
-    type(marker_fields), intent(in), dimension(:), optional :: mfields
+    type(marker_fields), intent(in   ), dimension(:), optional :: mfields
     real(rp), allocatable, dimension(:,:,:), save :: dudtrk,dvdtrk,dwdtrk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
@@ -261,7 +265,6 @@ module mod_rk
   !
   subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,alpha0,psi,u,v,w, &
                      psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,sadv,uadv,vadv,wadv)
-    use mod_scal, only: scal_ad,scal_a_cons
     !
     ! AB2 scheme for time integration of the scalar field
     !
@@ -274,7 +277,7 @@ module mod_rk
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   )                :: dt
@@ -387,16 +390,13 @@ module mod_rk
   !
   subroutine rk_2fl(rkpar,n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,gam,seps,beta,u,v,w,normx,normy,normz,phi,psi, &
                     psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko)
-    use mod_acdi        , only: acdi_transport_pf
-    use mod_thinc       , only: thinc_transport_psi
-    use mod_two_fluid   , only: clip_field
     !
     ! AB2 scheme for time integration of the phase field
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in   ) :: gam,seps,beta,dt
