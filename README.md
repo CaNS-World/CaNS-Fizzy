@@ -25,7 +25,7 @@ S. Popinet. *An accurate adaptive solver for surface-tension-driven interfacial 
 ### _Major Update:_ `Fizzy 2.0` _is out!_ :tada:
 See the [Release Notes](https://github.com/CaNS-World/CaNS-Fizzy/releases/tag/v2.0.0) for more details.
 
-**[xx/xx/2026]:** Fizzy has been extended with a geometric (PLIC) volume-of-fluid method, and the interface-capturing approach is now selected at run time, in one executable. The code is in sync with CaNS again, and gained implicit diffusion, static contact angles, Navier slip, Marangoni stresses, and the transport of several scalars. See the updated [`docs/INFO_INPUT.md`](docs/INFO_INPUT.md) and [`docs/INFO_COMPILING.md`](docs/INFO_COMPILING.md) for more details.
+**[xx/xx/2026]:** Fizzy has been extended with a geometric (PLIC) volume-of-fluid method, and the interface-capturing approach is now selected at run time, in one executable. The code is in sync with CaNS again, and gained, among other features, implicit diffusion, Marangoni stresses, and multiple markers for drops or bubbles that must not merge. See the updated [`docs/INFO_INPUT.md`](docs/INFO_INPUT.md) and [`docs/INFO_COMPILING.md`](docs/INFO_COMPILING.md) for more details.
 
 **[07/03/2025]:** Fizzy has been extended with a new interface-capturing approach based on the THINC/QQ volume-of-fluid method.
 
