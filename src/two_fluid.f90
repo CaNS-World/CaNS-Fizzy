@@ -709,8 +709,11 @@ module mod_two_fluid
   subroutine read_sphere_file(fname,spheres,nspheres,imarker)
     !
     ! reads the spheres of the file: centre, radius and, optionally, marker (1 if absent); with `imarker`,
-    ! only the spheres of that marker are returned
+    ! only the spheres of that marker are returned, and the file must exist and hold markers between 1 and
+    ! `nmarker` only; blank lines are skipped
     !
+    use mod_common_mpi, only: myid
+    use mod_param     , only: nmarker
     implicit none
     character(len=*), intent(in) :: fname
     type(sphere), allocatable, intent(out), dimension(:) :: spheres
@@ -719,41 +722,63 @@ module mod_two_fluid
     type(sphere), allocatable, dimension(:) :: spheres_all
     character(len=1024) :: dummy
     integer :: q,iunit,ierr
-    logical :: is_bubble_file
+    logical :: is_bubble_file,is_valid
     !
+    is_valid = .true.
     inquire(file=fname,exist=is_bubble_file)
     if(.not.is_bubble_file) then
       nspheres = 0
+      if(present(imarker)) then
+        if(myid == 0) print*, 'ERROR: several markers (`nmarker > 1`) need the file `'//trim(fname)//'`.'
+        is_valid = .false.
+      end if
     else
       open(newunit=iunit,file=fname,action='read',iostat=ierr)
-      if (ierr /= 0) then
-        error stop 'Error reading input file '//trim(fname)//'.'
+      if(ierr /= 0) then
+        if(myid == 0) print*, 'ERROR: reading the file `'//trim(fname)//'`.'
+        is_valid = .false.
       end if
-      nspheres = -1
+      nspheres = 0
       do while(ierr == 0)
-        read(iunit, '(A)', iostat=ierr) dummy
-        if(ierr > 0) then
-          error stop 'Error reading input file '//trim(fname)//'.'
-        end if
-        nspheres = nspheres + 1
+        read(iunit,'(A)',iostat=ierr) dummy
+        if(ierr == 0 .and. len_trim(dummy) > 0) nspheres = nspheres + 1
       end do
       allocate(spheres(nspheres))
-      rewind(iunit)
-      do q = 1,nspheres
+      if(is_valid) rewind(iunit)
+      q = 0
+      do while(q < nspheres .and. is_valid)
         read(iunit,'(A)') dummy
+        if(len_trim(dummy) == 0) cycle
+        q = q + 1
         read(dummy,*,iostat=ierr) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r,spheres(q)%imarker
         if(ierr /= 0) then
-          read(dummy,*) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
+          read(dummy,*,iostat=ierr) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
           spheres(q)%imarker = 1
+        end if
+        if(ierr /= 0) then
+          if(myid == 0) print*, 'ERROR: reading the file `'//trim(fname)//'`: invalid line: '//trim(dummy)
+          is_valid = .false.
         end if
       end do
       close(iunit)
-      if(present(imarker)) then
+      if(present(imarker) .and. is_valid) then
+        if(any(spheres(:)%imarker < 1 .or. spheres(:)%imarker > nmarker)) then
+          if(myid == 0) print*, 'ERROR: the markers of the spheres of `'//trim(fname)//'` (fifth column) must be &
+                                        &between 1 and `nmarker`.'
+          is_valid = .false.
+        end if
         call move_alloc(spheres,spheres_all)
         nspheres = count(spheres_all(:)%imarker == imarker)
         allocate(spheres(nspheres))
         spheres(:) = pack(spheres_all(:),spheres_all(:)%imarker == imarker)
       end if
+    end if
+    if(.not.is_valid) then
+      if(myid == 0) print*, ''
+      if(myid == 0) print*, '*** Simulation aborted due to errors in the case file ***'
+      if(myid == 0) print*, '    check INFO_INPUT.md'
+      call MPI_FINALIZE(ierr)
+      error stop
     end if
   end subroutine read_sphere_file
   !

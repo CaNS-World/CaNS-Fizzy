@@ -44,4 +44,5 @@ the tests, and what each checks:
   viscosity_limiter            : the start of the Hysing case 2 stays bounded with the geometric method
   contact_angle                : a drop with a contact angle of 60 degrees stays in equilibrium
   options                      : options that no other test selects, on a short rising bubble
+  input_checks                 : the default input file runs, and invalid inputs are rejected with a message
   single_precision             : eight short cases in single against double precision
