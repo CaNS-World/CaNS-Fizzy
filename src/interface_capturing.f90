@@ -568,9 +568,14 @@ module mod_interface_capturing
         call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa,is_bound,contact_angle)
       end if
       call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-      call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-      call boundp(cbcnor(:,:,2),n,nh_ifc,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-      call boundp(cbcnor(:,:,3),n,nh_ifc,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      if(.not.is_ifc_split) then
+        !
+        ! the halo of the normals is only read by the AB2 transport of the phase indicator
+        !
+        call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+        call boundp(cbcnor(:,:,2),n,nh_ifc,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+        call boundp(cbcnor(:,:,3),n,nh_ifc,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      end if
     end if
   end subroutine ifc_geometry
   !
