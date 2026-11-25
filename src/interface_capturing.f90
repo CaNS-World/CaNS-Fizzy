@@ -105,7 +105,8 @@ module mod_interface_capturing
     real(rp), intent(in   ) :: seps
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: normx,normy,normz ! (absent with `plic`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi ! (present with `is_sdf_normals`)
     real(rp), intent(inout) :: gam
     real(rp) :: clip,fmin,fmax,cfl(3),kstats(3)
@@ -122,13 +123,22 @@ module mod_interface_capturing
       do k=1-nh_ifc,n(3)+nh_ifc
         do j=1-nh_ifc,n(2)+nh_ifc
           do i=1-nh_ifc,n(1)+nh_ifc
-            normx(i,j,k) = 0.
-            normy(i,j,k) = 0.
-            normz(i,j,k) = 0.
             kappa(i,j,k) = 0.
           end do
         end do
       end do
+      if(.not.is_ifc_plic) then
+        !$acc parallel loop collapse(3) default(present) async(1)
+        do k=1-nh_ifc,n(3)+nh_ifc
+          do j=1-nh_ifc,n(2)+nh_ifc
+            do i=1-nh_ifc,n(1)+nh_ifc
+              normx(i,j,k) = 0.
+              normy(i,j,k) = 0.
+              normz(i,j,k) = 0.
+            end do
+          end do
+        end do
+      end if
     end if
     call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
     if(is_ifc_acdi) then
@@ -157,11 +167,12 @@ module mod_interface_capturing
     real(rp), intent(in   ) :: dt,dto,gam,seps
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: normx,normy,normz ! (absent with `plic`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi ! (present with `is_sdf_normals`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   ) :: is_first
-    real(rp), intent(inout), dimension(:,:,:) :: dpsidtrko
+    real(rp), intent(inout), dimension(:,:,:), optional :: dpsidtrko ! (present with the AB2 transport)
     integer , intent(in   ) :: istep
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
     type(scalar), intent(inout), dimension(:), optional :: scalars
@@ -537,7 +548,8 @@ module mod_interface_capturing
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: seps
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: normx,normy,normz ! (absent with `plic`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi ! (present with `is_sdf_normals`)
     character(len=1), dimension(0:1,3) :: cbc_tmp
     !
@@ -568,9 +580,14 @@ module mod_interface_capturing
         call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa,is_bound,contact_angle)
       end if
       call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-      call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-      call boundp(cbcnor(:,:,2),n,nh_ifc,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-      call boundp(cbcnor(:,:,3),n,nh_ifc,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      if(.not.is_ifc_split) then
+        !
+        ! the halo of the normals is only read by the AB2 transport of the phase indicator
+        !
+        call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+        call boundp(cbcnor(:,:,2),n,nh_ifc,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+        call boundp(cbcnor(:,:,3),n,nh_ifc,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      end if
     end if
   end subroutine ifc_geometry
   !

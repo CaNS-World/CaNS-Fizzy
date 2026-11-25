@@ -78,7 +78,7 @@ program cans
                                      read_input, &
                                      is_debug,is_debug_poisson, &
                                      is_timing, &
-                                     is_impdiff,is_impdiff_1d,is_ifc_split,is_sdf_normals,is_vof_sweep_transport, &
+                                     is_impdiff,is_impdiff_1d,is_ifc_split,is_ifc_plic,is_sdf_normals,is_vof_sweep_transport, &
                                      is_poisson_dtdma, &
                                      is_mask_divergence_check, &
                                      nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
@@ -224,8 +224,8 @@ program cans
   allocate(po,mold=pp)
   allocate(dudtrko(n(1),n(2),n(3)), &
            dvdtrko(n(1),n(2),n(3)), &
-           dwdtrko(n(1),n(2),n(3)), &
-           dpsidtrko(n(1),n(2),n(3)))
+           dwdtrko(n(1),n(2),n(3)))
+  if(.not.is_ifc_split) allocate(dpsidtrko(n(1),n(2),n(3))) ! (only the AB2 transport of the phase indicator uses it)
   !
   ! scalars (one element is allocated if there is none: `scalars(1)%val` is then not allocated, and can be
   ! passed as an absent argument)
@@ -306,13 +306,14 @@ program cans
   allocate(psi(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
   allocate(psio,mold=psi)
   allocate(kappa(1-nh_ifc:n(1)+nh_ifc,1-nh_ifc:n(2)+nh_ifc,1-nh_ifc:n(3)+nh_ifc))
-  allocate(normx,normy,normz,mold=kappa)
-  if(is_sdf_normals) allocate(phi,mold=kappa) ! (otherwise an absent argument of the routines that take it)
+  if(.not.is_ifc_plic) allocate(normx,normy,normz,mold=kappa) ! (these three are otherwise absent arguments of the
+  if(is_sdf_normals) allocate(phi,mold=kappa)                 !  routines that take them)
   allocate(markers(nmk))
   do imark=1,nmk
     allocate(markers(imark)%psi,mold=psi)
-    allocate(markers(imark)%dpsidtrko(n(1),n(2),n(3)))
-    allocate(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz,mold=kappa)
+    if(.not.is_ifc_split) allocate(markers(imark)%dpsidtrko(n(1),n(2),n(3)))
+    allocate(markers(imark)%kappa,mold=kappa)
+    if(.not.is_ifc_plic) allocate(markers(imark)%normx,markers(imark)%normy,markers(imark)%normz,mold=kappa)
     if(is_sdf_normals) allocate(markers(imark)%phi,mold=kappa)
   end do
   if(nmk > 0) then
@@ -480,7 +481,8 @@ program cans
   !
   nio_s = nio
   if(is_full_restart) then
-    nio_s = nio + 5 + nscal + nmk
+    nio_s = nio + 4 + nscal
+    if(.not.is_ifc_split) nio_s = nio_s + 1 + nmk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     nio_s = nio_s + 6
 #endif
@@ -513,18 +515,23 @@ program cans
     io_vars(is+2)%arr => dudtrko  ; c_io_vars(is+2) = 'dudtrko'
     io_vars(is+3)%arr => dvdtrko  ; c_io_vars(is+3) = 'dvdtrko'
     io_vars(is+4)%arr => dwdtrko  ; c_io_vars(is+4) = 'dwdtrko'
-    io_vars(is+5)%arr => dpsidtrko; c_io_vars(is+5) = 'dpsidtrko'
-    is = is + 5
+    is = is + 4
+    if(.not.is_ifc_split) then
+      io_vars(is+1)%arr => dpsidtrko; c_io_vars(is+1) = 'dpsidtrko'
+      is = is + 1
+    end if
     do iscal=1,nscal
       write(scalnum,'(i3.3)') iscal
       io_vars(is+1)%arr => scalars(iscal)%dsdtrko; c_io_vars(is+1) = 'dsdtrko_'//scalnum
       is = is + 1
     end do
-    do imark=1,nmk
-      write(marknum,'(i3.3)') imark
-      io_vars(is+1)%arr => markers(imark)%dpsidtrko; c_io_vars(is+1) = 'dpsidtrko_'//marknum
-      is = is + 1
-    end do
+    if(.not.is_ifc_split) then
+      do imark=1,nmk
+        write(marknum,'(i3.3)') imark
+        io_vars(is+1)%arr => markers(imark)%dpsidtrko; c_io_vars(is+1) = 'dpsidtrko_'//marknum
+        is = is + 1
+      end do
+    end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     io_vars(is+1)%arr => surfx_n; c_io_vars(is+1) = 'surfx_n'
     io_vars(is+2)%arr => surfy_n; c_io_vars(is+2) = 'surfy_n'
@@ -577,7 +584,7 @@ program cans
   dudtrko(:,:,:) = 0.
   dvdtrko(:,:,:) = 0.
   dwdtrko(:,:,:) = 0.
-  dpsidtrko(:,:,:) = 0.
+  if(.not.is_ifc_split) dpsidtrko(:,:,:) = 0.
   do iscal=1,nscal
     scalars(iscal)%dsdtrko(:,:,:) = 0.
   end do
@@ -601,18 +608,22 @@ program cans
   psi(:,:,:) = 0.
   do imark=1,nmk
     markers(imark)%psi(:,:,:) = 0.
-    markers(imark)%dpsidtrko(:,:,:) = 0.
+    if(.not.is_ifc_split) markers(imark)%dpsidtrko(:,:,:) = 0.
     markers(imark)%kappa(:,:,:) = 0.
-    markers(imark)%normx(:,:,:) = 0.
-    markers(imark)%normy(:,:,:) = 0.
-    markers(imark)%normz(:,:,:) = 0.
+    if(.not.is_ifc_plic) then
+      markers(imark)%normx(:,:,:) = 0.
+      markers(imark)%normy(:,:,:) = 0.
+      markers(imark)%normz(:,:,:) = 0.
+    end if
     if(is_sdf_normals) markers(imark)%phi(:,:,:) = 0.
   end do
   psio(:,:,:) = 0.
   kappa(:,:,:) = 0.
-  normx(:,:,:) = 0.
-  normy(:,:,:) = 0.
-  normz(:,:,:) = 0.
+  if(.not.is_ifc_plic) then
+    normx(:,:,:) = 0.
+    normy(:,:,:) = 0.
+    normz(:,:,:) = 0.
+  end if
   if(is_sdf_normals) phi(:,:,:) = 0.
   psiflx_x(:,:,:) = 0.
   psiflx_y(:,:,:) = 0.
@@ -677,7 +688,10 @@ program cans
     end if
   end if
   !$acc enter data copyin(u,v,w,p,pp,po)
-  !$acc enter data copyin(dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+  !$acc enter data copyin(dudtrko,dvdtrko,dwdtrko)
+  if(.not.is_ifc_split) then
+    !$acc enter data copyin(dpsidtrko)
+  end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
 #endif
@@ -722,7 +736,10 @@ program cans
       end if
     end if
   end do
-  !$acc enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
+  !$acc enter data copyin(psi) create(kappa) async(1)
+  if(.not.is_ifc_plic) then
+    !$acc enter data create(normx,normy,normz) async(1)
+  end if
   if(is_sdf_normals) then
     !$acc enter data create(phi) async(1)
   end if
@@ -731,8 +748,13 @@ program cans
   if(nmk > 0) then
     !$acc enter data copyin(markers(:))
     do imark=1,nmk
-      !$acc enter data copyin(markers(imark)%psi,markers(imark)%dpsidtrko) async(1)
-      !$acc enter data create(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
+      !$acc enter data copyin(markers(imark)%psi) create(markers(imark)%kappa) async(1)
+      if(.not.is_ifc_split) then
+        !$acc enter data copyin(markers(imark)%dpsidtrko) async(1)
+      end if
+      if(.not.is_ifc_plic) then
+        !$acc enter data create(markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
+      end if
       if(is_sdf_normals) then
         !$acc enter data create(markers(imark)%phi) async(1)
       end if
@@ -1093,10 +1115,13 @@ program cans
         !$acc update self(scalars(iscal)%val)
       end do
       if(is_full_restart) then
-        !$acc update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
-        do imark=1,nmk
-          !$acc update self(markers(imark)%dpsidtrko)
-        end do
+        !$acc update self(po,dudtrko,dvdtrko,dwdtrko)
+        if(.not.is_ifc_split) then
+          !$acc update self(dpsidtrko)
+          do imark=1,nmk
+            !$acc update self(markers(imark)%dpsidtrko)
+          end do
+        end if
         do iscal=1,nscal
           !$acc update self(scalars(iscal)%dsdtrko)
         end do
