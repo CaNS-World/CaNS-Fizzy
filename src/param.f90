@@ -62,6 +62,7 @@ real(rp)        , protected, dimension(0:1,3)   ::   bcpre
 !
 real(rp), protected, dimension(3) :: bforce
 logical , protected, dimension(3) :: is_forced
+real(rp), protected, dimension(3) :: velf ! bulk (mass-averaged) velocity of the initial condition along a forced direction
 !
 real(rp), protected, dimension(3) :: dl,dli
 !
@@ -73,6 +74,8 @@ character(len=100), protected, allocatable, dimension(:)     :: iniscal
 character(len=1)  , protected, allocatable, dimension(:,:,:) :: cbcscal ! size (0:1,3,nscal)
 real(rp)          , protected, allocatable, dimension(:,:,:) ::  bcscal ! size (0:1,3,nscal)
 real(rp), protected, allocatable, dimension(:) :: ssource
+logical , protected, allocatable, dimension(:) :: is_sforced ! zero-net-heating forcing of each scalar
+real(rp), protected, allocatable, dimension(:) :: scalf      ! reference value of the initial scalar field, if forced
 logical , protected :: is_boussinesq_buoyancy = .false.
 !
 ! two-fluid input parameters
@@ -199,7 +202,7 @@ contains
                   cbcvel,cbcpre,bcvel,bcpre, &
                   slip_length, &
                   bforce, &
-                  is_forced, &
+                  is_forced,velf, &
                   gacc, &
                   nscal, &
                   dims,ipencil_axis
@@ -216,6 +219,7 @@ contains
                      iniscal, &
                      cbcscal,bcscal, &
                      ssource, &
+                     is_sforced,scalf, &
                      is_boussinesq_buoyancy
     namelist /two_fluid/ &
                         inipsi, &
@@ -259,7 +263,7 @@ contains
     tout0d = 0.; tout1d = 0.; tout2d = 0.; tout3d = 0.; tsave = 0.
     cbcvel(:,:,:) = 'P'; cbcpre(:,:) = 'P'; bcvel(:,:,:) = 0.; bcpre(:,:) = 0.
     slip_length(:,:) = 0.
-    bforce(:) = 0.; is_forced(:) = .false.
+    bforce(:) = 0.; is_forced(:) = .false.; velf(:) = 1.
     gacc(:) = 0.
     nscal = 0
     dims(:) = 0
@@ -414,7 +418,7 @@ contains
         !
         allocate(iniscal(nscal), &
                  cbcscal(0:1,3,nscal),bcscal(0:1,3,nscal), &
-                 ssource(nscal))
+                 ssource(nscal),is_sforced(nscal),scalf(nscal))
         !
         ! set default values
         !
@@ -422,6 +426,8 @@ contains
         cbcscal(:,:,:) = 'P'
         bcscal(:,:,:)  = 0.
         ssource(:)     = 0.
+        is_sforced(:)  = .false.
+        scalf(:)       = 0.
         !
         ! read `scalar` namelist
         !

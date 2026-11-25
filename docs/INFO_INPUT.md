@@ -24,6 +24,7 @@ The files that a run writes are listed [below](#about-the-output-files). Where t
 | make the surface tension vary with the temperature | [`dsigma_ds`](#properties) |
 | place drops, bubbles or films | [`inipsi` and the file `spheres.in`](#initial-interface) |
 | drive a flow at constant mean momentum | [`is_forced`](#forcing) |
+| keep the mean temperature of a flow heated or cooled by its walls | [`is_sforced`](#about-the-scalar-namelist-under-inputnml) |
 | stop and restart a run, exactly if needed | [`restart`](#end-of-the-run-and-restart) and [`is_full_restart`](#about-the-io-namelist-under-inputnml) |
 | integrate the diffusion implicitly | [`is_impdiff`](#about-the-numerics-namelist-under-inputnml) |
 | use the variable-coefficient pressure solver | [`&hypre`](#about-the-hypre-namelist-under-inputnml) and [`INFO_COMPILING.md`](INFO_COMPILING.md) |
@@ -324,6 +325,8 @@ These lines set the flow forcing.
 
 `is_forced`, when true in a direction, adds a dynamically computed uniform correction to `bforce`. The controller balances the prescribed force, the AB2-extrapolated viscous wall traction, and the discrete integrals of gravity, surface tension (also of its variation with the scalar), and Boussinesq buoyancy. It preserves the initial domain-averaged mixture momentum, equivalently the streamwise-averaged mass-flux density, when the remaining pressure and conservative terms have zero global integral. It does not prescribe a target velocity or necessarily preserve volume flux or the instantaneous mass flux through every cross-section.
 
+`velf(1:3)`, an optional entry of this namelist (default: `1., 1., 1.`), sets the **bulk velocity of the initial condition** along a dynamically forced direction, which the forcing then keeps: the profiles of `inivel` take it as their mean velocity, as in *CaNS*, and the initial velocity is scaled such that the mass-averaged velocity (total momentum over total mass) is exactly `velf`. It has no effect on an initial condition with zero mean velocity (e.g., `inivel = 'zer'`), nor on a restarted run.
+
 A dynamically forced direction must be periodic. Its transverse boundaries must be periodic or impermeable, since momentum flux through an open boundary is not included in the balance.
 
 `gacc` is a constant **acceleration** in the direction in question (e.g., gravity) added to the right-hand-side of the momentum equation. The three values correspond to three domain directions.
@@ -395,7 +398,7 @@ iniscal(1)         = 'dhc-x'
 This line sets the **initial scalar field**. The following options are available:
 
 * `zer`: uniform scalar field equal to zero
-* `uni`: uniform scalar field equal to `sref`, the mean of the boundary values along Z
+* `uni`: uniform scalar field equal to `sref`, the mean of the boundary values along Z (or `scalf`, if the scalar is forced: see below)
 * `cou`: linearly varying scalar field from bottom (`z = 0`) to top   (`z = l(3)`)
 * `cos`: one cosine wave of unit amplitude along X (along Y with the suffix `-x`), uniform along the other directions
 * `dhc`: linearly varying scalar field from left   (`x = 0`) to right (`x = l(1)`); with the suffix `-x`, i.e., `dhc-x`, the field varies along Y instead, for a cavity in the Y-Z plane
@@ -418,6 +421,14 @@ ssource(1)         = 0.
 ```
 
 `ssource` is a **uniform volumetric source term** added to the right-hand side of the scalar equation.
+
+```fortran
+is_sforced(1) = F, scalf(1) = 0.
+```
+
+`is_sforced`, if true for a scalar (default: false), replaces `ssource` by a dynamically computed uniform source that **balances the heat lost through the boundaries**, the counterpart for the scalar of the forcing of `is_forced` (see the `&dns` namelist): the heat flux through the boundaries per unit volume is extrapolated in time as the diffusion term is, and the source cancels it, so that the total of `rho*cp*s` in the domain stays constant. With implicit diffusion, the heat lost by the terms that are integrated implicitly is balanced together with the implicit solve, as for the momentum. `scalf` is the reference value of the initial field of a forced scalar, as in *CaNS*: `iniscal = 'uni'` starts from it, and the forcing then keeps it.
+
+For each forced scalar, `forcing_scalar_NNN.out` contains, every `iout0d` time steps: time, the source applied, the measured rate of change of the mean of `rho*cp*s` (a residual, at round-off unless there is a flux through an open boundary), the mean of `rho*cp*s`, and the mean of the scalar weighted with `rho*cp`. With `is_full_restart = T`, the heat lost through the boundaries in the previous time step is saved in `fld_dt.out`, next to the wall force of the momentum.
 
 ---
 
@@ -748,6 +759,7 @@ All files are written to the directory `data/`. `NNNNNNN` is the time step numbe
 | `geometry.out`, `grid.out`, `grid.bin` | at the start | number of grid cells and domain lengths; grid along Z (in `grid.out`, for each `k` from 0 to `ng(3)+1`: `0`, `zf`, `zc`, `dzf`, `dzc`) |
 | `time.out` | every `iout0d` steps | time step number, time step size, time |
 | `forcing.out`, `forcing_balance.out` | every `iout0d` steps, with a forcing | see [`bforce` and `is_forced`](#forcing) |
+| `forcing_scalar_NNN.out` | every `iout0d` steps, with a forced scalar | see [`is_sforced`](#about-the-scalar-namelist-under-inputnml) |
 | `log_acdi.out` | every `iout0d` steps, with `acdi` | time step number, time, regularization velocity and interface thickness of the method |
 | `log_vof.out` | every `iout0d` steps, with `ifc_advection = 'split'` | volume, bounds and curvature statistics of the volume fraction; see the [interface method](#interface-method) |
 | `umean_z_fld_NNNNNNN.out`, `vmean_...`, `wmean_...` | every `iout1d` steps | profile along Z of each velocity component averaged over X and Y: `z`, value |
