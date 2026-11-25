@@ -21,7 +21,7 @@ module mod_sanity
   use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
                             ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split,cbcpsi,bcpsi,contact_angle, &
                             slip_length,is_hf_normals,dsigma_ds,nscal,nmarker,inipsi, &
-                            is_forced_hit,forced_hit_type
+                            is_forced_hit,forced_hit_type,is_contact_angle
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -141,7 +141,7 @@ module mod_sanity
     if(any(contact_angle(:,:) <= 0. .or. contact_angle(:,:) >= 180.)) then
       if(myid == 0)  print*, 'ERROR: contact angles must be between 0 and 180 degrees (exclusive).'; call abortit
     end if
-    if(any(abs(contact_angle(:,:)-90.) > 1.e-10 .and. &
+    if(any(is_contact_angle(contact_angle(:,:)) .and. &
            (cbcpsi(:,:) /= 'N' .or. bcpsi(:,:) /= 0. .or. spread(ng(:) <= 2,1,2)))) then
       if(myid == 0)  print*, 'ERROR: a contact angle other than 90 degrees requires a wall (homogeneous Neumann condition &
                                      &for the volume fraction) along a direction with more than two grid cells.'; call abortit

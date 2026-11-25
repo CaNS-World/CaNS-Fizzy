@@ -40,7 +40,7 @@ module mod_vof_split
   use, intrinsic :: iso_fortran_env, only: int8
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
-  use mod_param     , only: psi_eps ! (cells with psi_eps < f < 1-psi_eps are reconstructed)
+  use mod_param     , only: psi_eps,is_contact_angle ! (cells with psi_eps < f < 1-psi_eps are reconstructed)
   use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature,hf_normal
   use mod_scal      , only: scalar
   use mod_thinc     , only: thinc_intercept,thinc_slab
@@ -197,7 +197,7 @@ module mod_vof_split
     if(.not.is_thinc) then
       ca_cos(:,:) = cos(theta_c(:,:)*acos(-1._rp)/180._rp)
       ca_sin(:,:) = sin(theta_c(:,:)*acos(-1._rp)/180._rp)
-      is_ca(:,:)  = abs(ca_cos(:,:)) > psi_eps
+      is_ca(:,:)  = is_contact_angle(theta_c(:,:))
       is_ca_any   = any(is_ca(:,:))
       if(is_ca_any) then
         allocate(ca_pl(0:3,1-nh_psi:maxval(n(:))+nh_psi,1-nh_psi:maxval(n(:))+nh_psi))

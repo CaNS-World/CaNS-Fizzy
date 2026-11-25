@@ -602,4 +602,13 @@ contains
       end if
     close(iunit)
   end subroutine read_input
+  !
+  pure elemental logical function is_contact_angle(theta)
+    !
+    ! true for a contact angle (in degrees) other than 90 degrees, to the tolerance `psi_eps` on its cosine
+    !
+    implicit none
+    real(rp), intent(in) :: theta
+    is_contact_angle = abs(cos(theta*pi/180._rp)) > psi_eps
+  end function is_contact_angle
 end module mod_param
