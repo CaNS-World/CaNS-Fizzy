@@ -40,7 +40,8 @@ rm -rf $RUNDIR/data/*.*
 check_rejected() {
   #
   # runs the default input on one task, edited with the sed expression $3, and with $4 (if any) as the
-  # contents of `spheres.in`; the run must fail with the message $2
+  # contents of `spheres.in`; the run must fail with the message $2 (its first words: some compilers break
+  # the lines of list-directed output at 80 columns)
   #
   local name=$1 message=$2 expr=$3 spheres=$4 casedir=$RUNDIR/input_checks_$1
   rm -rf $casedir && mkdir -p $casedir/data
@@ -58,7 +59,7 @@ check_rejected() {
 
 check_rejected psi_periodicity 'must match pressure BCs' "s/^cbcpsi.*/cbcpsi(0:1,1:3) = 'P','P',  'P','P',  'N','N'/"
 check_rejected psi_pair        'not valid'               "s/^cbcpsi.*/cbcpsi(0:1,1:3) = 'P','N',  'P','P',  'P','P'/"
-check_rejected density         'must be positive'        "s/^rho12.*/rho12(1:2) = 1., 0./"
-check_rejected marker_range    'must be between 1 and'   "/^&two_fluid/a nmarker = 2" "0.5 0.5 0.3 0.15 1\n0.5 0.5 0.7 0.15 3\n"
+check_rejected density         'input file: `rho12`'     "s/^rho12.*/rho12(1:2) = 1., 0./"
+check_rejected marker_range    'the markers of the spheres' "/^&two_fluid/a nmarker = 2" "0.5 0.5 0.3 0.15 1\n0.5 0.5 0.7 0.15 3\n"
 check_rejected marker_file     'need the file'           "/^&two_fluid/a nmarker = 2"
 echo "INFO: all cases passed"
