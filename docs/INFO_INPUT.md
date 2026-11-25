@@ -11,7 +11,7 @@ The input file is made of Fortran namelists, described below in this order:
 | [`&hypre`](#about-the-hypre-namelist-under-inputnml) | iterative solver of the variable-coefficient builds | optional |
 | [`&other_options`](#about-the-other_options-namelist-under-inputnml) | debugging checks, timing | optional |
 | [`&io`](#about-the-io-namelist-under-inputnml) | I/O backend, exact restart | optional |
-| [`&cudecomp`](#about-the-cudecomp-namelist-under-inputnml) | communication backends of cuDecomp | required in GPU builds |
+| [`&cudecomp`](#about-the-cudecomp-namelist-under-inputnml) | communication backends of cuDecomp | optional, GPU builds |
 
 The files that a run writes are listed [below](#about-the-output-files). Where to look for some common needs:
 
@@ -760,7 +760,7 @@ The fields are written at their staggered positions, as raw binary in the workin
 
 # About the `&cudecomp` namelist under `input.nml`
 
-In GPU builds with the *cuDecomp* library (the default), this namelist sets some of its runtime configurations. It must be present in the input file of such a build (the run stops otherwise), but may be empty; CPU builds ignore it. Consider the following `&cudecomp` namelist, which corresponds to the default options:
+In GPU builds with the *cuDecomp* library (the default), this **optional** namelist sets some of its runtime configurations; CPU builds ignore it. Consider the following `&cudecomp` namelist, which corresponds to the default options in case the namelist is not provided:
 
 ```fortran
 &cudecomp
