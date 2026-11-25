@@ -27,12 +27,15 @@ module mod_rk
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
                 psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
-                uadv,vadv,wadv,fsx,fsy,fsz,mfields)
+                wall_force_imp,uadv,vadv,wadv,fsx,fsy,fsz,mfields)
     !
     ! AB2 scheme for time integration of the momentum equations
     !
     ! `is_first` is true in the first time step of a run without the terms of the previous step
     ! (`d?dtrko` and `wall_force_old`), which are then set to those of the present one
+    !
+    ! `wall_force_imp` returns the wall shear force of the terms integrated implicitly, at the old time level,
+    ! which the main program balances together with the implicit solve (zero without forcing or implicit diffusion)
     !
     ! with the geometric volume-of-fluid method, the advection terms are integrated in one step, consistently
     ! with the transport of the volume fraction: they use its phase fluxes and its advecting velocity `uadv`,
@@ -72,6 +75,7 @@ module mod_rk
     real(rp), intent(inout), dimension(:,:,:)               :: dudtrko,dvdtrko,dwdtrko
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)           :: u,v,w
     real(rp), intent(out  ), dimension(3,7)                 :: force_balance
+    real(rp), intent(out  ), dimension(3)                   :: wall_force_imp
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
     real(rp), intent(in   ), dimension(:,:,:), optional :: fsx,fsy,fsz
     type(marker_fields), intent(in), dimension(:), optional :: mfields
@@ -79,7 +83,7 @@ module mod_rk
     real(rp) :: rho,drho,rhox_n,rhox_p,rhoy_n,rhoy_p,rhoz_n,rhoz_p
     real(rp), save, dimension(3) :: bforce_eff
     real(rp) :: factor1,factor2,factor12
-    real(rp), dimension(3) :: taux,tauy,tauz,wall_force,wall_force_imp,dwall_force_old,momentum,momentum_o
+    real(rp), dimension(3) :: taux,tauy,tauz,wall_force,wall_force_imp_ab,dwall_force_old,momentum,momentum_o
     integer :: i,j,k,m
     !
     factor1  = rkpar(1)*dt
@@ -121,6 +125,7 @@ module mod_rk
     !
     ! advection, diffusion and regularization terms
     !
+    wall_force_imp(:) = 0._rp
     call mom_xyz_ad(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,rho12,mu12,psiflx_x,psiflx_y,psiflx_z,u,v,w,psi, &
                     dudtrk,dvdtrk,dwdtrk)
     if(is_impdiff) then
@@ -144,11 +149,11 @@ module mod_rk
         !
         call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &
                                 wall_force_imp,dwall_force_old)
-        wall_force_old(:)  = wall_force_old(:) - wall_force_imp(:)
-        wall_force_imp(:)  = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force_imp(:)
-        if(.not.is_first) wall_force_imp(:) = wall_force_imp(:) - rkpar(2)*dwall_force_old(:)
-        force_balance(:,1) = force_balance(:,1) - wall_force_imp(:)
-        bforce_eff(:)      = bforce_eff(:)      - wall_force_imp(:)
+        wall_force_old(:)    = wall_force_old(:) - wall_force_imp(:)
+        wall_force_imp_ab(:) = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force_imp(:)
+        if(.not.is_first) wall_force_imp_ab(:) = wall_force_imp_ab(:) - rkpar(2)*dwall_force_old(:)
+        force_balance(:,1)   = force_balance(:,1) - wall_force_imp_ab(:)
+        bforce_eff(:)        = bforce_eff(:)      - wall_force_imp_ab(:)
         force_balance(:,5) = bforce_eff(:)
         !$acc update device(bforce_eff) async(1)
       end if
@@ -349,22 +354,24 @@ module mod_rk
       end do
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
-    if(.not.is_vof_sweep_transport) then
-      !$acc parallel loop collapse(3) default(present) async(1)
+    if(is_ifc_split .and. .not.is_vof_sweep_transport) then
+      !
+      ! the update, together with the advection term, in a single kernel
+      !
+      call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psio,psiflx_x,psiflx_y,psiflx_z, &
+                       uadv,vadv,wadv,sadv,factor1,factor2,factor12,ssource,dsdtrk,dsdtrko,s)
+    else if(.not.is_vof_sweep_transport) then
+      !$acc parallel loop collapse(3) default(present) private(rhocp_p,rhocp_n) async(1)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
             rhocp_p = rhocp + drhocp*psi( i,j,k)
             rhocp_n = rhocp + drhocp*psio(i,j,k)
-            s(i,j,k) = s(i,j,k)*rhocp_n/rhocp_p + (factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
+            s(i,j,k) = (s(i,j,k)*rhocp_n + factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
             dsdtrko(i,j,k) = dsdtrk(i,j,k)
           end do
         end do
       end do
-      if(is_ifc_split) then
-        call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,sadv, &
-                         factor12,s)
-      end if
     else
       !
       ! the other terms are added to the scalar transported along with the volume fraction

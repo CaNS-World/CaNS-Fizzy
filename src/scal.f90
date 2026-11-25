@@ -121,10 +121,14 @@ module mod_scal
     end do
   end subroutine scal_ad
   !
-  subroutine scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,sa,factor,s)
+  subroutine scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psio,psiflx_x,psiflx_y,psiflx_z,ua,va,wa,sa, &
+                         factor1,factor2,factor12,ssource,dsdt,dsdto,s)
     !
     ! advection term of the scalar in conservative form, consistent with the transport of the geometric
-    ! volume-of-fluid method: integrated over the time `factor` and added to the scalar, divided by rho*cp
+    ! volume-of-fluid method, integrated in one step (over the time `factor12`), together with the AB2 update
+    ! of the scalar with the other terms (`dsdt` and `dsdto`, with weights `factor1` and `factor2`) and the
+    ! source, in a single kernel, as `mom_xyz_a_cons` for the velocity:
+    !   s <- (rhocp_old*s + factor12*(advection + ssource) + factor1*dsdt + factor2*dsdto)/rhocp_new,   dsdto <- dsdt
     !
     ! the face fluxes of rho*cp are rhocp_2*ua + (rhocp_1-rhocp_2)*psiflx, with psiflx the (time-averaged)
     ! phase-1 volume fluxes of the volume-of-fluid step and ua its advecting velocity; sa is the transported
@@ -136,19 +140,21 @@ module mod_scal
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzfi
     real(rp), intent(in   ), dimension(2) :: rhocp12
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: ua,va,wa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: sa
-    real(rp), intent(in   ) :: factor
+    real(rp), intent(in   ) :: factor1,factor2,factor12,ssource
+    real(rp), intent(in   ), dimension(:,:,:) :: dsdt
+    real(rp), intent(inout), dimension(:,:,:) :: dsdto
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
-    real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm,rhocp,drhocp,dxi,dyi
+    real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm,rhocp,drhocp,dxi,dyi,dsdt_a,rhocp_n,rhocp_p
     integer :: i,j,k
     !
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     dxi = dli(1)
     dyi = dli(2)
-    !$acc parallel loop collapse(3) default(present) private(usip,usim,vsjp,vsjm,wskp,wskm) async(1)
+    !$acc parallel loop collapse(3) default(present) private(usip,usim,vsjp,vsjm,wskp,wskm,dsdt_a,rhocp_n,rhocp_p) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -158,7 +164,14 @@ module mod_scal
           vsjm = 0.5*(rhocp*va(i,j-1,k)+drhocp*psiflx_y(i,j-1,k))*(sa(i,j-1,k)+sa(i,j,k))
           wskp = 0.5*(rhocp*wa(i,j,k  )+drhocp*psiflx_z(i,j,k  ))*(sa(i,j,k+1)+sa(i,j,k))
           wskm = 0.5*(rhocp*wa(i,j,k-1)+drhocp*psiflx_z(i,j,k-1))*(sa(i,j,k-1)+sa(i,j,k))
-          s(i,j,k) = s(i,j,k) + factor*(dxi*(-usip+usim) + dyi*(-vsjp+vsjm) + dzfi(k)*(-wskp+wskm))/(rhocp+drhocp*psi(i,j,k))
+          dsdt_a = dxi*(-usip+usim) + dyi*(-vsjp+vsjm) + dzfi(k)*(-wskp+wskm)
+          !
+          ! update, with rho*cp before and after the volume-of-fluid step
+          !
+          rhocp_n = rhocp + drhocp*psio(i,j,k)
+          rhocp_p = rhocp + drhocp*psi( i,j,k)
+          s(i,j,k) = (s(i,j,k)*rhocp_n + factor12*(dsdt_a + ssource) + factor1*dsdt(i,j,k) + factor2*dsdto(i,j,k))/rhocp_p
+          dsdto(i,j,k) = dsdt(i,j,k)
         end do
       end do
     end do
