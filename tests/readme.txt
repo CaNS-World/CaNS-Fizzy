@@ -30,6 +30,7 @@ the tests, and what each checks:
                                  boundary conditions
   start_stop                   : a run against the same run stopped and restarted (single fluid)
   navier_slip                  : channel flow with a slip length against the exact profile
+  forced_hit                   : the two large-scale forcings, from rest, against their solutions
   zero_net_acceleration        : balances of the forcing that keeps the mean momentum, and rejected inputs
   deforming_circle             : a circle in a vortex that reverses returns to its initial shape
   rising_bubble                : interface of a rising bubble against the benchmark of Hysing et al., case 1

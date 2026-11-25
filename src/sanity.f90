@@ -20,7 +20,8 @@ module mod_sanity
   use mod_initsolver, only: initsolver
   use mod_param     , only: ipencil_axis,nh_g,is_impdiff,is_impdiff_1d,is_poisson_dtdma,small, &
                             ifc_reconstruction,ifc_advection,ifc_transport,is_ifc_split,cbcpsi,bcpsi,contact_angle, &
-                            slip_length,is_hf_normals,dsigma_ds,nscal,nmarker,inipsi
+                            slip_length,is_hf_normals,dsigma_ds,nscal,nmarker,inipsi, &
+                            is_forced_hit,forced_hit_type
 #if !defined(_OPENACC)
   use mod_solver    , only: solver
 #else
@@ -86,6 +87,14 @@ module mod_sanity
     end if
     if(is_poisson_dtdma.and.(ipencil_axis == 3)) then
       if(myid == 0)  print*, 'ERROR: `is_poisson_dtdma = T` requires X/Y-aligned pencils.'; call abortit
+    end if
+    if(is_forced_hit) then
+      if(.not.any(forced_hit_type == ['tgv','abc'])) then
+        if(myid == 0)  print*, 'ERROR: `forced_hit_type` must be `tgv` or `abc`.'; call abortit
+      end if
+      if(any(cbcpre(:,:) /= 'P')) then
+        if(myid == 0)  print*, 'ERROR: `is_forced_hit = T` requires periodic boundaries in all directions.'; call abortit
+      end if
     end if
     !
     ! interface method: valid entries and combinations

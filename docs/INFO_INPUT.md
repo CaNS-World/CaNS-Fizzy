@@ -181,7 +181,7 @@ Wall velocities and forcing are read from the corresponding physical entries of 
 
 See `initflow.f90` for more details. The subroutines in this file may be easily extended to accommodate other initial conditions.
 
-`is_forced_hit`, if true, introduces a homogeneous and isotropic forcing in the domain. See `forcing.f90` for more details.
+`is_forced_hit`, if true, adds a **steady large-scale acceleration** to the momentum equation, e.g., to sustain homogeneous isotropic turbulence; it requires periodic boundaries in all directions. Two more inputs of this namelist, not shown above, set it: `forced_hit_type` selects the Taylor-Green (`'tgv'`, default) or the Arnold-Beltrami-Childress (`'abc'`) forcing, with two wavelengths per domain length, and `forced_hit_amp` (default `0.5`) its amplitude, in units of `(2*pi/l(3))**2`. See `forcing.f90` for more details.
 
 ---
 

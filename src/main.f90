@@ -60,7 +60,7 @@ program cans
                                      cfl,dtmax,dt_f, &
                                      is_solve_ns,is_track_interface, &
                                      inivel,iniscal,inipsi, &
-                                     is_wallturb,is_forced_hit, &
+                                     is_wallturb,is_forced_hit,forced_hit_type,forced_hit_amp, &
                                      nstep,time_max,tw_max,stop_type, &
                                      restart,is_overwrite_save,nsaves_max, &
                                      icheck,iout0d,iout1d,iout2d,iout3d,isave, &
@@ -891,7 +891,7 @@ program cans
               psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
               uadv,vadv,wadv,fsx,fsy,fsz,mfields)
       if(is_forced_hit) then
-        call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
+        call lscale_forcing(forced_hit_type,lo,hi,nh_v,nh_g,forced_hit_amp,dtrk,l,dl,zc,u,v,w)
       end if
       if(is_impdiff) then
         !
