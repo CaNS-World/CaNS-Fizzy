@@ -7,7 +7,7 @@ is_solve_ns = F, is_track_interface = T
 inivel = 'rot-x'
 is_wallturb = F, is_forced_hit = F
 nstep = 100000, time_max = 5., tw_max = 0.1
-stop_type(1:3) = T, T, F
+stop_type(1:3) = F, T, F
 restart = F, is_overwrite_save = T, nsaves_max = 0
 icheck = 10, iout0d = 10, iout1d = 100, iout2d = 500, iout3d = 10, isave = 5000
 cbcvel(0:1,1:3,1) = 'P','P',  'N','N',  'N','N'
