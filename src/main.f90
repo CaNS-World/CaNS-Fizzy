@@ -107,7 +107,6 @@ program cans
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
   real(rp), target, allocatable, dimension(:,:,:) :: u,v,w,p,pp
-  real(rp), allocatable, dimension(:,:,:) :: pn
   real(rp), target, allocatable, dimension(:,:,:) :: po
   real(rp), target, allocatable, dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko,dpsidtrko
   real(rp), target, allocatable, dimension(:,:,:) :: uo,vo,wo ! previous velocity (direction-split advection)
@@ -139,7 +138,7 @@ program cans
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
   logical :: is_impdiff_cc
   !
-  real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
   real(rp), dimension(2) :: dt_restart
   real(rp) :: gam,seps
   integer :: istep,iunit
@@ -148,7 +147,7 @@ program cans
                                          xc_g,xf_g,yc_g,yf_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f,wzc
   real(rp), dimension(3) :: dpdl,meanvel,momentum,momentum_o,wall_force_imp
-  real(rp), dimension(3,6) :: force_balance
+  real(rp), dimension(3,7) :: force_balance
   real(rp), dimension(2) :: tm_coeff
   !
   ! scalar fields (see `mod_scal`)
@@ -222,9 +221,6 @@ program cans
            w( 1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
            p( 1-nh_p:n(1)+nh_p,1-nh_p:n(2)+nh_p,1-nh_p:n(3)+nh_p), &
            pp(1-nh_p:n(1)+nh_p,1-nh_p:n(2)+nh_p,1-nh_p:n(3)+nh_p))
-#if defined(_CONSTANT_COEFFS_POISSON)
-  allocate(pn,mold=pp)
-#endif
   allocate(po,mold=pp)
   allocate(dudtrko(n(1),n(2),n(3)), &
            dvdtrko(n(1),n(2),n(3)), &
@@ -599,9 +595,6 @@ program cans
   end if
   wall_force_old(:) = 0.
   is_first = .true.
-#if defined(_CONSTANT_COEFFS_POISSON)
-  pn(:,:,:) = 0.
-#endif
   do iscal=1,nscal
     scalars(iscal)%val(:,:,:) = 0.
   end do
@@ -683,7 +676,7 @@ program cans
       call MPI_BCAST(savecounter,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
     end if
   end if
-  !$acc enter data copyin(u,v,w,p,pp,pn,po)
+  !$acc enter data copyin(u,v,w,p,pp,po)
   !$acc enter data copyin(dudtrko,dvdtrko,dwdtrko,dpsidtrko)
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   !$acc enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
@@ -698,17 +691,22 @@ program cans
     end if
   end if
 #if defined(_CONSTANT_COEFFS_POISSON)
-  !$acc parallel loop collapse(3) default(present) async(1)
-  !$OMP parallel do   collapse(3) DEFAULT(shared)
-  do k=1-nh_p,n(3)+nh_p
-    do j=1-nh_p,n(2)+nh_p
-      do i=1-nh_p,n(1)+nh_p
-        pn(i,j,k) = p(i,j,k)
-        if(is_first) po(i,j,k) = p(i,j,k)
+  !
+  ! pressure of the previous time step, for the extrapolation of the pressure splitting
+  !
+  if(is_first) then
+    !$acc parallel loop collapse(3) default(present) async(1)
+    !$OMP parallel do   collapse(3) DEFAULT(shared)
+    do k=1-nh_p,n(3)+nh_p
+      do j=1-nh_p,n(2)+nh_p
+        do i=1-nh_p,n(1)+nh_p
+          po(i,j,k) = p(i,j,k)
+        end do
       end do
     end do
-  end do
-  if(.not.is_first) call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,po)
+  else
+    call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,po)
+  end if
 #endif
   do iscal=1,nscal
     s => scalars(iscal)
@@ -741,7 +739,7 @@ program cans
       end if
     end do
     !$acc enter data create(fsx,fsy,fsz) async(1)
-    call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
+    call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,restart,markers,psi)
   end if
   !
   ! post-process and write initial condition
@@ -750,7 +748,7 @@ program cans
   !$acc wait ! not needed but to prevent possible future issues
   !$acc update self(u,v,w,p,psi,kappa)
   do imark=1,nmk
-    !$acc update self(markers(imark)%psi)
+    !$acc update self(markers(imark)%psi,markers(imark)%kappa)
   end do
   do iscal=1,nscal
     !$acc update self(scalars(iscal)%val)
@@ -769,9 +767,9 @@ program cans
              ka12,cp12)
   dt = min(cfl*dt_cfl,dtmax)
   if(dt_f > 0.) then
-    if(dt_f > dt) then
+    if(dt_f > dt_cfl) then
       if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
-      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt_cfl
     end if
     dt = dt_f
   end if
@@ -784,7 +782,6 @@ program cans
     dto = dt_restart(2)
   end if
   if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
-  dti = 1./dt
   kill = .false.
   force_balance(:,:) = 0._rp
   force_balance(:,5) = bforce(:)
@@ -830,17 +827,6 @@ program cans
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                        istep,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     else
-      !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
-      do k=1-nh_ifc,n(3)+nh_ifc
-        do j=1-nh_ifc,n(2)+nh_ifc
-          do i=1-nh_ifc,n(1)+nh_ifc
-            psiflx_x(i,j,k) = 0.
-            psiflx_y(i,j,k) = 0.
-            psiflx_z(i,j,k) = 0.
-          end do
-        end do
-      end do
       call ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                   u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     end if
@@ -898,7 +884,7 @@ program cans
       if(nmk > 0) call ifc_markers_force(n,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,markers,psi,fsx,fsy,fsz)
       call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
               grid_vol_ratio_c,grid_vol_ratio_f, &
-              dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,scalars(1)%val, &
+              dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,po,scalars(1)%val, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
@@ -967,21 +953,20 @@ program cans
         call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
         where(is_forced(:)) force_balance(:,6) = (momentum(:)-force_balance(:,6))/dt
       end if
+#if defined(_CONSTANT_COEFFS_POISSON)
+      !$acc parallel loop collapse(3) default(present) async(1)
+      !$OMP parallel do   collapse(3) DEFAULT(shared)
+      do k=1-nh_p,n(3)+nh_p
+        do j=1-nh_p,n(2)+nh_p
+          do i=1-nh_p,n(1)+nh_p
+            po(i,j,k) = p(i,j,k)
+          end do
+        end do
+      end do
+#endif
       call updatep(n,nh_p,nh_g,dli,dzci,dzfi,alpha,pp,p)
       call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
     end if
-#if defined(_CONSTANT_COEFFS_POISSON)
-    !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
-    do k=1-nh_p,n(3)+nh_p
-      do j=1-nh_p,n(2)+nh_p
-        do i=1-nh_p,n(1)+nh_p
-          po(i,j,k) = pn(i,j,k)
-          pn(i,j,k) =  p(i,j,k)
-        end do
-      end do
-    end do
-#endif
     is_first = .false.
     !
     ! check simulation stopping criteria
@@ -1004,19 +989,8 @@ program cans
       call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps, &
                  ka12,cp12)
       dt = min(cfl*dt_cfl,dtmax)
-      if(dt_f > 0.) then
-        if(dt_f > dt) then
-          if(myid == 0) print*, 'ERROR: fixed time step exceeds estimated stability limit.'
-          if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
-          if(myid == 0) print*, 'Aborting...'
-          is_done = .true.
-          kill = .true.
-        else
-          dt = dt_f
-        end if
-      end if
+      if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
-      dti = 1./dt
       call chkdiv(lo,hi,nh_v,nh_g,l,dli,dzfi,u,v,w,divtot,divmax)
       if(myid == 0) print*, 'Velocity divergence norms: Mean = ', divtot, '| Maximum = ', divmax
       if((divmax > small.and..not.is_mask_divergence_check).or.is_nan(divtot)) then
@@ -1063,7 +1037,8 @@ program cans
         var(11:13) = force_balance(:,4)
         var(14:16) = force_balance(:,5)
         var(17:19) = force_balance(:,6)
-        call out0d(trim(datadir)//'forcing_balance.out',19,var)
+        var(20:22) = force_balance(:,7)
+        call out0d(trim(datadir)//'forcing_balance.out',22,var)
       end if
       !
       call ifc_write_log(istep,time,n,nh_psi,nh_g,dl,dzf,gam,seps,psi)
@@ -1095,7 +1070,7 @@ program cans
       !$acc wait
       !$acc update self(u,v,w,p,psi,kappa)
       do imark=1,nmk
-        !$acc update self(markers(imark)%psi)
+        !$acc update self(markers(imark)%psi,markers(imark)%kappa)
       end do
       do iscal=1,nscal
         !$acc update self(scalars(iscal)%val)

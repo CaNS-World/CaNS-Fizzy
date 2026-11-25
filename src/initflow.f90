@@ -139,7 +139,7 @@ module mod_initflow
             u(i,j,k) =  sin(xf)*cos(yc)*cos(zcc)*uref
             v(i,j,k) = -cos(xc)*sin(yf)*cos(zcc)*uref
             w(i,j,k) = 0.
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -197,23 +197,20 @@ module mod_initflow
         reb   = (retau/.09)**(1./.88)
         ubulk = reb*visc/(2*lref)
       else                 ! laminar flow
-        ubulk = (bforce(idir_s)*lref**2/(3.*visc))
+        ubulk = (bforce(idir_s)*lref**2/(3.*mu))
       end if
       call poiseuille(n(idir_n),rn/lprof,ubulk,u1d_n)
       is_mean = .true.
     case('rot-z') ! solid body rotation around z
       do k=1,n(3)
-        zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
             u(i,j,k) = -2.*pi*yc
             v(i,j,k) =  2.*pi*xc
             w(i,j,k) = 0.
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -222,14 +219,11 @@ module mod_initflow
         zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
           do i=1,n(1)
-            xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
             u(i,j,k) =  0.
             v(i,j,k) = -2.*pi*zcc
             w(i,j,k) =  2.*pi*yc
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -237,21 +231,17 @@ module mod_initflow
       do k=1,n(3)
         zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
-          yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
             u(i,j,k) = -2.*pi*zcc
             v(i,j,k) =  0.
             w(i,j,k) =  2.*pi*xc
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
     case('vor-z') ! 2D serpentine vortex around z
       do k=1,n(3)
-        zcc = zc(k)/l(3)
         do j=1,n(2)
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)
           yf = (j+lo(2)-1-.0)*dl(2)/l(2)
@@ -261,7 +251,7 @@ module mod_initflow
             u(i,j,k) =  sin(pi*xf)**2*sin(2*pi*yc)*cos(pi*time/4.)
             v(i,j,k) = -sin(pi*yf)**2*sin(2*pi*xc)*cos(pi*time/4.)
             w(i,j,k) = 0.
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -270,15 +260,13 @@ module mod_initflow
         zcc = zc(k)/l(3)
         zff = zf(k)/l(3)
         do j=1,n(2)
-          yc = (j+lo(2)-1-.5)*dl(2)/l(2)
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)
             xf = (i+lo(1)-1-.0)*dl(1)/l(1)
             u(i,j,k) =  sin(pi*xf )**2*sin(2*pi*zcc)*cos(pi*time/4.)
             v(i,j,k) = 0.
             w(i,j,k) = -sin(pi*zff)**2*sin(2*pi*xc )*cos(pi*time/4.)
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -290,12 +278,10 @@ module mod_initflow
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)
           yf = (j+lo(2)-1-.0)*dl(2)/l(2)
           do i=1,n(1)
-            xc = (i+lo(1)-1-.5)*dl(1)/l(1)
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)
             u(i,j,k) = 0.
             v(i,j,k) =  sin(pi*yf )**2*sin(2*pi*zcc)*cos(pi*time/4.)
             w(i,j,k) = -sin(pi*zff)**2*sin(2*pi*yc )*cos(pi*time/4.)
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -448,7 +434,7 @@ module mod_initflow
     !real(rp), allocatable, dimension(:,:) :: u2d
     integer :: i,j,k
     logical :: is_noise,is_mean
-    real(rp) :: sref,lref
+    real(rp) :: sref
     integer, dimension(3) :: n
     integer  :: ii
     real(rp) :: xx
@@ -459,7 +445,6 @@ module mod_initflow
     allocate(s1d(n(3)))
     is_noise = .false.
     is_mean  = .false.
-    sref = 1.
     sref = 0.5*(bcsca(0,3)+bcsca(1,3))
     !
     ! two-dimensional initial conditions lie in the x-z plane, or in the y-z plane with the suffix `-x`

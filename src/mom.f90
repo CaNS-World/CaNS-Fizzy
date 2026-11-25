@@ -587,13 +587,12 @@ module mod_mom
     real(rp), intent(in ), dimension(2) :: rho12,mu12
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
-    real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta,nu1,nu2
+    real(rp) :: rho,drho,mu,dmu,nu1,nu2
     real(rp) :: dxi,dyi
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
-                d_ccm,d_pcm,d_cpm,d_cmc,d_pmc,d_mcc,d_ccc,d_pcc,d_mpc,d_cpc,d_cmp,d_mcp,d_ccp,d_cpp,d_ppc,d_pcp, &
                 u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp, &
                 v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp, &
                 w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp, &
@@ -604,7 +603,6 @@ module mod_mom
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
-    real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     logical  :: is_adv,is_harm,is_lim,is_lim_c
     real(rp) :: c_min,c_max
@@ -1069,7 +1067,7 @@ module mod_mom
   end subroutine mom_xyz_a_cons
   !
   subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,psi,kappa,s,pn,po, &
+                         p,psi,kappa,s,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
@@ -1093,7 +1091,7 @@ module mod_mom
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)           :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
-    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: po
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
@@ -1104,13 +1102,13 @@ module mod_mom
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta,rho0i
     real(rp) :: dxi,dyi
-    real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
+    real(rp) :: c_ccc,c_pcc,c_cpc,c_ccp, &
                 p_ccc,p_pcc,p_cpc,p_ccp, &
                 q_ccc,q_pcc,q_cpc,q_ccp, &
                 s_ccc,s_pcc,s_cpc,s_ccp, &
                 k_ccc,k_pcc,k_cpc,k_ccp, &
                 bforcex,bforcey,bforcez,gaccx,gaccy,gaccz,rhox_av,rhoy_av,rhoz_av, &
-                dzci_c,dzci_m,dzfi_c,dzfi_p, &
+                dzci_c, &
                 psixp,psiyp,psizp
     real(rp) :: rhoxp,rhoyp,rhozp, &
                 skappaxp,skappayp,skappazp, &
@@ -1152,10 +1150,10 @@ module mod_mom
           p_ccp = p(i  ,j  ,k+1)
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
-          q_ccc = (1.+dt_r)*pn(i  ,j  ,k  )-dt_r*po(i  ,j  ,k  )
-          q_pcc = (1.+dt_r)*pn(i+1,j  ,k  )-dt_r*po(i+1,j  ,k  )
-          q_cpc = (1.+dt_r)*pn(i  ,j+1,k  )-dt_r*po(i  ,j+1,k  )
-          q_ccp = (1.+dt_r)*pn(i  ,j  ,k+1)-dt_r*po(i  ,j  ,k+1)
+          q_ccc = (1.+dt_r)*p_ccc-dt_r*po(i  ,j  ,k  )
+          q_pcc = (1.+dt_r)*p_pcc-dt_r*po(i+1,j  ,k  )
+          q_cpc = (1.+dt_r)*p_cpc-dt_r*po(i  ,j+1,k  )
+          q_ccp = (1.+dt_r)*p_ccp-dt_r*po(i  ,j  ,k+1)
 #endif
           !
           if(is_buoyant) then

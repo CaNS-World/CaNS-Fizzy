@@ -79,10 +79,10 @@ module mod_acdi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: flux_x,flux_y,flux_z
+    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: flux_x,flux_y,flux_z
     integer :: i,j,k
     real(rp) :: dxi,dyi
-    real(rp) :: adv,diff,sharp,rglr
+    real(rp) :: adv,rglr
     real(rp) :: upsiip,upsiim,vpsijp,vpsijm,wpsikp,wpsikm
     real(rp) :: dpsidxp,dpsidxm,dpsidyp,dpsidym,dpsidzp,dpsidzm
     real(rp) :: sharpxp,sharpxm,sharpyp,sharpym,sharpzp,sharpzm

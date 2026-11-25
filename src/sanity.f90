@@ -46,6 +46,7 @@ module mod_sanity
     real(rp)        , intent(in), dimension(0:1,3)   :: bcpre
     logical         , intent(in), dimension(3)       :: is_forced
     logical :: passed,passed_loc
+    integer :: idir
     !
     call chk_dims(ng,dims,cbcvel,cbcpre,passed);      if(.not.passed) call abortit
     call chk_stop_type(stop_type,passed);             if(.not.passed) call abortit
@@ -112,6 +113,18 @@ module mod_sanity
                                      &the direction-split advection needs a volume fraction.'; call abortit
     end if
     !
+    ! phase indicator: valid pairs of conditions, and periodic along the periodic directions of the pressure only
+    !
+    do idir=1,3
+      if(.not.any(cbcpsi(0,idir)//cbcpsi(1,idir) == ['PP','NN','ND','DN','DD'])) then
+        if(myid == 0)  print*, 'ERROR: phase indicator BCs (`cbcpsi`) not valid.'; call abortit
+      end if
+    end do
+    if(any((cbcpsi(:,:) == 'P').neqv.(cbcpre(:,:) == 'P'))) then
+      if(myid == 0)  print*, 'ERROR: phase indicator periodic BCs (`cbcpsi`) must match pressure BCs in every direction.'
+      call abortit
+    end if
+    !
     ! Navier slip: at walls at rest only (Dirichlet velocity with zero values, Neumann pressure)
     !
     if(any(slip_length(:,:) < 0.)) then
@@ -161,15 +174,14 @@ module mod_sanity
 #if !defined(_CONSTANT_COEFFS_POISSON)
   subroutine chk_hypre(ng,cbcpre,passed)
     !
-    ! checks the inputs of the HYPRE solver of the variable-coefficient Poisson equation
+    ! checks the inputs of the HYPRE solver of the variable-coefficient Poisson equation and of the implicit diffusion
     !
     use mod_param, only: hypre_solver_i,hypre_tol,hypre_maxiter,hypre_precond_i,hypre_precond_maxiter
     implicit none
     integer         , intent(in ), dimension(3)     :: ng
     character(len=1), intent(in ), dimension(0:1,3) :: cbcpre
     logical         , intent(out) :: passed
-    integer, parameter :: iq = 1 ! pressure
-    integer :: idir
+    integer :: idir,iq,nq
     passed = .true.
     do idir=1,3
       if(cbcpre(0,idir)//cbcpre(1,idir) == 'PP'.and.ng(idir) > 1.and.mod(ng(idir),2) /= 0) then
@@ -182,18 +194,25 @@ module mod_sanity
     if(myid == 0) print*, 'ERROR: the HYPRE solver (`CONSTANT_COEFFS_POISSON=0`) is not available in single precision.'
     passed = .false.
 #endif
-    if(hypre_solver_i(iq) < 1.or.hypre_solver_i(iq) > 5) then
-      if(myid == 0) print*, 'ERROR: invalid `hypre_solver_i` (1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES).'
-      passed = .false.
-    end if
-    if(.not.any(hypre_precond_i(iq) == [0,1,9])) then
-      if(myid == 0) print*, 'ERROR: invalid `hypre_precond_i` (0: SMG, 1: PFMG, 9: none).'
-      passed = .false.
-    end if
-    if(hypre_tol(iq) <= 0._rp.or.hypre_maxiter(iq) < 1.or.hypre_precond_maxiter(iq) < 1) then
-      if(myid == 0) print*, 'ERROR: `hypre_tol`, `hypre_maxiter` and `hypre_precond_maxiter` must be positive.'
-      passed = .false.
-    end if
+    !
+    ! inputs of the pressure (first entry) and, when it is solved with HYPRE, of the implicit diffusion (second)
+    !
+    nq = 1
+    if(is_impdiff .and. .not.is_impdiff_1d) nq = 2
+    do iq=1,nq
+      if(hypre_solver_i(iq) < 1 .or. hypre_solver_i(iq) > 5) then
+        if(myid == 0) print*, 'ERROR: invalid `hypre_solver_i` (1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES).'
+        passed = .false.
+      end if
+      if(.not.any(hypre_precond_i(iq) == [0,1,9])) then
+        if(myid == 0) print*, 'ERROR: invalid `hypre_precond_i` (0: SMG, 1: PFMG, 9: none).'
+        passed = .false.
+      end if
+      if(hypre_tol(iq) <= 0._rp .or. hypre_maxiter(iq) < 1 .or. hypre_precond_maxiter(iq) < 1) then
+        if(myid == 0) print*, 'ERROR: `hypre_tol`, `hypre_maxiter` and `hypre_precond_maxiter` must be positive.'
+        passed = .false.
+      end if
+    end do
   end subroutine chk_hypre
   !
 #endif
@@ -209,7 +228,7 @@ module mod_sanity
   end subroutine chk_stop_type
   !
   subroutine chk_dims(ng,dims,cbcvel,cbcpre,passed)
-    use mod_param, only: nscal,cbcscal
+    use mod_param, only: cbcscal
     implicit none
     integer, intent(in), dimension(3) :: ng
     integer, intent(in), dimension(2) :: dims
@@ -278,7 +297,7 @@ module mod_sanity
   end subroutine chk_dims
   !
   subroutine chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed)
-    use mod_param, only: nscal,cbcscal
+    use mod_param, only: cbcscal
     implicit none
     character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
     character(len=1), intent(in), dimension(0:1,3  ) :: cbcpre

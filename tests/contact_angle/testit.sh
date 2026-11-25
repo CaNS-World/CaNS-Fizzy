@@ -17,9 +17,13 @@ mkdir -p data
 #
 cp $TESTDIR/input-*.nml $TESTDIR/spheres.in $RUNDIR
 
-for name in plic thinc acdi; do
+for name in plic thinc thincsplit acdi; do
   echo "INFO: Running CaNS, case $name"
-  mv input-${name}.nml input.nml
+  if [ $name = thincsplit ]; then # THINC in the direction-split advection
+    sed "/^&two_fluid/a ifc_advection = 'split'" input-thinc.nml > input.nml
+  else
+    cp input-${name}.nml input.nml
+  fi
   set +e
   ${MPIRUN} ./cans 1> log_file.log 2> err_log.log
   status=$?

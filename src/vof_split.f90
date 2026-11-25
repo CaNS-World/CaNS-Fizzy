@@ -45,8 +45,8 @@ module mod_vof_split
   use mod_thinc     , only: thinc_intercept,thinc_slab
   implicit none
   private
-  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics, &
-         vof_split_contact_angle
+  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_curvature_reset, &
+         vof_split_diagnostics,vof_split_contact_angle
   !
   type, public :: vof_marker
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null() ! volume fraction of a marker (see `vof_split_advance`)
@@ -330,7 +330,6 @@ module mod_vof_split
         call set_zero(psiflx_z)
         is_psiflx_set = .true.
       end if
-      if(.not.is_track) call set_zero(fl)
     end if
     !
     ! advecting velocity, and CFL numbers along each direction
@@ -359,6 +358,7 @@ module mod_vof_split
       clip_stats(2) =  huge(1._rp)
       clip_stats(3) = -huge(1._rp)
       !$acc end serial
+      call vof_split_curvature_reset
     end if
     do isub=1,nsub
       if(nm == 0) then
@@ -389,21 +389,24 @@ module mod_vof_split
           if(is_sweep) then
             select case(idir)
             case(1)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,ua,psi)
+              call markers_total(1,n,nh_v,nh_psi,nm_off,dts,ua,psi)
             case(2)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,va,psi)
+              call markers_total(2,n,nh_v,nh_psi,nm_off,dts,va,psi)
             case(3)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,wa,psi)
+              call markers_total(3,n,nh_v,nh_psi,nm_off,dts,wa,psi)
             end select
           end if
         end if
         if(is_sweep) then
           select case(idir)
           case(1)
+            if(.not.is_track) call frozen_flux(1,n,nh_v,nh_psi,nh_g,wzc,dts,ua,psi)
             call transport_all(1,ua)
           case(2)
+            if(.not.is_track) call frozen_flux(2,n,nh_v,nh_psi,nh_g,wzc,dts,va,psi)
             call transport_all(2,va)
           case(3)
+            if(.not.is_track) call frozen_flux(3,n,nh_v,nh_psi,nh_g,wzc,dts,wa,psi)
             call transport_all(3,wa)
           end select
           call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
@@ -589,23 +592,30 @@ module mod_vof_split
     end do
   end subroutine markers_dilatation
   !
-  subroutine markers_total(n,nh_v,nh_psi,nm_off,dt,vel,psi)
+  subroutine markers_total(idir,n,nh_v,nh_psi,nm_off,dt,vel,psi)
     !
     ! total volume fraction and face fluxes after the sweeps of all the markers along one direction, for the
     ! transport along with the sweeps, from the sums over the markers in psi and flt: the offset `nm_off` is
     ! subtracted (for the fluxes, times the volume of the donor region per unit area, vel*dt), and the total
-    ! volume fraction is clipped to [0,1] where markers overlap
+    ! volume fraction is clipped to [0,1] where markers overlap; the fluxes are those that a sweep along idir
+    ! computes (faces 0:n+1 along it, and 1:n+1 along the other directions): the other entries are left at
+    ! zero, since the offset term, added to entries that the sweeps of the markers do not overwrite, would be
+    ! summed over the markers again in every sweep, and grow without bound
     !
     implicit none
+    integer , intent(in   )               :: idir
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_v,nh_psi,nm_off
     real(rp), intent(in   ) :: dt
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: vel
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp) :: offset
-    integer  :: i,j,k
+    integer  :: i,j,k,di,dj,dk
     !
     offset = nm_off
+    di = merge(1,0,idir == 1)
+    dj = merge(1,0,idir == 2)
+    dk = merge(1,0,idir == 3)
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1-nh_psi,n(3)+nh_psi
       do j=1-nh_psi,n(2)+nh_psi
@@ -615,9 +625,9 @@ module mod_vof_split
       end do
     end do
     !$acc parallel loop collapse(3) default(present) async(1)
-    do k=0,n(3)+1
-      do j=0,n(2)+1
-        do i=0,n(1)+1
+    do k=1-dk,n(3)+1
+      do j=1-dj,n(2)+1
+        do i=1-di,n(1)+1
           fl(i,j,k) = flt(i,j,k) - offset*vel(i,j,k)*dt
         end do
       end do
@@ -1366,6 +1376,19 @@ module mod_vof_split
     end if
   end subroutine donor_fractions
   !
+  subroutine vof_split_curvature_reset
+    !
+    ! resets the counts of the curvature estimates (see `vof_split_curvature`), which are accumulated over
+    ! the calls that follow: one per time step, or one per marker
+    !
+    implicit none
+    !$acc serial default(present) async(1)
+    kappa_stats(1) = 0._rp
+    kappa_stats(2) = 0._rp
+    kappa_stats(3) = 0._rp
+    !$acc end serial
+  end subroutine vof_split_curvature_reset
+  !
   subroutine vof_split_curvature(istage,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     !
     ! interface curvature (sign convention of Fizzy: kappa = -div(n), n pointing into phase 1), in stages
@@ -1395,9 +1418,6 @@ module mod_vof_split
       !
       nlist(1) = 0
       !$acc update device(nlist) async(1)
-      !$acc serial default(present) async(1)
-      kappa_stats(1) = 0._rp
-      !$acc end serial
       !$acc parallel loop collapse(3) default(present) private(il) async(1)
       do k=1,n(3)
         do j=1,n(2)
@@ -1422,10 +1442,6 @@ module mod_vof_split
       !
       n1 = n(1)
       n2 = n(2)
-      !$acc serial default(present) async(1)
-      kappa_stats(2) = 0._rp
-      kappa_stats(3) = 0._rp
-      !$acc end serial
       !$acc parallel loop default(present) async(1)
       do il=1,nlist(1)
         lin = ilist(il)
@@ -1642,6 +1658,37 @@ module mod_vof_split
       end if
     end do
   end subroutine hf_list
+  !
+  subroutine frozen_flux(idir,n,nh_v,nh_psi,nh_g,wzc,dt,vel,psi)
+    !
+    ! face fluxes of a sweep along direction idir for a volume fraction that is not advanced: its value at
+    ! each face, interpolated with the weights of the density of the staggered control volumes, times the
+    ! volume swept by the face (see `frozen_fluxes` of `mod_interface_capturing`)
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: idir,nh_v,nh_psi,nh_g
+    real(rp), intent(in), dimension(1-nh_g:) :: wzc
+    real(rp), intent(in) :: dt
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: w1
+    integer  :: i,j,k,di,dj,dk
+    !
+    di = merge(1,0,idir == 1)
+    dj = merge(1,0,idir == 2)
+    dk = merge(1,0,idir == 3)
+    !$acc parallel loop collapse(3) default(present) private(w1) async(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          w1 = 0.5_rp
+          if(idir == 3) w1 = wzc(k)
+          fl(i,j,k) = (w1*psi(i,j,k)+(1._rp-w1)*psi(i+di,j+dj,k+dk))*vel(i,j,k)*dt
+        end do
+      end do
+    end do
+  end subroutine frozen_flux
   !
   subroutine set_zero(p)
     implicit none

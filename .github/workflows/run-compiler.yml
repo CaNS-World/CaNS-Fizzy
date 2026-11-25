@@ -19,6 +19,10 @@ on:
         description: "JSON array of build modes to test"
         type: string
         default: '["opt", "dbg"]'
+      tests_in_one_job:
+        description: "Run the tests of each build one after the other in a single job (where installing the compiler takes longer than the tests)"
+        type: boolean
+        default: false
       variants:
         description: "JSON array of the variants to build and test"
         type: string
@@ -26,7 +30,7 @@ on:
       tests_default:
         description: "JSON array of the tests of the default variant; a suffix -thinc, -plic or -thincsplit selects that interface method"
         type: string
-        default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "forced_hit", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "marangoni_layer", "markers", "marangoni_markers"]'
+        default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "forced_hit", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "marangoni_layer", "markers", "marangoni_markers", "single_fluid", "input_checks", "options"]'
 
 jobs:
   default:
@@ -36,6 +40,7 @@ jobs:
       compiler: ${{ inputs.compiler }}
       cpu_target: ${{ inputs.cpu_target }}
       test_modes: ${{ inputs.test_modes }}
+      tests_in_one_job: ${{ inputs.tests_in_one_job }}
       variant: "default"
       tests: ${{ inputs.tests_default }}
 
@@ -46,7 +51,6 @@ jobs:
       compiler: ${{ inputs.compiler }}
       cpu_target: ${{ inputs.cpu_target }}
       test_modes: ${{ inputs.test_modes }}
-      build_modes: '["opt", "dbg"]'
       variant: "unbalanced"
       variant_flags: "BALANCED_CAPILLARY_PRESSURE_SPLIT=0"
       tests: '["rising_bubble", "restart_two_fluid"]'
@@ -58,7 +62,6 @@ jobs:
       compiler: ${{ inputs.compiler }}
       cpu_target: ${{ inputs.cpu_target }}
       test_modes: ${{ inputs.test_modes }}
-      build_modes: '["opt", "dbg"]'
       variant: "hypre"
       variant_flags: "CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=/usr"
       tests: '["rising_bubble", "restart_two_fluid", "implicit_diffusion"]'
