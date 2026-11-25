@@ -12,7 +12,7 @@ module mod_scal
   use mod_types
   implicit none
   private
-  public scal_ad,scal_a_cons,cmpt_scalflux,scalar
+  public scal_ad,scal_a_cons,cmpt_scalflux,cmpt_scal_mean,scalar
   !
   ! scalar derived type, as in CaNS: the field, its right-hand side of the previous time step, the previous
   ! and transported fields of the direction-split advection, and the data of the constant-coefficient
@@ -302,4 +302,42 @@ module mod_scal
     flux(:) = [flux_x,flux_y,flux_z]
     call MPI_ALLREDUCE(MPI_IN_PLACE,flux,3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
   end subroutine cmpt_scalflux
+  !
+  subroutine cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio,rhocp12,psi,s,mean_rhocp_s,mean_rhocp)
+    !
+    ! computes the volume averages of rho*cp*s (the quantity that the scalar equation conserves) and of rho*cp;
+    ! the counterpart of `cmpt_momentum` for a scalar
+    !
+    implicit none
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_s,nh_psi,nh_g
+    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio
+    real(rp), intent(in ), dimension(2) :: rhocp12
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp), intent(out) :: mean_rhocp_s,mean_rhocp
+    real(rp) :: rhocp,drhocp,rhocp_c,tot_s,tot
+    real(rp), dimension(2) :: means
+    integer :: i,j,k,ierr
+    !
+    rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    tot_s = 0._rp; tot = 0._rp
+    !$acc data copy(tot_s,tot) async(1)
+    !$acc parallel loop collapse(3) default(present) private(rhocp_c) reduction(+:tot_s,tot) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          rhocp_c = rhocp + drhocp*psi(i,j,k)
+          tot_s = tot_s + rhocp_c*s(i,j,k)*grid_vol_ratio(k)
+          tot   = tot   + rhocp_c*grid_vol_ratio(k)
+        end do
+      end do
+    end do
+    !$acc end data
+    !$acc wait(1)
+    means(:) = [tot_s,tot]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,means,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    mean_rhocp_s = means(1)
+    mean_rhocp   = means(2)
+  end subroutine cmpt_scal_mean
 end module mod_scal

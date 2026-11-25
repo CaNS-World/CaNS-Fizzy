@@ -32,6 +32,7 @@ the tests, and what each checks:
   navier_slip                  : channel flow with a slip length against the exact profile
   forced_hit                   : the two large-scale forcings, from rest, against their solutions
   zero_net_acceleration        : balances of the forcing that keeps the mean momentum, and rejected inputs
+  forcing_targets              : forcing that keeps the mean of a scalar, and the target bulk velocity and scalar
   deforming_circle             : a circle in a vortex that reverses returns to its initial shape
   rising_bubble                : interface of a rising bubble against the benchmark of Hysing et al., case 1
   restart_two_fluid            : a two-fluid run with three scalars against the same run restarted, bitwise

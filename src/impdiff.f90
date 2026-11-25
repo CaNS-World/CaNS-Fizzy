@@ -36,7 +36,7 @@ module mod_impdiff
          impdiff_vc_mom_rhs,impdiff_vc_mom_updt,impdiff_vc_mom_solve, &
          impdiff_vc_scal_rhs,impdiff_vc_scal_updt,impdiff_vc_scal_solve, &
 #endif
-         impdiff_wall_force,impdiff_updt_forcing
+         impdiff_wall_force,impdiff_updt_forcing,impdiff_wall_heat,impdiff_updt_forcing_s
   real(rp), allocatable, dimension(:,:,:), save :: cw            ! work array of the line solver
   real(rp), allocatable, dimension(:,:,:), save :: dud,dvd,dwd,dsd ! implicit terms at the old time level
   contains
@@ -780,6 +780,91 @@ module mod_impdiff
       end do
     end do
   end subroutine impdiff_updt_forcing
+  !
+  subroutine impdiff_wall_heat(n,nh_psi,nh_g,grid_vol_ratio,rhocp12,psi,psio,wall_heat,dwall_heat_old)
+    !
+    ! the counterpart of `impdiff_wall_force` for a scalar: computes the heat lost through the boundaries per unit
+    ! volume by the terms that are integrated implicitly, i.e., minus their volume average, at the old time level
+    ! (see `impdiff_z_scal_rhs`, `impdiff_cc_scal_rhs`, `impdiff_vc_scal_rhs`); the zero-net-heating forcing leaves
+    ! it out of the heat loss that it balances explicitly, and balances what the implicit integration applies
+    ! together with the solve (see the main program); with constant coefficients the terms are per unit rho*cp,
+    ! and `dwall_heat_old` is the change of the heat loss of the previous step due to the update of its rho*cp
+    ! (zero otherwise)
+    !
+    implicit none
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh_psi,nh_g
+    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio
+    real(rp), intent(in ), dimension(2) :: rhocp12
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi,psio
+    real(rp), intent(out) :: wall_heat,dwall_heat_old
+    real(rp) :: rhocp,drhocp,fs,gs
+    real(rp), dimension(2) :: heat
+    logical  :: is_cc
+    integer  :: i,j,k,ierr
+    !
+#if defined(_CONSTANT_COEFFS_POISSON)
+    is_cc = .not.is_impdiff_1d
+#else
+    is_cc = .false.
+#endif
+    rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    fs = 0._rp; gs = 0._rp
+    !$acc data copy(fs,gs) async(1)
+    if(.not.is_cc) then
+      !$acc parallel loop collapse(3) default(present) reduction(+:fs) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            fs = fs - dsd(i,j,k)*grid_vol_ratio(k)
+          end do
+        end do
+      end do
+    else
+      !$acc parallel loop collapse(3) default(present) reduction(+:fs,gs) async(1)
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            fs = fs - (rhocp+drhocp*psi(i,j,k))*dsd(i,j,k)*grid_vol_ratio(k)
+            gs = gs - drhocp*(psio(i,j,k)-psi(i,j,k))*dsd(i,j,k)*grid_vol_ratio(k)
+          end do
+        end do
+      end do
+    end if
+    !$acc end data
+    !$acc wait(1)
+    heat(:) = [fs,gs]
+    call MPI_ALLREDUCE(MPI_IN_PLACE,heat,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    wall_heat      = heat(1)
+    dwall_heat_old = heat(2)
+  end subroutine impdiff_wall_heat
+  !
+  subroutine impdiff_updt_forcing_s(n,nh_s,nh_psi,rhocp12,psi,dtf,s)
+    !
+    ! the counterpart of `impdiff_updt_forcing` for a scalar: adds a uniform source per unit volume, times the time
+    ! step (`dtf`), to the scalar; it is used by the zero-net-heating forcing to balance the heat lost through the
+    ! boundaries by the terms integrated implicitly (see the main program)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_s,nh_psi
+    real(rp), intent(in   ), dimension(2) :: rhocp12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in   ) :: dtf
+    real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp) :: rhocp,drhocp
+    integer  :: i,j,k
+    !
+    rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          s(i,j,k) = s(i,j,k) + dtf/(rhocp + drhocp*psi(i,j,k))
+        end do
+      end do
+    end do
+  end subroutine impdiff_updt_forcing_s
   !
   subroutine impdiff_z_scal_rhs(n,nh_s,nh_psi,nh_g,dzci,dzfi,ka12,psi,s,dsdt)
     !

@@ -8,7 +8,7 @@
 module mod_rk
   use mod_acdi     , only: acdi_transport_pf
   use mod_impdiff  , only: impdiff_z_mom_rhs,impdiff_z_scal_rhs,impdiff_cc_mom_rhs,impdiff_cc_scal_rhs,impdiff_wall_force, &
-                           impdiff_updt_forcing
+                           impdiff_updt_forcing,impdiff_wall_heat
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff  , only: impdiff_vc_mom_rhs,impdiff_vc_scal_rhs
 #endif
@@ -16,7 +16,7 @@ module mod_rk
                            marker_fields
   use mod_param    , only: is_impdiff,is_impdiff_1d,is_ifc_acdi,is_ifc_split,is_vof_sweep_transport,visc0, &
                            dsigma_ds,s_ref
-  use mod_scal     , only: scal_ad,scal_a_cons
+  use mod_scal     , only: scal_ad,scal_a_cons,cmpt_scalflux,cmpt_scal_mean
   use mod_thinc    , only: thinc_transport_psi
   use mod_two_fluid, only: clip_field
   use mod_types
@@ -110,7 +110,7 @@ module mod_rk
       wall_force(1) = sum(taux(:)/l(:))
       wall_force(2) = sum(tauy(:)/l(:))
       wall_force(3) = sum(tauz(:)/l(:))
-      if(is_first) wall_force_old(:) = wall_force(:)
+      where(is_first .or. wall_force_old(:) <= -huge(1._rp)) wall_force_old(:) = wall_force(:) ! (dummy values: none saved)
       force_balance(:,1) = rkpar(1)*wall_force(:)+rkpar(2)*wall_force_old(:)
       call cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_forced,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                           rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
@@ -263,8 +263,9 @@ module mod_rk
     end if
   end subroutine rk
   !
-  subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource,rho12,ka12,cp12,alpha0,psi,u,v,w, &
-                     psio,psiflx_x,psiflx_y,psiflx_z,is_first,dsdtrko,s,so,sadv,uadv,vadv,wadv)
+  subroutine rk_scal(rkpar,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_sforced,l,dli,dzci,dzfi,grid_vol_ratio_f,dt,ssource, &
+                     rho12,ka12,cp12,alpha0,psi,u,v,w,psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_heat_old,dsdtrko,s, &
+                     sforce_balance,wall_heat_imp,so,sadv,uadv,vadv,wadv)
     !
     ! AB2 scheme for time integration of the scalar field
     !
@@ -274,12 +275,19 @@ module mod_rk
     ! with `is_vof_sweep_transport`, the scalar has been transported along with the sweeps of the volume
     ! fraction instead, and `sadv` is the transported scalar
     !
+    ! with `is_sforced`, the zero-net-heating forcing replaces `ssource` (as `rk` does for the momentum): the source
+    ! balances the heat lost through the boundaries; `sforce_balance` returns the source, and the total of rho*cp*s
+    ! at the start of the step, from which the main program measures its rate of change; `wall_heat_imp` returns
+    ! the heat lost by the terms integrated implicitly, which the main program balances with the implicit solve
+    !
     implicit none
     real(rp), intent(in   ), dimension(2) :: rkpar
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   ) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
-    real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    logical , intent(in   ), dimension(0:1,3) :: is_bound
+    logical , intent(in   ) :: is_sforced
+    real(rp), intent(in   ), dimension(3) :: l,dli
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,grid_vol_ratio_f
     real(rp), intent(in   )                :: dt
     real(rp), intent(in   )                :: ssource
     real(rp), intent(in   ), dimension(2)  :: rho12,ka12,cp12
@@ -289,8 +297,11 @@ module mod_rk
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psio
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   )                   :: is_first
+    real(rp), intent(inout)                   :: wall_heat_old
     real(rp), intent(inout), dimension(:,:,:) :: dsdtrko
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp), intent(out  ), dimension(4)     :: sforce_balance
+    real(rp), intent(out  )                   :: wall_heat_imp
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: so,sadv
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uadv,vadv,wadv
     real(rp) :: c1,c2
@@ -298,6 +309,8 @@ module mod_rk
     real(rp), dimension(2) :: rhocp12
     real(rp) :: rhocp,drhocp,rhocp_n,rhocp_p
     real(rp) :: factor1,factor2,factor12
+    real(rp) :: ssource_eff,wall_heat,wall_heat_imp_ab,dwall_heat_old,rhocp_mean
+    real(rp), dimension(3) :: flux
     integer :: i,j,k
     !
     factor1 = rkpar(1)*dt
@@ -309,6 +322,21 @@ module mod_rk
       !$acc wait(1)
     end if
     rhocp12(:) = rho12(:)*cp12(:)
+    !
+    ! zero-net-heating forcing
+    !
+    sforce_balance(:) = 0._rp
+    wall_heat_imp = 0._rp
+    ssource_eff = ssource
+    if(is_sforced) then
+      call cmpt_scalflux(n,nh_s,nh_psi,nh_g,is_bound,l,dli,dzci,dzfi,ka12,psi,s,flux)
+      wall_heat = flux(1)/l(1)+flux(2)/l(2)+flux(3)/l(3)
+      if(is_first .or. wall_heat_old <= -huge(1._rp)) wall_heat_old = wall_heat ! (dummy value: none saved)
+      sforce_balance(1) = rkpar(1)*wall_heat+rkpar(2)*wall_heat_old
+      ssource_eff = sforce_balance(1)
+      wall_heat_old = wall_heat
+      call cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio_f,rhocp12,psio,s,sforce_balance(2),rhocp_mean)
+    end if
     if(is_ifc_split.and..not.is_vof_sweep_transport) then
       c1 = rkpar(1)
       c2 = rkpar(2)
@@ -340,6 +368,18 @@ module mod_rk
         call impdiff_vc_scal_rhs(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,ka12,psi,s,dsdtrk)
 #endif
       end if
+      if(is_sforced) then
+        !
+        ! the forcing leaves out the heat lost by the terms integrated implicitly, which is balanced
+        ! together with the implicit solve (see the main program)
+        !
+        call impdiff_wall_heat(n,nh_psi,nh_g,grid_vol_ratio_f,rhocp12,psi,psio,wall_heat_imp,dwall_heat_old)
+        wall_heat_old    = wall_heat_old - wall_heat_imp
+        wall_heat_imp_ab = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_heat_imp
+        if(.not.is_first) wall_heat_imp_ab = wall_heat_imp_ab - rkpar(2)*dwall_heat_old
+        sforce_balance(1) = sforce_balance(1) - wall_heat_imp_ab
+        ssource_eff       = ssource_eff       - wall_heat_imp_ab
+      end if
     end if
     if(is_first) then
       !$acc parallel loop collapse(3) default(present) async(1)
@@ -358,7 +398,7 @@ module mod_rk
       ! the update, together with the advection term, in a single kernel
       !
       call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psio,psiflx_x,psiflx_y,psiflx_z, &
-                       uadv,vadv,wadv,sadv,factor1,factor2,factor12,ssource,dsdtrk,dsdtrko,s)
+                       uadv,vadv,wadv,sadv,factor1,factor2,factor12,ssource_eff,dsdtrk,dsdtrko,s)
     else if(.not.is_vof_sweep_transport) then
       !$acc parallel loop collapse(3) default(present) private(rhocp_p,rhocp_n) async(1)
       do k=1,n(3)
@@ -366,7 +406,7 @@ module mod_rk
           do i=1,n(1)
             rhocp_p = rhocp + drhocp*psi( i,j,k)
             rhocp_n = rhocp + drhocp*psio(i,j,k)
-            s(i,j,k) = (s(i,j,k)*rhocp_n + factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
+            s(i,j,k) = (s(i,j,k)*rhocp_n + factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource_eff)/rhocp_p
             dsdtrko(i,j,k) = dsdtrk(i,j,k)
           end do
         end do
@@ -380,7 +420,7 @@ module mod_rk
         do j=1,n(2)
           do i=1,n(1)
             rhocp_p = rhocp + drhocp*psi(i,j,k)
-            s(i,j,k) = sadv(i,j,k) + (factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
+            s(i,j,k) = sadv(i,j,k) + (factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource_eff)/rhocp_p
             dsdtrko(i,j,k) = dsdtrk(i,j,k)
           end do
         end do

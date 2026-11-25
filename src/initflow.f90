@@ -7,14 +7,16 @@
 module mod_initflow
   use mpi
   use mod_common_mpi, only: ierr,myid
+  use mod_mom       , only: cmpt_momentum
   use mod_param     , only: pi
+  use mod_two_fluid , only: bulk_mean_12_stag
   use mod_types
   implicit none
   private
-  public initflow,initscal,add_noise
+  public initflow,initscal,add_noise,set_bulk_velocity
   contains
   subroutine initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho,mu, &
-                      bforce,is_wallturb,time,u,v,w,p)
+                      is_forced,velf,bforce,is_wallturb,time,u,v,w,p)
     !
     ! computes initial conditions for the velocity field
     !
@@ -27,7 +29,8 @@ module mod_initflow
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), intent(in), dimension(1-nh_g:) :: zc,zf,dzc,dzf
     real(rp), intent(in)               :: rho,mu
-    real(rp), intent(in), dimension(3) :: bforce
+    logical , intent(in), dimension(3) :: is_forced
+    real(rp), intent(in), dimension(3) :: velf,bforce
     logical , intent(in)               :: is_wallturb
     real(rp), intent(in)               :: time
     real(rp), target, dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(inout) :: u,v,w
@@ -93,6 +96,7 @@ module mod_initflow
     is_pair  = .false.
     uref  = 1.
     ubulk = uref
+    if(is_forced(idir_s)) ubulk = velf(idir_s) ! (bulk velocity of the profile along a forced direction, as in CaNS)
     select case(trim(ini))
     case('cou')
       call couette(   n(idir_n),rn/lprof,1._rp,u1d_n)
@@ -418,7 +422,62 @@ module mod_initflow
     end if
   end subroutine initflow
   !
-  subroutine initscal(inisca,bcsca,ng,lo,nh,nh_g,l,dl,zc,dzf,s)
+  subroutine set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_forced,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
+    !
+    ! along a forced direction, scales the initial velocity such that its mass-averaged value, total momentum over
+    ! total mass (the quantity that the zero-net-acceleration forcing keeps), is `velf`; it needs the phase indicator
+    ! with its halo, hence it is called after `initflow`, once the phase indicator is set
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    logical , intent(in   ), dimension(3) :: is_forced
+    real(rp), intent(in   ), dimension(3) :: velf
+    real(rp), intent(in   ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f,wzc
+    real(rp), intent(in   ), dimension(2) :: rho12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), dimension(3) :: momentum
+    real(rp) :: mass
+    integer  :: idir
+    !
+    call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
+    do idir=1,3
+      if(.not.is_forced(idir) .or. abs(momentum(idir)) <= 0._rp) cycle
+      if(idir < 3) then
+        call bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio_f,wzc,psi,rho12,mass)
+      else
+        call bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio_c,wzc,psi,rho12,mass)
+      end if
+      select case(idir)
+      case(1)
+        call scale_field(n,nh_v,velf(idir)*mass/momentum(idir),u)
+      case(2)
+        call scale_field(n,nh_v,velf(idir)*mass/momentum(idir),v)
+      case(3)
+        call scale_field(n,nh_v,velf(idir)*mass/momentum(idir),w)
+      end select
+    end do
+  end subroutine set_bulk_velocity
+  !
+  subroutine scale_field(n,nh,factor,p)
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh
+    real(rp), intent(in   )               :: factor
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
+    integer :: i,j,k
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=1-nh,n(3)+nh
+      do j=1-nh,n(2)+nh
+        do i=1-nh,n(1)+nh
+          p(i,j,k) = p(i,j,k)*factor
+        end do
+      end do
+    end do
+  end subroutine scale_field
+  !
+  subroutine initscal(inisca,bcsca,ng,lo,nh,nh_g,l,dl,zc,dzf,is_sforced,scalf,s)
     !
     ! computes initial conditions for the scalar field
     !
@@ -429,6 +488,8 @@ module mod_initflow
     integer , intent(in)               :: nh,nh_g
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), intent(in), dimension(1-nh_g:) :: zc,dzf
+    logical , intent(in)               :: is_sforced
+    real(rp), intent(in)               :: scalf
     real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(out) :: s
     real(rp), allocatable, dimension(:) :: s1d
     !real(rp), allocatable, dimension(:,:) :: u2d
@@ -446,6 +507,7 @@ module mod_initflow
     is_noise = .false.
     is_mean  = .false.
     sref = 0.5*(bcsca(0,3)+bcsca(1,3))
+    if(is_sforced) sref = scalf ! (as in CaNS)
     !
     ! two-dimensional initial conditions lie in the x-z plane, or in the y-z plane with the suffix `-x`
     ! (direction normal to the plane; `-y` is the default)

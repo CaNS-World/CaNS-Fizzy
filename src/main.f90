@@ -38,10 +38,10 @@ program cans
   use mod_fft                , only: fftini,fftend
   use mod_fillps             , only: fillps
   use mod_forcing            , only: lscale_forcing
-  use mod_initflow           , only: initflow,initscal
+  use mod_initflow           , only: initflow,initscal,set_bulk_velocity
   use mod_initgrid           , only: initgrid,save_grid
   use mod_initmpi            , only: initmpi
-  use mod_impdiff            , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_updt_forcing, &
+  use mod_impdiff            , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_updt_forcing,impdiff_updt_forcing_s, &
                                      impdiff_cc_mom_updt,impdiff_cc_scal_updt
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff            , only: impdiff_vc_mom_updt,impdiff_vc_mom_solve,impdiff_vc_scal_updt,impdiff_vc_scal_solve
@@ -67,7 +67,7 @@ program cans
                                      tout0d,tout1d,tout2d,tout3d,tsave, &
                                      cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpre,bcpre, &
                                      cbcscal,bcscal, &
-                                     is_forced,bforce,ssource, &
+                                     is_forced,velf,bforce,ssource,is_sforced,scalf,cbcpsi,bcpsi, &
                                      gacc,nscal,nmarker, &
                                      rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
                                      psi_thickness_factor, &
@@ -83,7 +83,7 @@ program cans
                                      is_mask_divergence_check, &
                                      nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
   use mod_sanity             , only: test_sanity_input,test_sanity_solver
-  use mod_scal               , only: scalar
+  use mod_scal               , only: scalar,cmpt_scal_mean
   use mod_solve_helmholtz    , only: solve_helmholtz,rhs_bound
   use mod_two_fluid          , only: bulk_mean_12_stag
 #if !defined(_CONSTANT_COEFFS_POISSON)
@@ -147,6 +147,13 @@ program cans
                                          xc_g,xf_g,yc_g,yf_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f,wzc
   real(rp), dimension(3) :: dpdl,meanvel,momentum,momentum_o,wall_force_imp
+  !
+  ! zero-net-heating forcing of the scalars (the counterpart of the zero-net-acceleration forcing): heat lost through
+  ! the boundaries in the previous step, balance of each scalar, and the part of the implicit diffusion
+  !
+  real(rp), allocatable, dimension(:)   :: wall_heat_old
+  real(rp), allocatable, dimension(:,:) :: sforce_balance
+  real(rp) :: wall_heat_imp,stot,stot_o,rhocp_mean
   real(rp), dimension(3,7) :: force_balance
   real(rp), dimension(2) :: tm_coeff
   !
@@ -600,7 +607,10 @@ program cans
       scalars(iscal)%sadv(:,:,:) = 0.
     end do
   end if
-  wall_force_old(:) = 0.
+  allocate(wall_heat_old(nscal),sforce_balance(4,nscal))
+  wall_force_old(:) = -huge(1._rp) ! (dummy values, saved also where nothing is forced; see `fld_dt.out`)
+  wall_heat_old(:)  = -huge(1._rp)
+  sforce_balance(:,:) = 0.
   is_first = .true.
   do iscal=1,nscal
     scalars(iscal)%val(:,:,:) = 0.
@@ -632,9 +642,10 @@ program cans
     istep = 0
     time = 0.
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
-                  bforce,is_wallturb,time,u,v,w,p)
+                  is_forced,velf,bforce,is_wallturb,time,u,v,w,p)
     do iscal=1,nscal
-      call initscal(iniscal(iscal),bcscal(:,:,iscal),ng,lo,nh_s,nh_g,l,dl,zc,dzf,scalars(iscal)%val)
+      call initscal(iniscal(iscal),bcscal(:,:,iscal),ng,lo,nh_s,nh_g,l,dl,zc,dzf,is_sforced(iscal),scalf(iscal), &
+                    scalars(iscal)%val)
     end do
     call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
     do imark=1,nmk
@@ -660,13 +671,14 @@ program cans
           is_first = is_first.or..not.is_done
         end do
         open(newunit=iunit,file=trim(datadir)//'fld_dt.out',status='old',action='read',iostat=istat)
-        if(istat == 0) read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3)
+        if(istat == 0) read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3),wall_heat_old(1:nscal)
         if(istat == 0) close(iunit)
         is_first = is_first.or.istat /= 0
       end if
       call MPI_BCAST(is_first      ,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
       call MPI_BCAST(dt_restart    ,2,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
       call MPI_BCAST(wall_force_old,3,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
+      call MPI_BCAST(wall_heat_old ,nscal,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
       if(.not.is_first) then
         do is=nio+1,nio_s
           call load_one('r',trim(datadir)//'fld_'//trim(c_io_vars(is))//trim(io_ext), &
@@ -744,6 +756,13 @@ program cans
     !$acc enter data create(phi) async(1)
   end if
   !$acc enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
+  if(.not.restart .and. any(is_forced(:))) then
+    !
+    ! bulk velocity of the initial condition along a forced direction, before the interface method uses the velocity
+    !
+    call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
+    call set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_forced,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
+  end if
   call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   if(nmk > 0) then
     !$acc enter data copyin(markers(:))
@@ -852,10 +871,20 @@ program cans
     end if
     do iscal=1,nscal
       s => scalars(iscal)
-      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource(iscal),rho12,ka12(:,iscal),cp12(:,iscal), &
-                   alpha0(iscal),psi,u,v,w, &
-                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,s%dsdtrko,s%val,s%so,s%sadv,uadv,vadv,wadv)
+      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_sforced(iscal),l,dli,dzci,dzfi,grid_vol_ratio_f,dt, &
+                   ssource(iscal),rho12,ka12(:,iscal),cp12(:,iscal),alpha0(iscal),psi,u,v,w, &
+                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_heat_old(iscal),s%dsdtrko,s%val,sforce_balance(:,iscal), &
+                   wall_heat_imp,s%so,s%sadv,uadv,vadv,wadv)
       if(is_impdiff) then
+        if(is_sforced(iscal)) then
+          !
+          ! zero-net-heating forcing: the heat lost through the boundaries by the terms integrated implicitly is
+          ! balanced here, first with its value at the old time level (returned by `tm_scal`), before the solve
+          !
+          call cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio_f,rho12*cp12(:,iscal),psi,s%val,stot_o,rhocp_mean)
+          wall_heat_imp = wall_heat_imp*dt
+          call impdiff_updt_forcing_s(n,nh_s,nh_psi,rho12*cp12(:,iscal),psi,wall_heat_imp,s%val)
+        end if
         if(is_impdiff_1d) then
           call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcscal(:,:,iscal),bcscal(:,:,iscal),dzc,dzci,dzfi,0.5_rp*dt, &
                                     rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
@@ -871,12 +900,31 @@ program cans
                                      rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
 #endif
         end if
+        if(is_sforced(iscal)) then
+          !
+          ! and then with the small remainder that keeps the total of rho*cp*s unchanged by the implicit integration
+          !
+          call cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio_f,rho12*cp12(:,iscal),psi,s%val,stot,rhocp_mean)
+          stot = stot_o-stot
+          call impdiff_updt_forcing_s(n,nh_s,nh_psi,rho12*cp12(:,iscal),psi,stot,s%val)
+          sforce_balance(1,iscal) = sforce_balance(1,iscal) + (wall_heat_imp+stot)/dt
+        end if
       end if
       call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%val)
+      if(is_sforced(iscal)) then
+        !
+        ! measured rate of change of the mean of rho*cp*s, from its value at the start of the step (returned by
+        ! `tm_scal`), and the means
+        !
+        call cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio_f,rho12*cp12(:,iscal),psi,s%val,stot,rhocp_mean)
+        sforce_balance(2,iscal) = (stot-sforce_balance(2,iscal))/dt
+        sforce_balance(3,iscal) = stot
+        sforce_balance(4,iscal) = stot/rhocp_mean
+      end if
     end do
     if(.not.is_solve_ns) then
       call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
-                    bforce,is_wallturb,time,u,v,w,p)
+                    is_forced,velf,bforce,is_wallturb,time,u,v,w,p)
       !$acc wait(1)
       !$acc update device(u,v,w,p) async(1)
       call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
@@ -1057,6 +1105,14 @@ program cans
         var(20:22) = force_balance(:,7)
         call out0d(trim(datadir)//'forcing_balance.out',22,var)
       end if
+      do iscal=1,nscal
+        if(is_sforced(iscal)) then
+          write(scalnum,'(i3.3)') iscal
+          var(1) = time
+          var(2:5) = sforce_balance(1:4,iscal)
+          call out0d(trim(datadir)//'forcing_scalar_'//scalnum//'.out',5,var)
+        end if
+      end do
       !
       call ifc_write_log(istep,time,n,nh_psi,nh_g,dl,dzf,gam,seps,psi)
     end if
@@ -1182,11 +1238,11 @@ program cans
       end if
       if(is_full_restart) then
         !
-        ! time steps and wall force of the previous time step
+        ! time steps, and wall force and heat loss (of each scalar) of the previous time step
         !
         if(myid == 0) then
           open(newunit=iunit,file=trim(datadir)//trim(filename)//'_dt.out',status='replace')
-          write(iunit,'(*(es24.16e3,1x))') dt,dto,wall_force_old(1:3)
+          write(iunit,'(*(es24.16e3,1x))') dt,dto,wall_force_old(1:3),wall_heat_old(1:nscal)
           close(iunit)
         end if
         if(.not.is_overwrite_save.or.nsaves_max > 0) then
