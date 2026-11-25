@@ -6,7 +6,8 @@
 ! -
 module mod_scal
   use, intrinsic :: iso_c_binding, only: C_PTR
-  use mod_param, only: is_harmonic_interpolation,is_ifc_split
+  use mpi
+  use mod_param          , only: is_harmonic_interpolation,is_ifc_split
   use mod_solve_helmholtz, only: rhs_bound
   use mod_types
   implicit none
@@ -33,26 +34,25 @@ module mod_scal
   end type scalar
   !
   contains
-  subroutine scal_ad(nx,ny,nz,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dxi,dyi,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w, &
-                     s,dsdt)
+  subroutine scal_ad(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
     !
     implicit none
-    integer , intent(in) :: nx,ny,nz
-    integer , intent(in) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
-    real(rp), intent(in) :: dxi,dyi
-    real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
-    real(rp), intent(in), dimension(2) :: ka12,rhocp12
-    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
-    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
-    real(rp), dimension(:,:,:), intent(out) :: dsdt
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in ) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in ), dimension(3) :: dli
+    real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in ), dimension(2) :: ka12,rhocp12
+    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
+    real(rp), intent(out), dimension(:,:,:) :: dsdt
     integer :: i,j,k
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
     real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm
-    real(rp) :: ka,dka,rhocp,drhocp
+    real(rp) :: ka,dka,rhocp,drhocp,dxi,dyi
     logical  :: is_adv,is_harm
     !
     is_adv = .not.is_ifc_split ! (otherwise, advection is computed in `scal_a_cons` or along with the phase indicator)
@@ -64,13 +64,14 @@ module mod_scal
       ka    = ka12(2)   ; dka    = ka12(1)-ka12(2)
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    dxi = dli(1); dyi = dli(2)
     !
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(usip,usim,vsjp,vsjm,wskp,wskm,psixp,psixm,psiyp,psiym,psizp,psizm,kaxp,kaxm,kayp,kaym,kazp,kazm,dsdxp) &
     !$acc private(dsdxm,dsdyp,dsdym,dsdzp,dsdzm) async(1)
-    do k=1,nz
-      do j=1,ny
-        do i=1,nx
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
           if(is_adv) then
             usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
             usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
@@ -180,10 +181,9 @@ module mod_scal
   end subroutine scal_a_cons
   !
   subroutine cmpt_scalflux(n,nh_s,nh_psi,nh_g,is_bound,l,dli,dzci,dzfi,ka12,psi,s,flux)
-    use mpi
     implicit none
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_s,nh_psi,nh_g
+    integer , intent(in ) :: nh_s,nh_psi,nh_g
     logical , intent(in ), dimension(0:1,3) :: is_bound
     real(rp), intent(in ), dimension(3)     :: l,dli
     real(rp), intent(in ), dimension(1-nh_g:)    :: dzci,dzfi

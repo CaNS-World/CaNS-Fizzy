@@ -19,15 +19,15 @@ module mod_chkdt
     ! see Kang et al. Journal of Scientific Computing 15, 323-360
     !
     implicit none
-    integer , intent(in), dimension(3) :: n
-    integer , intent(in)               :: nh,nh_g
-    real(rp), intent(in), dimension(3) :: dl
-    real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
-    logical , intent(in) :: is_solve_ns,is_track_interface
-    real(rp), intent(in) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
-    real(rp), intent(in), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in )               :: nh,nh_g
+    real(rp), intent(in ), dimension(3) :: dl
+    real(rp), intent(in ), dimension(1-nh_g:) :: dzci,dzfi
+    logical , intent(in ) :: is_solve_ns,is_track_interface
+    real(rp), intent(in ) :: mu12(2),rho12(2),sigma,gacc(3),gam,seps
+    real(rp), intent(in ), dimension(1-nh:,1-nh:,1-nh:) :: u,v,w
     real(rp), intent(out) :: dtmax
-    real(rp), intent(in ), optional :: ka12(:,:),cp12(:,:) ! (2,nscal)
+    real(rp), intent(in ) :: ka12(:,:),cp12(:,:) ! (2,nscal)
     real(rp) :: dxi,dyi,dzi
     real(rp) :: ux,uy,uz,vx,vy,vz,wx,wy,wz
     real(rp) :: dtix,dtiy,dtiz,dtiv,dtig,dtik,dtipsi,dti,dl2i
@@ -101,12 +101,10 @@ module mod_chkdt
     if(dti > 0.) dtmax = dti**(-1)
     if((is_track_interface .or. .not.is_solve_ns) .and. dtipsi > 0.) dtmax = min(dtmax,dtipsi**(-1))
     if(nscal > 0) then
-      if(present(ka12) .and. present(cp12)) then
-        dti = 0.
-        do is=1,nscal
-          dti = max(dti,maxval(ka12(:,is)/(rho12(:)*cp12(:,is)))*dl2i)
-        end do
-      end if
+      dti = 0.
+      do is=1,nscal
+        dti = max(dti,maxval(ka12(:,is)/(rho12(:)*cp12(:,is)))*dl2i)
+      end do
       if(is_impdiff.and..not.is_impdiff_1d) dti = 0.
       if(dti > 0.) dtmax = min(dtmax,dti**(-1))
     end if

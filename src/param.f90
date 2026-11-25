@@ -21,6 +21,8 @@ public
 real(rp), parameter :: pi = acos(-1._rp)
 real(rp), parameter :: eps = epsilon(1._rp)
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
+real(rp), parameter :: psi_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! cells with psi_eps < psi < 1-psi_eps hold an
+                                                                       ! interface (1.2e-4 in single precision)
 character(len=100), parameter :: datadir = 'data/'
 !
 ! variables to be determined from the input file
@@ -600,4 +602,13 @@ contains
       end if
     close(iunit)
   end subroutine read_input
+  !
+  pure elemental logical function is_contact_angle(theta)
+    !
+    ! true for a contact angle (in degrees) other than 90 degrees, to the tolerance `psi_eps` on its cosine
+    !
+    implicit none
+    real(rp), intent(in) :: theta
+    is_contact_angle = abs(cos(theta*pi/180._rp)) > psi_eps
+  end function is_contact_angle
 end module mod_param

@@ -7,13 +7,14 @@
 module mod_mom
   use mpi
   use mod_param, only: is_boussinesq_buoyancy,is_harmonic_interpolation,is_ifc_split,is_visc_limiter, &
-                       is_brackbill_normalization
+                       is_brackbill_normalization,psi_eps
   use mod_types
   implicit none
   private
-  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum,cmpt_capillary_force
+  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum, &
+         cmpt_capillary_force,marker_fields
   !
-  type, public :: marker_fields
+  type :: marker_fields
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null(),kappa => null() ! phase indicator and curvature of a
                                                                                      ! marker (see `rk`)
   end type marker_fields
@@ -606,8 +607,6 @@ module mod_mom
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     logical  :: is_adv,is_harm,is_lim,is_lim_c
     real(rp) :: c_min,c_max
-    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! full and empty cells for the viscosity
-                                                                         ! limiter (as for the reconstruction)
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     is_harm = is_harmonic_interpolation
@@ -691,13 +690,13 @@ module mod_mom
           c_pcp = psi(i+1,j  ,k+1)
           !
           ! the viscosity limiter only matters where the two phases meet: it is skipped where all the cells of
-          ! the stencil are full, or all empty, to the tolerance `c_eps`
+          ! the stencil are full, or all empty, to the tolerance `psi_eps`
           !
           is_lim_c = is_lim
           if(is_lim) then
             c_min = min(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
             c_max = max(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
-            is_lim_c = c_min < 1._rp-c_eps .and. c_max > c_eps
+            is_lim_c = c_min < 1._rp-psi_eps .and. c_max > psi_eps
           end if
           !
           flx_x_mcc = rho*u_mcc + drho*psiflx_x(i-1,j  ,k  )
@@ -1135,6 +1134,9 @@ module mod_mom
     if(is_brack) surf_factor = sigma*2._rp/(rho12(1)+rho12(2)) ! density-based scaling of Brackbill et al.
     rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
     !
+    bforcex = bforce(1); bforcey = bforce(2); bforcez = bforce(3)
+    gaccx = gacc(1); gaccy = gacc(2); gaccz = gacc(3)
+    !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
     !                                        all scalars should be firstprivate/private
     !
@@ -1172,13 +1174,6 @@ module mod_mom
           c_pcc = psi(i+1,j  ,k  )
           c_cpc = psi(i  ,j+1,k  )
           c_ccp = psi(i  ,j  ,k+1)
-          !
-          bforcex = bforce(1)
-          bforcey = bforce(2)
-          bforcez = bforce(3)
-          gaccx = gacc(1)
-          gaccy = gacc(2)
-          gaccz = gacc(3)
           !
           psixp = 0.5*(c_pcc+c_ccc)
           psiyp = 0.5*(c_cpc+c_ccc)
@@ -1817,7 +1812,7 @@ module mod_mom
     end do
   end subroutine cmpt_capillary_force
   !
-  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,is_brack,psi_p,psi,kappa,s, &
+  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,psi_p,psi,kappa,s, &
                                factor,u,v,w)
     !
     ! capillary force of the variation of the surface tension with the first scalar,
@@ -1841,7 +1836,6 @@ module mod_mom
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ) :: dsigma,s_ref
-    logical , intent(in   ) :: is_brack
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi_p,psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
@@ -1849,9 +1843,10 @@ module mod_mom
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp) :: rho,drho,mu,dmu,bfac,mfac,dxi,dyi,hz_c
     real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif,c_min,c_max
-    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! (as for the reconstruction and the limiter)
+    logical  :: is_brack
     integer  :: i,j,k
     !
+    is_brack = is_brackbill_normalization
     rho = rho12(2); drho = rho12(1)-rho12(2)
     mu  = mu12(2) ; dmu  = mu12(1) -mu12(2)
     bfac = 2._rp/(rho12(1)+rho12(2))
@@ -1873,7 +1868,7 @@ module mod_mom
                       psi(i+1,j+1,k  ),psi(i+1,j-1,k  ),psi(i-1,j+1,k  ), &
                       psi(i  ,j  ,k+1),psi(i+1,j  ,k+1),psi(i-1,j  ,k+1),psi(i  ,j+1,k+1),psi(i  ,j-1,k+1), &
                       psi(i  ,j  ,k-1),psi(i+1,j  ,k-1),psi(i  ,j+1,k-1))
-          if(c_max-c_min <= c_eps) cycle
+          if(c_max-c_min <= psi_eps) cycle
           hz_c = dzci(k)*dzci(k-1)/(dzci(k)+dzci(k-1)) ! (factor of the centred difference along z)
           !
           ! x face
