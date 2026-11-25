@@ -78,7 +78,9 @@ module mod_thinc
     !
     is_sdf = is_sdf_normals
     d_full = 1.e3_rp/beta
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(vel_x,vel_y,vel_z,ii,xx,jj,yy,kk,zz,lnormx_x,lnormy_y,lnormz_z,d_x,d_y,d_z,lpsi_x,lpsi_y,lpsi_z,arg_x) &
+    !$acc private(arg_y,arg_z,lflux_x,lflux_y,lflux_z) async(1)
     do k=0,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -171,7 +173,7 @@ module mod_thinc
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) firstprivate(beta) async(1)
+    !$acc parallel loop collapse(3) default(present) firstprivate(beta) private(psi_aux) async(1)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1

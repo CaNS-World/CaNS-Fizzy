@@ -102,6 +102,9 @@ module mod_acdi
     dxi = dli(1)
     dyi = dli(2)
     !
+    ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
+    !                                        all scalars should be firstprivate/private
+    !
     !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)

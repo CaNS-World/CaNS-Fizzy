@@ -175,7 +175,7 @@ module mod_rk
     !
     if(.not.is_ifc_split) then
       rho = rho12(2); drho = rho12(1)-rho12(2)
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel loop collapse(3) default(present) private(rhox_n,rhoy_n,rhoz_n,rhox_p,rhoy_p,rhoz_p) async(1)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -206,7 +206,7 @@ module mod_rk
         ! the other terms are added to the velocity transported along with the volume fraction
         !
         rho = rho12(2); drho = rho12(1)-rho12(2)
-        !$acc parallel loop collapse(3) default(present) async(1)
+        !$acc parallel loop collapse(3) default(present) private(rhox_p,rhoy_p,rhoz_p) async(1)
         do k=1,n(3)
           do j=1,n(2)
             do i=1,n(1)
@@ -376,7 +376,7 @@ module mod_rk
       !
       ! the other terms are added to the scalar transported along with the volume fraction
       !
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel loop collapse(3) default(present) private(rhocp_p) async(1)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
