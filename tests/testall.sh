@@ -1,14 +1,15 @@
 #!/bin/bash
 #
 # builds the variants of CaNS-Fizzy that the tests need, and runs the tests of each variant;
-# the variants and their tests are the same as in the CI (.github/workflows/run-compiler.yml)
+# the variants and their tests are those of the GNU job of the CI (.github/workflows/run-all.yml); the Intel and
+# NVIDIA jobs run a subset (the defaults of .github/workflows/run-compiler.yml)
 #
 # usage, from this directory: ./testall.sh [variant ...]     (default: all variants)
 #
 # optional environment variables:
 #   BUILD_FLAGS: build flags added to those of the variant, e.g., BUILD_FLAGS="FFLAGS_DEBUG_MAX=1 FFLAGS_OPT=0"
 #   TEST_SHORT : if set, the three long cases run a fraction of their time steps, without their comparison to
-#                the reference (as the debug builds do in the CI)
+#                the reference (as the debug builds and the NVIDIA build do in the CI)
 #   TESTS      : runs only the tests of this list, e.g., TESTS="rising_bubble restart_two_fluid"
 #   NJOBS      : number of parallel compilation jobs (default: 4)
 #

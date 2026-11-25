@@ -28,6 +28,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+#
+# the GNU job runs all the variants and tests of the local harness (tests/testall.sh), with the optimized and the
+# debug builds; the Intel job (debug build) and the NVIDIA job (optimized build, on the CPU) run the default variant
+# with the tests listed by default in run-compiler.yml, a subset
+#
 jobs:
   GNU:
     uses: ./.github/workflows/run-compiler.yml
