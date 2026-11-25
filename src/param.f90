@@ -151,12 +151,12 @@ logical, protected :: is_impdiff = .false., is_impdiff_1d = .false., &
 ! HYPRE solver options for the variable-coefficient problems; each input has two entries:
 ! the first for the pressure, the second for the (implicit) diffusion
 !
-integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES
+integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES, 6: PCG
                                      hypre_maxiter   = 50, &
                                      hypre_precond_i = 1, &      ! 0: SMG, 1: PFMG, 9: none
                                      hypre_precond_maxiter = 1, &
                                      hypre_gmres_k_dim     = 0, & ! 0: HYPRE's default
-                                     hypre_pfmg_relax_type = -1, & ! < 0: red/black Gauss-Seidel
+                                     hypre_pfmg_relax_type = -1, & ! < 0: red/black Gauss-Seidel (Jacobi on GPUs and with PCG)
                                      hypre_pfmg_num_pre_relax  = 1, &
                                      hypre_pfmg_num_post_relax = 1, &
                                      hypre_pfmg_max_levels = -1    ! 0: HYPRE's default, < 0: see `configure_pfmg`

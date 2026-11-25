@@ -87,7 +87,7 @@ program cans
   use mod_solve_helmholtz    , only: solve_helmholtz,rhs_bound
   use mod_two_fluid          , only: bulk_mean_12_stag
 #if !defined(_CONSTANT_COEFFS_POISSON)
-  use mod_solver_vc          , only: solver_vc,solver_vc_end
+  use mod_solver_vc          , only: solver_vc,solver_vc_init,solver_vc_end
 #endif
 #if !defined(_OPENACC)
   use mod_solver             , only: solver
@@ -219,6 +219,9 @@ program cans
   !
   !$ call omp_set_num_threads(omp_get_max_threads())
   call initmpi(ng,dims,cbcpre,nh_g,lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z,nb,is_bound)
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  call solver_vc_init
+#endif
   twi = MPI_WTIME()
   savecounter = 0
   !
@@ -912,8 +915,8 @@ program cans
         else
           call impdiff_vc_scal_updt(n,nh_s,nh_psi,0.5_rp*dt,rho12*cp12(:,iscal),psi,s%val)
           call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%val)
-          call impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbcscal(:,:,iscal),cbcpre,is_bound,dli,dzci,dzfi,0.5_rp*dt, &
-                                     rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
+          call impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbcscal(:,:,iscal),cbcpre,is_bound,dli,dzc,dzf,dzci,dzfi, &
+                                     0.5_rp*dt,rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
 #endif
         end if
         if(is_sforced(iscal)) then
@@ -1004,7 +1007,7 @@ program cans
         else
           call impdiff_vc_mom_updt(n,nh_v,nh_psi,nh_g,wzc,0.5_rp*dtrk,rho12,psi,u,v,w)
           call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
-          call impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbcvel,cbcpre,is_bound,dli,dzci,dzfi,wzc,0.5_rp*dtrk, &
+          call impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbcvel,cbcpre,is_bound,dli,dzc,dzf,dzci,dzfi,wzc,0.5_rp*dtrk, &
                                     rho12,mu12,psi,u,v,w)
 #endif
         end if
@@ -1026,7 +1029,7 @@ program cans
       call solver(n,nh_p,ng,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre,['c','c','c'],pp,is_dtdma_update_p,ap_d,cp_d, &
                   .not.is_impdiff)
 #else
-      call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzfi,wzc,is_bound,rho12,psi,pp,po)
+      call solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbcpre,bcpre,dli,dzci,dzf,wzc,is_bound,rho12,psi,pp,po)
 #endif
       call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,pp)
       call correc(n,nh_v,nh_p,nh_psi,nh_g,dli,dzci,wzc,rho12,dtrk/rho0,pp,psi,u,v,w)

@@ -37,8 +37,11 @@ module mod_impdiff
          impdiff_vc_scal_rhs,impdiff_vc_scal_updt,impdiff_vc_scal_solve, &
 #endif
          impdiff_wall_force,impdiff_updt_forcing,impdiff_wall_heat,impdiff_updt_forcing_s
-  real(rp), allocatable, dimension(:,:,:), save :: cw            ! work array of the line solver
+  real(rp), allocatable, dimension(:,:,:), save :: cw              ! work array of the line solver
   real(rp), allocatable, dimension(:,:,:), save :: dud,dvd,dwd,dsd ! implicit terms at the old time level
+#if !defined(_CONSTANT_COEFFS_POISSON)
+  real(rp), allocatable, dimension(:,:,:,:), save :: hcoeffs       ! matrix of the variable-coefficient implicit diffusion
+#endif
   contains
   subroutine impdiff_z_mom_rhs(n,nh_v,nh_psi,nh_g,dzci,dzfi,mu12,psi,u,v,w,dudt,dvdt,dwdt)
     !
@@ -277,8 +280,12 @@ module mod_impdiff
     real(rp), intent(inout), dimension(:,:,:) :: dudt,dvdt,dwdt
     integer  :: i,j,k
     !
-    if(.not.allocated(dud)) allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
+    if(.not.allocated(dud)) then
+      allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
+      !$acc enter data create(dud,dvd,dwd) async(1)
+    end if
     call impdiff_vc_mom_cmpt(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,mu12,psi,u,v,w,dud,dvd,dwd)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -310,6 +317,9 @@ module mod_impdiff
     !
     call visc_coeffs(mu12,mu,dmu,is_harm)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(muxp,muxm,muyp,muym,muzp,muzm,c_ccc,c_pcc,c_mcc,c_cpc,c_cmc,c_ccp,c_ccm,c_ppc,c_pmc,c_mpc,c_pcp,c_pcm) &
+    !$acc private(c_mcp,c_cpp,c_cpm,c_cmp) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -381,6 +391,7 @@ module mod_impdiff
     integer  :: i,j,k
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -392,7 +403,7 @@ module mod_impdiff
     end do
   end subroutine impdiff_vc_mom_updt
   !
-  subroutine impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbc,cbcpre,is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi, &
+  subroutine impdiff_vc_mom_solve(ng,lo,hi,n,nh_v,nh_psi,nh_g,cbc,cbcpre,is_bound,dli,dzc,dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi, &
                                   u,v,w)
     !
     ! solves for the implicit half of the Crank-Nicolson integration, in correction form: with u_q the input
@@ -409,23 +420,22 @@ module mod_impdiff
     character(len=1), intent(in   ), dimension(0:1,3)   :: cbcpre
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), allocatable, dimension(:,:,:,:) :: coeffs
     integer :: i,j,k
     !
+    call alloc_hcoeffs(n)
     call impdiff_vc_mom_cmpt(n,nh_v,nh_psi,nh_g,dli,dzci,dzfi,mu12,psi,u,v,w,dud,dvd,dwd)
-    allocate(coeffs(0:6,n(1),n(2),n(3)))
-    call helmholtz_coeffs(n,nh_psi,nh_g,1,cbc(:,:,1),is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,dud)
-    call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dud)
-    call helmholtz_coeffs(n,nh_psi,nh_g,2,cbc(:,:,2),is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,dvd)
-    call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dvd)
-    call helmholtz_coeffs(n,nh_psi,nh_g,3,cbc(:,:,3),is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,dwd)
-    call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dwd)
-    deallocate(coeffs)
+    call helmholtz_coeffs(n,nh_psi,nh_g,1,cbc(:,:,1),is_bound,dli,dzc,dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi,hcoeffs,dud)
+    call solver_vc_helmholtz(ng,lo,hi,cbcpre,hcoeffs,dud)
+    call helmholtz_coeffs(n,nh_psi,nh_g,2,cbc(:,:,2),is_bound,dli,dzc,dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi,hcoeffs,dvd)
+    call solver_vc_helmholtz(ng,lo,hi,cbcpre,hcoeffs,dvd)
+    call helmholtz_coeffs(n,nh_psi,nh_g,3,cbc(:,:,3),is_bound,dli,dzc,dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi,hcoeffs,dwd)
+    call solver_vc_helmholtz(ng,lo,hi,cbcpre,hcoeffs,dwd)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -453,8 +463,12 @@ module mod_impdiff
     real(rp), intent(inout), dimension(:,:,:) :: dsdt
     integer  :: i,j,k
     !
-    if(.not.allocated(dsd)) allocate(dsd(n(1),n(2),n(3)))
+    if(.not.allocated(dsd)) then
+      allocate(dsd(n(1),n(2),n(3)))
+      !$acc enter data create(dsd) async(1)
+    end if
     call impdiff_vc_scal_cmpt(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,ka12,psi,s,dsd)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -483,6 +497,7 @@ module mod_impdiff
     !
     call visc_coeffs(ka12,ka,dka,is_harm)
     dxi2 = dli(1)**2; dyi2 = dli(2)**2
+    !$acc parallel loop collapse(3) default(present) private(kaxp,kaxm,kayp,kaym,kazp,kazm) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -515,6 +530,7 @@ module mod_impdiff
     integer  :: i,j,k
     !
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -524,7 +540,7 @@ module mod_impdiff
     end do
   end subroutine impdiff_vc_scal_updt
   !
-  subroutine impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbc,cbcpre,is_bound,dli,dzci,dzfi,theta,rhocp12,ka12,psi,s)
+  subroutine impdiff_vc_scal_solve(ng,lo,hi,n,nh_s,nh_psi,nh_g,cbc,cbcpre,is_bound,dli,dzc,dzf,dzci,dzfi,theta,rhocp12,ka12,psi,s)
     !
     ! solves for the implicit half of the Crank-Nicolson integration of the scalar diffusion, in correction
     ! form (see `impdiff_vc_mom_solve`); the halos and boundary values of `s` must be up to date
@@ -535,19 +551,19 @@ module mod_impdiff
     character(len=1), intent(in   ), dimension(0:1,3) :: cbc,cbcpre
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rhocp12,ka12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
-    real(rp), allocatable, dimension(:,:,:,:) :: coeffs
     integer :: i,j,k
     !
+    call alloc_hcoeffs(n)
     call impdiff_vc_scal_cmpt(n,nh_s,nh_psi,nh_g,dli,dzci,dzfi,ka12,psi,s,dsd)
-    allocate(coeffs(0:6,n(1),n(2),n(3)))
-    call helmholtz_coeffs(n,nh_psi,nh_g,0,cbc,is_bound,dli,dzci,dzfi,dzci,theta,rhocp12,ka12,psi,coeffs,dsd) ! (no weights needed)
-    call solver_vc_helmholtz(ng,lo,hi,cbcpre,coeffs,dsd)
-    deallocate(coeffs)
+    call helmholtz_coeffs(n,nh_psi,nh_g,0,cbc,is_bound,dli,dzc,dzf,dzci,dzfi,dzci,theta,rhocp12,ka12,psi, &
+                          hcoeffs,dsd) ! (no weights needed)
+    call solver_vc_helmholtz(ng,lo,hi,cbcpre,hcoeffs,dsd)
+    !$acc parallel loop collapse(3) default(present) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -557,7 +573,19 @@ module mod_impdiff
     end do
   end subroutine impdiff_vc_scal_solve
   !
-  subroutine helmholtz_coeffs(n,nh_psi,nh_g,iq,cbc,is_bound,dli,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,rhs)
+  subroutine alloc_hcoeffs(n)
+    !
+    ! allocates the matrix of the variable-coefficient implicit diffusion, once
+    !
+    implicit none
+    integer, intent(in), dimension(3) :: n
+    if(.not.allocated(hcoeffs)) then
+      allocate(hcoeffs(0:6,n(1),n(2),n(3)))
+      !$acc enter data create(hcoeffs) async(1)
+    end if
+  end subroutine alloc_hcoeffs
+  !
+  subroutine helmholtz_coeffs(n,nh_psi,nh_g,iq,cbc,is_bound,dli,dzc,dzf,dzci,dzfi,wzc,theta,rho12,mu12,psi,coeffs,rhs)
     !
     ! matrix and right-hand side of the system of `impdiff_vc_mom_solve` for a variable staggered along
     ! direction `iq` (0: cell-centered, with `rho12` and `mu12` its storage and diffusion coefficients):
@@ -571,7 +599,7 @@ module mod_impdiff
     ! ghost cell, with a minus (plus) sign for a Dirichlet (Neumann) condition; a boundary node of a
     ! staggered variable is not an unknown: it vanishes for a Dirichlet condition and equals its interior
     ! neighbour for a Neumann one, and the node on the upper boundary, which is part of the grid,
-    ! gets a trivial equation
+    ! gets a trivial equation (see `bc_face`)
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
@@ -579,101 +607,150 @@ module mod_impdiff
     character(len=1), intent(in   ), dimension(0:1,3) :: cbc
     logical , intent(in   ), dimension(0:1,3) :: is_bound
     real(rp), intent(in   ), dimension(3) :: dli
-    real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,dzfi,wzc
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
     real(rp), intent(in   )               :: theta
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out  ), dimension(0:,:,:,:) :: coeffs
     real(rp), intent(inout), dimension(:,:,:)    :: rhs
-    real(rp) :: rho,drho,mu,dmu,vol,rhop,cc,psic,psif,sgn
-    logical  :: is_harm
-    real(rp), dimension(0:1,3) :: cs
-    integer , dimension(3) :: ijk,ijkn,e
-    logical :: is_node
-    integer :: i,j,k,idir,ib
+    real(rp) :: rho,drho,mu,dmu,dxi2,dyi2,vol,rhop,cc,psic,cxm,cxp,cym,cyp,czm,czp
+    logical  :: is_harm,is_node
+    integer  :: ie,je,ke,bxm,bxp,bym,byp,bzm,bzp
+    integer  :: i,j,k
     !
     call visc_coeffs(mu12,mu,dmu,is_harm)
     rho = rho12(2); drho = rho12(1)-rho12(2)
-    e(:) = 0; if(iq > 0) e(iq) = 1
+    dxi2 = dli(1)**2; dyi2 = dli(2)**2
+    !
+    ! offset to the second cell center of a staggered variable, and boundary condition of each face of
+    ! the domain on this task (see `bc_type`)
+    !
+    ie = 0; je = 0; ke = 0
+    if(iq == 1) ie = 1
+    if(iq == 2) je = 1
+    if(iq == 3) ke = 1
+    bxm = bc_type(cbc(0,1),is_bound(0,1)); bxp = bc_type(cbc(1,1),is_bound(1,1))
+    bym = bc_type(cbc(0,2),is_bound(0,2)); byp = bc_type(cbc(1,2),is_bound(1,2))
+    bzm = bc_type(cbc(0,3),is_bound(0,3)); bzp = bc_type(cbc(1,3),is_bound(1,3))
+    !$acc parallel loop collapse(3) default(present) private(vol,rhop,cc,psic,cxm,cxp,cym,cyp,czm,czp,is_node) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          ijk(:) = [i,j,k]
           !
           ! phase indicator at the location of the variable, and diffusion coefficient at the faces of
           ! its control volume
           !
-          psic = 0.5*(psi(i,j,k)+psi(i+e(1),j+e(2),k+e(3)))
-          do idir=1,3
-            do ib=0,1
-              ijkn(:) = ijk(:); ijkn(idir) = ijkn(idir) + 2*ib-1
-              if(idir == iq) then
-                psif = psi(i+ib*e(1),j+ib*e(2),k+ib*e(3))
-                cs(ib,idir) = 2.*visc(is_harm,mu,dmu,psif)
-              else
-                psif = 0.5*(psi(ijkn(1),ijkn(2),ijkn(3))+psi(ijkn(1)+e(1),ijkn(2)+e(2),ijkn(3)+e(3)))
-                cs(ib,idir) = visc(is_harm,mu,dmu,0.5*(psic+psif))
-              end if
-            end do
-          end do
+          psic = 0.5*(psi(i,j,k)+psi(i+ie,j+je,k+ke))
+          if(iq == 1) then
+            cxm = 2.*visc(is_harm,mu,dmu,psi(i  ,j,k))
+            cxp = 2.*visc(is_harm,mu,dmu,psi(i+1,j,k))
+          else
+            cxm = visc(is_harm,mu,dmu,0.5*(psic+0.5*(psi(i-1,j,k)+psi(i-1+ie,j+je,k+ke))))
+            cxp = visc(is_harm,mu,dmu,0.5*(psic+0.5*(psi(i+1,j,k)+psi(i+1+ie,j+je,k+ke))))
+          end if
+          if(iq == 2) then
+            cym = 2.*visc(is_harm,mu,dmu,psi(i,j  ,k))
+            cyp = 2.*visc(is_harm,mu,dmu,psi(i,j+1,k))
+          else
+            cym = visc(is_harm,mu,dmu,0.5*(psic+0.5*(psi(i,j-1,k)+psi(i+ie,j-1+je,k+ke))))
+            cyp = visc(is_harm,mu,dmu,0.5*(psic+0.5*(psi(i,j+1,k)+psi(i+ie,j+1+je,k+ke))))
+          end if
+          if(iq == 3) then
+            czm = 2.*visc(is_harm,mu,dmu,psi(i,j,k  ))
+            czp = 2.*visc(is_harm,mu,dmu,psi(i,j,k+1))
+          else
+            czm = visc(is_harm,mu,dmu,0.5*(psic+0.5*(psi(i,j,k-1)+psi(i+ie,j+je,k-1+ke))))
+            czp = visc(is_harm,mu,dmu,0.5*(psic+0.5*(psi(i,j,k+1)+psi(i+ie,j+je,k+1+ke))))
+          end if
           !
           ! metric terms, times the height of the control volume
           !
           if(iq /= 3) then
-            vol = 1./dzfi(k)
-            cs(0,3) = cs(0,3)*dzci(k-1)
-            cs(1,3) = cs(1,3)*dzci(k  )
+            vol = dzf(k)
+            czm = czm*dzci(k-1)
+            czp = czp*dzci(k  )
           else
-            vol = 1./dzci(k)
-            cs(0,3) = cs(0,3)*dzfi(k  )
-            cs(1,3) = cs(1,3)*dzfi(k+1)
+            vol = dzc(k)
+            czm = czm*dzfi(k  )
+            czp = czp*dzfi(k+1)
           end if
-          cs(:,1) = cs(:,1)*dli(1)**2*vol
-          cs(:,2) = cs(:,2)*dli(2)**2*vol
-          cs(:,:) = cs(:,:)*theta
+          cxm = cxm*dxi2*vol; cxp = cxp*dxi2*vol
+          cym = cym*dyi2*vol; cyp = cyp*dyi2*vol
+          cxm = cxm*theta; cxp = cxp*theta
+          cym = cym*theta; cyp = cyp*theta
+          czm = czm*theta; czp = czp*theta
           if(iq == 3) psic = wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1) ! volume average, for the density
           rhop = (rho + drho*psic)*vol
-          cc   = rhop + sum(cs(:,:))
+          cc   = rhop + (cxm+cxp+cym+cyp+czm+czp)
           !
           ! boundaries
           !
           is_node = .false.
-          do idir=1,3
-            do ib=0,1
-              if(.not.(is_bound(ib,idir) .and. ijk(idir) == merge(n(idir),1,ib == 1))) cycle
-              if(cbc(ib,idir) == 'P') cycle
-              sgn = merge(-1._rp,1._rp,cbc(ib,idir) == 'D')
-              if(idir /= iq) then
-                cc = cc - sgn*cs(ib,idir)
-                cs(ib,idir) = 0.
-              else if(ib == 0) then
-                if(sgn > 0.) cc = cc - cs(ib,idir)
-                cs(ib,idir) = 0.
-              else
-                is_node = .true.
-              end if
-            end do
-            if(idir == iq .and. is_bound(1,idir) .and. ijk(idir) == n(idir)-1 .and. cbc(1,idir) /= 'P') then
-              if(cbc(1,idir) /= 'D') cc = cc - cs(1,idir)
-              cs(1,idir) = 0.
-            end if
-          end do
+          call bc_face(bxm,0,iq == 1,i == 1   ,.false.    ,cxm,cc,is_node)
+          call bc_face(bxp,1,iq == 1,i == n(1),i == n(1)-1,cxp,cc,is_node)
+          call bc_face(bym,0,iq == 2,j == 1   ,.false.    ,cym,cc,is_node)
+          call bc_face(byp,1,iq == 2,j == n(2),j == n(2)-1,cyp,cc,is_node)
+          call bc_face(bzm,0,iq == 3,k == 1   ,.false.    ,czm,cc,is_node)
+          call bc_face(bzp,1,iq == 3,k == n(3),k == n(3)-1,czp,cc,is_node)
           if(is_node) then
-            coeffs(0  ,i,j,k) = rhop
-            coeffs(1:6,i,j,k) = 0.
+            coeffs(0,i,j,k) = rhop
+            coeffs(1,i,j,k) = 0.; coeffs(2,i,j,k) = 0.
+            coeffs(3,i,j,k) = 0.; coeffs(4,i,j,k) = 0.
+            coeffs(5,i,j,k) = 0.; coeffs(6,i,j,k) = 0.
             rhs(i,j,k) = 0.
           else
             coeffs(0,i,j,k) = cc
-            do idir=1,3
-              coeffs(2*idir-1,i,j,k) = -cs(0,idir)
-              coeffs(2*idir  ,i,j,k) = -cs(1,idir)
-            end do
+            coeffs(1,i,j,k) = -cxm; coeffs(2,i,j,k) = -cxp
+            coeffs(3,i,j,k) = -cym; coeffs(4,i,j,k) = -cyp
+            coeffs(5,i,j,k) = -czm; coeffs(6,i,j,k) = -czp
             rhs(i,j,k) = theta*rhs(i,j,k)*vol
           end if
         end do
       end do
     end do
   end subroutine helmholtz_coeffs
+  !
+  pure integer function bc_type(cbc,is_bound)
+    !
+    ! boundary condition of a face of the domain on this task: 0 none (interior or periodic),
+    ! 1 Neumann, -1 Dirichlet
+    !
+    implicit none
+    character(len=1), intent(in) :: cbc
+    logical         , intent(in) :: is_bound
+    bc_type = 0
+    if(is_bound .and. cbc /= 'P') bc_type = merge(-1,1,cbc == 'D')
+  end function bc_type
+  !
+  pure subroutine bc_face(ibc,ib,is_stag,is_at,is_before,cf,cc,is_node)
+    !
+    ! boundary condition `ibc` (see `bc_type`) on the lower (`ib` = 0) or upper (`ib` = 1) face of the
+    ! domain, for the coefficient `cf` of the neighbour across it and the diagonal `cc` of a cell next
+    ! to it (`is_at`), or, for a variable staggered along the direction (`is_stag`), of the cell before
+    ! the upper boundary node (`is_before`); `is_node` flags the upper boundary node itself
+    !
+    !$acc routine seq
+    implicit none
+    integer , intent(in   ) :: ibc,ib
+    logical , intent(in   ) :: is_stag,is_at,is_before
+    real(rp), intent(inout) :: cf,cc
+    logical , intent(inout) :: is_node
+    if(ibc == 0) return
+    if(is_at) then
+      if(.not.is_stag) then
+        cc = cc - ibc*cf
+        cf = 0.
+      else if(ib == 0) then
+        if(ibc > 0) cc = cc - cf
+        cf = 0.
+      else
+        is_node = .true.
+      end if
+    else if(is_stag .and. ib == 1 .and. is_before) then
+      if(ibc > 0) cc = cc - cf
+      cf = 0.
+    end if
+  end subroutine bc_face
 #endif
   !
   subroutine impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &

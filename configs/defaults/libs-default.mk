@@ -53,11 +53,19 @@ override INCS += -I/usr/include/hdf5/openmpi
 endif
 
 #
-# CaNS-Fizzy: HYPRE for the variable-coefficient Poisson solver (CPU only)
+# CaNS-Fizzy: HYPRE for the variable-coefficient Poisson solver; a GPU build needs HYPRE built with CUDA,
+# plus the libraries HYPRE depends on: Umpire (when HYPRE was built with it), the CUDA math libraries,
+# and the C++ runtime
 #
-ifneq ($(strip $(GPU)),1)
 ifeq ($(strip $(CONSTANT_COEFFS_POISSON)),0)
 HYPRE_HOME ?= ${HOME}/software/hypre
 override LIBS += -L$(HYPRE_HOME)/lib -lHYPRE
+ifeq ($(strip $(GPU)),1)
+HYPRE_GPU_LIBS ?= $(if $(wildcard $(HYPRE_HOME)/lib/libumpire.*),-lumpire -lcamp -lfmt) \
+                  -cudalib=cusparse,cublas,curand,cusolver -lcublasLt -c++libs
+override LIBS += $(HYPRE_GPU_LIBS)
+ifneq ($(wildcard $(HYPRE_HOME)/lib/libumpire.*),)
+override DEFINES += -D_HYPRE_UMPIRE
+endif
 endif
 endif

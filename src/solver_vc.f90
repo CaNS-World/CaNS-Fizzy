@@ -11,18 +11,23 @@ module mod_solver_vc
   use mod_param     , only: hypre_solver_i,hypre_tol,hypre_maxiter, &
                             hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
                             hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
-                            hypre_pfmg_max_levels
+                            hypre_pfmg_max_levels, &
+                            is_impdiff,is_impdiff_1d
   use mod_types
-  use, intrinsic :: iso_c_binding, only: C_PTR,C_NULL_PTR
+  use, intrinsic :: iso_c_binding, only: C_PTR,C_NULL_PTR,C_INT,C_SIZE_T,C_ASSOCIATED
+#if defined(_OPENACC)
+  use cudafor       , only: cudaDeviceSynchronize
+#endif
   implicit none
   integer :: ierr
   private
-  public solver_vc,solver_vc_helmholtz,solver_vc_end
+  public solver_vc,solver_vc_helmholtz,solver_vc_init,solver_vc_end
   integer, parameter :: HYPRESolverSMG       = 1, &
                         HYPRESolverPFMG      = 2, &
                         HYPRESolverGMRES     = 3, &
                         HYPRESolverBiCGSTAB  = 4, &
-                        HYPRESolverFlexGMRES = 5
+                        HYPRESolverFlexGMRES = 5, &
+                        HYPRESolverPCG       = 6
   integer, parameter :: HYPREPrecondSMG  = 0, &
                         HYPREPrecondPFMG = 1, &
                         HYPREPrecondNone = 9
@@ -33,14 +38,39 @@ module mod_solver_vc
     integer     :: stype,ptype,comm_hypre
     integer     :: ndim       ! number of directions of the problem (those with more than one grid cell)
     integer     :: idirs(3)   ! and which ones
+    integer     :: ipos(3)    ! position of each direction in the problem (0: left out)
     integer     :: nstencil
     integer     :: nlevels    ! number of multigrid levels down to a single grid cell
     logical     :: is_singular
   end type hypre_solver
   type(hypre_solver), save :: asolver_p,asolver_d
   logical           , save :: is_init_p = .false.,is_init_d = .false.
+  !
+  ! values of the matrix and of the vectors passed to and from HYPRE, in the memory of HYPRE
+  ! (the device memory in GPU builds); shared by both problems, which have the same grid
+  !
+  real(rp), allocatable, dimension(:)    , save :: matvalues,rhsvalues,solvalues
+  real(rp), allocatable, dimension(:,:,:), save :: po_d ! (zero) initial guess of the implicit diffusion
+#if defined(_OPENACC)
+  integer, parameter :: HYPREMemoryDevice = 1, & ! `HYPRE_MEMORY_DEVICE` and `HYPRE_EXEC_DEVICE` of HYPREf.h
+                        HYPREExecDevice   = 1
+  !
+  ! HYPRE has no Fortran wrappers for these functions
+  !
+  interface
+    integer(C_INT) function HYPRE_DeviceInitialize() bind(C,name='HYPRE_DeviceInitialize')
+      import :: C_INT
+    end function HYPRE_DeviceInitialize
+#if defined(_HYPRE_UMPIRE)
+    integer(C_INT) function HYPRE_SetUmpireDevicePoolSize(nbytes) bind(C,name='HYPRE_SetUmpireDevicePoolSize')
+      import :: C_INT,C_SIZE_T
+      integer(C_SIZE_T), value :: nbytes
+    end function HYPRE_SetUmpireDevicePoolSize
+#endif
+  end interface
+#endif
   contains
-  subroutine solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,wzc,is_bound,alpha12,psi,p,po)
+  subroutine solver_vc(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzf,wzc,is_bound,alpha12,psi,p,po)
     !
     ! solves the variable-coefficient Poisson equation for the pressure,
     !   div(1/rho grad p) = rhs, rho = alpha12(2) + (alpha12(1)-alpha12(2))*psi,
@@ -56,7 +86,7 @@ module mod_solver_vc
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi,wzc
+    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzf,wzc
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
     real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
@@ -67,11 +97,16 @@ module mod_solver_vc
       call init_matrix(ng,lo,hi,cbc,asolver_p)
       is_init_p = .true.
     end if
-    call fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,wzc,is_bound,alpha12,psi,p,asolver_p)
+    call fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzf,wzc,is_bound,alpha12,psi,p,asolver_p)
     call create_solver(iq,asolver_p)
     call setup_solver(asolver_p)
-    call solve_helmholtz(iq,asolver_p,ng,lo,hi,nh_p,nh_g,dzfi,p,po)
-    call finalize_solver(asolver_p)
+    call solve_helmholtz(iq,asolver_p,ng,lo,hi,nh_p,nh_g,dzf,p,po)
+    !
+    ! the solver is kept for the next step, unless HYPRE solves other systems (implicit diffusion): its work
+    ! vectors would then stay in the memory pool of HYPRE in between, which keeps the pool from reusing its
+    ! free blocks, and its footprint grows
+    !
+    call finalize_solver(asolver_p,is_impdiff .and. .not.is_impdiff_1d)
   end subroutine solver_vc
   !
   subroutine solver_vc_helmholtz(ng,lo,hi,cbc,coeffs,p)
@@ -85,67 +120,137 @@ module mod_solver_vc
     implicit none
     integer         , intent(in   ), dimension(3)     :: ng,lo,hi
     character(len=1), intent(in   ), dimension(0:1,3) :: cbc
-    real(rp)        , intent(in   ), dimension(0:,lo(1):,lo(2):,lo(3):) :: coeffs
-    real(rp)        , intent(inout), dimension(lo(1):,lo(2):,lo(3):)    :: p
-    real(rp), allocatable, dimension(:) :: matvalues
-    real(rp), allocatable, dimension(:,:,:) :: po
-    real(rp), dimension(lo(3):hi(3)) :: dzfi
+    real(rp)        , intent(in   ), dimension(0:,lo(1):,lo(2):,lo(3):), contiguous :: coeffs
+    real(rp)        , intent(inout), dimension(lo(1):,lo(2):,lo(3):)                :: p
+    real(rp), dimension(lo(3):hi(3)) :: dzf
     integer, parameter :: iq = HYPREProblemDiffusion
-    logical, dimension(3) :: is_dir
-    integer :: i,j,k,q,qq,idir,ndim,nstencil
+    real(rp) :: cc
+    integer :: i,j,k,q,qq,ndim,nstencil,nx,ny,px,py,pz
     !
     if(.not.is_init_d) then
       call init_matrix(ng,lo,hi,cbc,asolver_d)
       asolver_d%is_singular = .false.
       is_init_d = .true.
+      allocate(po_d(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)))
+      !$acc enter data create(po_d)
     end if
     ndim = asolver_d%ndim; nstencil = asolver_d%nstencil
-    is_dir(:) = .false.
-    is_dir(asolver_d%idirs(1:ndim)) = .true.
-    allocate(matvalues(product(hi(:)-lo(:)+1)*nstencil))
-    q = 0
-    do k=lo(3),hi(3)
-      do j=lo(2),hi(2)
-        do i=lo(1),hi(1)
-          q = q + 1
-          qq = (q-1)*nstencil
-          matvalues(qq+1) = coeffs(0,i,j,k)
-          do idir=1,3
-            !
-            ! single periodic cell: its neighbours are the cell itself
-            !
-            if(.not.is_dir(idir)) matvalues(qq+1) = matvalues(qq+1) + coeffs(2*idir-1,i,j,k) + coeffs(2*idir,i,j,k)
-          end do
-          do idir=1,ndim
-            matvalues(qq+2*idir  ) = coeffs(2*asolver_d%idirs(idir)-1,i,j,k)
-            matvalues(qq+2*idir+1) = coeffs(2*asolver_d%idirs(idir)  ,i,j,k)
+    px = asolver_d%ipos(1); py = asolver_d%ipos(2); pz = asolver_d%ipos(3)
+    nx = hi(1)-lo(1)+1; ny = hi(2)-lo(2)+1
+    if(ndim == 3) then
+      !
+      ! the entries of `coeffs` are those of the stencil of HYPRE, in the same order
+      !
+      !$acc parallel loop collapse(3) default(present) async(1)
+      do k=lo(3),hi(3)
+        do j=lo(2),hi(2)
+          do i=lo(1),hi(1)
+            po_d(i,j,k) = 0._rp
           end do
         end do
       end do
-    end do
-    call HYPRE_StructMatrixSetBoxValues(asolver_d%mat,lo(asolver_d%idirs(1:ndim)),hi(asolver_d%idirs(1:ndim)),nstencil, &
-                                        [(q,q=0,nstencil-1)],matvalues,ierr)
+      !$acc wait(1)
+      !$acc host_data use_device(coeffs)
+      call HYPRE_StructMatrixSetBoxValues(asolver_d%mat,lo,hi,nstencil,[(q,q=0,nstencil-1)],coeffs,ierr)
+      !$acc end host_data
+    else
+      !$acc parallel loop collapse(3) default(present) private(q,qq,cc) async(1)
+      do k=lo(3),hi(3)
+        do j=lo(2),hi(2)
+          do i=lo(1),hi(1)
+            q = 1 + (i-lo(1)) + nx*((j-lo(2)) + ny*(k-lo(3)))
+            qq = (q-1)*nstencil
+            !
+            ! a direction left out of the problem has a single periodic cell, whose neighbours are the cell itself
+            !
+            cc = coeffs(0,i,j,k)
+            if(px == 0) cc = cc + coeffs(1,i,j,k) + coeffs(2,i,j,k)
+            if(py == 0) cc = cc + coeffs(3,i,j,k) + coeffs(4,i,j,k)
+            if(pz == 0) cc = cc + coeffs(5,i,j,k) + coeffs(6,i,j,k)
+            matvalues(qq+1) = cc
+            if(px > 0) then
+              matvalues(qq+2*px  ) = coeffs(1,i,j,k)
+              matvalues(qq+2*px+1) = coeffs(2,i,j,k)
+            end if
+            if(py > 0) then
+              matvalues(qq+2*py  ) = coeffs(3,i,j,k)
+              matvalues(qq+2*py+1) = coeffs(4,i,j,k)
+            end if
+            if(pz > 0) then
+              matvalues(qq+2*pz  ) = coeffs(5,i,j,k)
+              matvalues(qq+2*pz+1) = coeffs(6,i,j,k)
+            end if
+            po_d(i,j,k) = 0._rp
+          end do
+        end do
+      end do
+      !$acc wait(1)
+      !$acc host_data use_device(matvalues)
+      call HYPRE_StructMatrixSetBoxValues(asolver_d%mat,lo(asolver_d%idirs(1:ndim)),hi(asolver_d%idirs(1:ndim)),nstencil, &
+                                          [(q,q=0,nstencil-1)],matvalues,ierr)
+      !$acc end host_data
+    end if
     call HYPRE_StructMatrixAssemble(asolver_d%mat,ierr)
-    deallocate(matvalues)
-    allocate(po(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)))
-    po(:,:,:) = 0._rp
-    dzfi(:)   = 1._rp
+    dzf(:) = 1._rp
     call create_solver(iq,asolver_d)
     call setup_solver(asolver_d)
-    call solve_helmholtz(iq,asolver_d,ng,lo,hi,0,0,dzfi,p,po)
-    call finalize_solver(asolver_d)
+    call solve_helmholtz(iq,asolver_d,ng,lo,hi,0,0,dzf,p,po_d)
+    call finalize_solver(asolver_d,.true.)
   end subroutine solver_vc_helmholtz
   !
+  subroutine solver_vc_init
+    !
+    ! initializes HYPRE, before any other call to it; a GPU build calls this after `initmpi` has set
+    ! the device of the task
+    !
+    implicit none
+    !
+    ! `HYPRE_Init` is the Fortran name of `HYPRE_Initialize` in all versions of HYPRE (the latter
+    ! has a Fortran wrapper only since version 2.29)
+    !
+    call HYPRE_Init(ierr)
+#if defined(_OPENACC)
+#if defined(_HYPRE_UMPIRE)
+    !
+    ! the device memory pool of HYPRE starts at this size (4 GiB by default) and grows on demand;
+    ! a small initial size leaves room for several tasks sharing one GPU
+    !
+    ierr = HYPRE_SetUmpireDevicePoolSize(512_C_SIZE_T*1024**2)
+#endif
+    !
+    ! HYPRE takes the device of the task only here, as in its test drivers; otherwise its memory pool
+    ! stays on device 0, and a task on another device fails
+    !
+    ierr = HYPRE_DeviceInitialize()
+    !
+    ! objects in device memory, and computations on the device
+    !
+    call HYPRE_SetMemoryLocation(HYPREMemoryDevice,ierr)
+    call HYPRE_SetExecutionPolicy(HYPREExecDevice,ierr)
+#endif
+  end subroutine solver_vc_init
+  !
   subroutine solver_vc_end
+    !
+    ! destroys the HYPRE objects, and finalizes HYPRE
+    !
     implicit none
     if(is_init_p) then
+      call finalize_solver(asolver_p,.true.)
       call finalize_matrix(asolver_p)
       is_init_p = .false.
     end if
     if(is_init_d) then
       call finalize_matrix(asolver_d)
       is_init_d = .false.
+      !$acc exit data delete(po_d)
+      deallocate(po_d)
     end if
+    if(allocated(matvalues)) then
+      !$acc exit data delete(matvalues,rhsvalues,solvalues)
+      deallocate(matvalues,rhsvalues,solvalues)
+    end if
+    call HYPRE_Finalize(ierr)
   end subroutine solver_vc_end
   !
   subroutine init_matrix(ng,lo,hi,cbc,asolver)
@@ -220,6 +325,8 @@ module mod_solver_vc
     asolver%comm_hypre = comm_hypre
     asolver%ndim       = ndim
     asolver%idirs(:)   = idirs(:)
+    asolver%ipos(:)    = 0
+    asolver%ipos(idirs(1:ndim)) = [(q,q=1,ndim)]
     asolver%nstencil   = nstencil
     !
     ! without a Dirichlet boundary the solution is defined up to a constant
@@ -236,14 +343,23 @@ module mod_solver_vc
         asolver%nlevels = asolver%nlevels + 1
       end do
     end do
+    !
+    ! work arrays of the values passed to HYPRE
+    !
+    if(.not.allocated(matvalues)) then
+      allocate(matvalues(product(hi(:)-lo(:)+1)*nstencil), &
+               rhsvalues(product(hi(:)-lo(:)+1)), &
+               solvalues(product(hi(:)-lo(:)+1)))
+      !$acc enter data create(matvalues,rhsvalues,solvalues)
+    end if
   end subroutine init_matrix
   !
-  subroutine fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzfi,wzc,is_bound,alpha12,psi,p,asolver)
+  subroutine fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzf,wzc,is_bound,alpha12,psi,p,asolver)
     !
     ! computes the coefficients of the matrix, and adds the contributions of the boundary conditions
     ! to the right-hand side `p`;
     !
-    ! each equation is multiplied by the height of its cell, 1/dzfi(k), which makes the matrix symmetric
+    ! each equation is multiplied by the height of its cell, dzf(k), which makes the matrix symmetric
     ! also on a stretched grid; the right-hand side leaves this routine scaled in the same way
     !
     implicit none
@@ -252,23 +368,21 @@ module mod_solver_vc
     character(len=1)    , intent(in   ), dimension(0:1,3)                      :: cbc
     real(rp)            , intent(in   ), dimension(0:1,3)                      :: bc
     real(rp)            , intent(in   ), dimension(3)                          :: dli
-    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzfi,wzc
+    real(rp)            , intent(in   ), dimension(lo(3)-nh_g:)                :: dzci,dzf,wzc
     logical             , intent(in   ), dimension(0:1,3)                      :: is_bound
     real(rp)            , intent(in   ), dimension(2)                          :: alpha12
     real(rp)            , intent(in   ), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
     real(rp)            , intent(inout), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p
     type(hypre_solver)  , intent(in   )                                        :: asolver
-    real(rp), allocatable, dimension(:) :: matvalues
     real(rp), dimension(0:1,3) :: sgn,factor
-    real(rp), dimension(0:1,3) :: cs ! coefficients of the lower and upper neighbours along each direction
-    logical , dimension(3) :: is_dir,is_per
-    real(rp) :: cc,alpha,dalpha,vol,rhsb
-    integer :: i,j,k,q,qq,idir,ib,ndim,nstencil
-    integer :: ijk(3),ijkn(3)
+    logical , dimension(3) :: is_per
+    real(rp) :: cc,alpha,dalpha,vol,rhsb,sgn_op,dxi,dyi
+    real(rp) :: cxm,cxp,cym,cyp,czm,czp ! coefficients of the lower and upper neighbours along each direction
+    real(rp) :: sxm,sxp,sym,syp,szm,szp,fxm,fxp,fym,fyp,fzm,fzp
+    logical  :: is_xm,is_xp,is_ym,is_yp,is_zm,is_zp
+    integer  :: i,j,k,q,qq,ndim,nstencil,nx,ny,px,py,pz
     !
     ndim = asolver%ndim; nstencil = asolver%nstencil
-    is_dir(:) = .false.
-    is_dir(asolver%idirs(1:ndim)) = .true.
     is_per(:) = cbc(0,:)//cbc(1,:) == 'PP'
     sgn(:,:)    = 0._rp
     factor(:,:) = 0._rp
@@ -293,69 +407,105 @@ module mod_solver_vc
       end do
     end do
     !
+    ! PCG needs a positive-definite matrix: with it, the system is assembled and solved with the opposite sign
+    !
+    sgn_op = merge(-1._rp,1._rp,hypre_solver_i(HYPREProblemPressure) == HYPRESolverPCG)
+    !
     alpha = alpha12(2); dalpha = alpha12(1)-alpha12(2)
-    allocate(matvalues(product(hi(:)-lo(:)+1)*nstencil))
-    q = 0
+    nx = hi(1)-lo(1)+1; ny = hi(2)-lo(2)+1
+    dxi = dli(1); dyi = dli(2)
+    px = asolver%ipos(1); py = asolver%ipos(2); pz = asolver%ipos(3)
+    !
+    ! boundary condition of each face of the domain on this task, as scalars
+    !
+    is_xm = is_bound(0,1) .and. .not.is_per(1); is_xp = is_bound(1,1) .and. .not.is_per(1)
+    is_ym = is_bound(0,2) .and. .not.is_per(2); is_yp = is_bound(1,2) .and. .not.is_per(2)
+    is_zm = is_bound(0,3) .and. .not.is_per(3); is_zp = is_bound(1,3) .and. .not.is_per(3)
+    sxm = sgn(0,1); sxp = sgn(1,1); fxm = factor(0,1); fxp = factor(1,1)
+    sym = sgn(0,2); syp = sgn(1,2); fym = factor(0,2); fyp = factor(1,2)
+    szm = sgn(0,3); szp = sgn(1,3); fzm = factor(0,3); fzp = factor(1,3)
+    !$acc parallel loop collapse(3) default(present) private(cc,vol,rhsb,q,qq,cxm,cxp,cym,cyp,czm,czp) async(1)
     do k=lo(3),hi(3)
-      vol = dzfi(k)**(-1)
       do j=lo(2),hi(2)
         do i=lo(1),hi(1)
-          q = q + 1
-          ijk(:) = [i,j,k]
+          q = 1 + (i-lo(1)) + nx*((j-lo(2)) + ny*(k-lo(3)))
+          vol = dzf(k)
           !
-          ! 1/rho at the cell faces, times the metric terms
+          ! 1/rho at the cell faces (volume average along z), times the metric terms
           !
-          do idir=1,3
-            do ib=0,1
-              ijkn(:) = ijk(:); ijkn(idir) = ijkn(idir) + 2*ib-1
-              if(idir /= 3) then
-                cs(ib,idir) = (alpha + dalpha*0.5*(psi(ijkn(1),ijkn(2),ijkn(3))+psi(i,j,k)))**(-1)
-              else ! volume average
-                cs(ib,idir) = (alpha + dalpha*(wzc(k-1+ib)*psi(i,j,k-1+ib)+(1.-wzc(k-1+ib))*psi(i,j,k+ib)))**(-1)
-              end if
-            end do
-          end do
-          cs(:,1) = cs(:,1)*dli(1)*dli(1)*vol
-          cs(:,2) = cs(:,2)*dli(2)*dli(2)*vol
-          cs(0,3) = cs(0,3)*dzci(k-1)
-          cs(1,3) = cs(1,3)*dzci(k  )
+          cxm = (alpha + dalpha*0.5*(psi(i-1,j,k)+psi(i,j,k)))**(-1)
+          cxp = (alpha + dalpha*0.5*(psi(i+1,j,k)+psi(i,j,k)))**(-1)
+          cym = (alpha + dalpha*0.5*(psi(i,j-1,k)+psi(i,j,k)))**(-1)
+          cyp = (alpha + dalpha*0.5*(psi(i,j+1,k)+psi(i,j,k)))**(-1)
+          czm = (alpha + dalpha*(wzc(k-1)*psi(i,j,k-1)+(1.-wzc(k-1))*psi(i,j,k  )))**(-1)
+          czp = (alpha + dalpha*(wzc(k  )*psi(i,j,k  )+(1.-wzc(k  ))*psi(i,j,k+1)))**(-1)
+          cxm = cxm*dxi*dxi*vol; cxp = cxp*dxi*dxi*vol
+          cym = cym*dyi*dyi*vol; cyp = cyp*dyi*dyi*vol
+          czm = czm*dzci(k-1)
+          czp = czp*dzci(k  )
+          !
+          ! a direction left out of the problem has a single periodic cell, whose neighbours are the cell itself
           !
           cc   = 0._rp
           rhsb = 0._rp
-          do idir=1,3
-            if(.not.is_dir(idir)) then
-              cs(:,idir) = 0._rp ! single periodic cell: its neighbours are the cell itself
-              cycle
-            end if
-            cc = cc - (cs(0,idir)+cs(1,idir))
-            if(.not.is_per(idir)) then
-              if(is_bound(0,idir) .and. ijk(idir) == lo(idir)) then
-                cc   = cc   + sgn(0,idir)*cs(0,idir)
-                rhsb = rhsb + cs(0,idir)*factor(0,idir)
-                cs(0,idir) = 0._rp
-              end if
-              if(is_bound(1,idir) .and. ijk(idir) == hi(idir)) then
-                cc   = cc   + sgn(1,idir)*cs(1,idir)
-                rhsb = rhsb + cs(1,idir)*factor(1,idir)
-                cs(1,idir) = 0._rp
-              end if
-            end if
-          end do
-          p(i,j,k) = p(i,j,k)*vol + rhsb
+          if(px > 0) then
+            cc = cc - (cxm+cxp)
+            call bc_diag_rhs(is_xm .and. i == lo(1),sxm,fxm,cxm,cc,rhsb)
+            call bc_diag_rhs(is_xp .and. i == hi(1),sxp,fxp,cxp,cc,rhsb)
+          end if
+          if(py > 0) then
+            cc = cc - (cym+cyp)
+            call bc_diag_rhs(is_ym .and. j == lo(2),sym,fym,cym,cc,rhsb)
+            call bc_diag_rhs(is_yp .and. j == hi(2),syp,fyp,cyp,cc,rhsb)
+          end if
+          if(pz > 0) then
+            cc = cc - (czm+czp)
+            call bc_diag_rhs(is_zm .and. k == lo(3),szm,fzm,czm,cc,rhsb)
+            call bc_diag_rhs(is_zp .and. k == hi(3),szp,fzp,czp,cc,rhsb)
+          end if
+          p(i,j,k) = sgn_op*(p(i,j,k)*vol + rhsb)
           qq = (q-1)*nstencil
-          matvalues(qq+1) = cc
-          do idir=1,ndim
-            matvalues(qq+2*idir  ) = cs(0,asolver%idirs(idir))
-            matvalues(qq+2*idir+1) = cs(1,asolver%idirs(idir))
-          end do
+          matvalues(qq+1) = sgn_op*cc
+          if(px > 0) then
+            matvalues(qq+2*px  ) = sgn_op*cxm
+            matvalues(qq+2*px+1) = sgn_op*cxp
+          end if
+          if(py > 0) then
+            matvalues(qq+2*py  ) = sgn_op*cym
+            matvalues(qq+2*py+1) = sgn_op*cyp
+          end if
+          if(pz > 0) then
+            matvalues(qq+2*pz  ) = sgn_op*czm
+            matvalues(qq+2*pz+1) = sgn_op*czp
+          end if
         end do
       end do
     end do
+    !$acc wait(1)
+    !$acc host_data use_device(matvalues)
     call HYPRE_StructMatrixSetBoxValues(asolver%mat,lo(asolver%idirs(1:ndim)),hi(asolver%idirs(1:ndim)),nstencil, &
                                         [(q,q=0,nstencil-1)],matvalues,ierr)
+    !$acc end host_data
     call HYPRE_StructMatrixAssemble(asolver%mat,ierr)
-    deallocate(matvalues)
   end subroutine fill_matrix
+  !
+  pure subroutine bc_diag_rhs(is_at,sgn,factor,cf,cc,rhsb)
+    !
+    ! boundary condition on a face of the domain, for a cell next to it (`is_at`): the coefficient `cf` of
+    ! the neighbour across the face goes to the diagonal `cc` with the sign `sgn`, and to the right-hand
+    ! side `rhsb` with the factor of the boundary value `factor` (see `fill_matrix`)
+    !
+    !$acc routine seq
+    implicit none
+    logical , intent(in   ) :: is_at
+    real(rp), intent(in   ) :: sgn,factor
+    real(rp), intent(inout) :: cf,cc,rhsb
+    if(is_at) then
+      cc   = cc   + sgn*cf
+      rhsb = rhsb + cf*factor
+      cf   = 0._rp
+    end if
+  end subroutine bc_diag_rhs
   !
   subroutine configure_pfmg(iq,asolver,solver,maxiter,maxerror)
     implicit none
@@ -372,11 +522,20 @@ module mod_solver_vc
     ! relaxation method:
     ! 0: Jacobi
     ! 1: weighted Jacobi
-    ! 2: red/black Gauss-Seidel (symmetric: RB pre- and post-relaxation), the default here since the matrix is symmetric
+    ! 2: red/black Gauss-Seidel (symmetric: RB pre- and post-relaxation), the default here since the matrix is symmetric,
+    !    except on GPUs, where HYPRE's implementation is several times slower than weighted Jacobi, and with PCG,
+    !    which it can stall (e.g., with a periodic direction of a few grid cells)
     ! 3: red/black Gauss-Seidel (nonsymmetric: RB pre- and post-relaxation)
     !
     relax_type = hypre_pfmg_relax_type(iq)
-    if(relax_type < 0) relax_type = 2
+    if(relax_type < 0) then
+#if !defined(_OPENACC)
+      relax_type = 2
+      if(hypre_solver_i(iq) == HYPRESolverPCG) relax_type = 1
+#else
+      relax_type = 1
+#endif
+    end if
     call HYPRE_StructPFMGSetRelaxType(solver,relax_type,ierr)
     call HYPRE_StructPFMGSetNumPreRelax(solver,hypre_pfmg_num_pre_relax(iq),ierr)
     call HYPRE_StructPFMGSetNumPostRelax(solver,hypre_pfmg_num_post_relax(iq),ierr)
@@ -391,7 +550,10 @@ module mod_solver_vc
   !
   subroutine create_solver(iq,asolver)
     !
-    ! creates the solver and its preconditioner from the entry `iq` of the `hypre_*` inputs
+    ! creates the solver and its preconditioner from the entry `iq` of the `hypre_*` inputs;
+    ! a Krylov solver kept from a previous solve (see `finalize_solver`) is used again, with its work
+    ! vectors, while its multigrid preconditioner is created anew, since HYPRE cannot set up a multigrid
+    ! solver twice
     !
     implicit none
     integer           ,         intent(in   ) :: iq
@@ -405,6 +567,7 @@ module mod_solver_vc
     stype    = hypre_solver_i(iq)
     maxiter  = hypre_maxiter(iq)
     maxerror = hypre_tol(iq)
+    solver   = asolver%solver
     precond  = C_NULL_PTR
     precond_id = HYPREPrecondNone
     if      ( stype == HYPRESolverSMG ) then
@@ -416,8 +579,11 @@ module mod_solver_vc
       call configure_pfmg(iq,asolver,solver,maxiter,maxerror)
     else if ( stype == HYPRESolverGMRES .or. &
               stype == HYPRESolverBiCGSTAB .or. &
-              stype == HYPRESolverFlexGMRES ) then
-      if      ( stype == HYPRESolverGMRES ) then
+              stype == HYPRESolverFlexGMRES .or. &
+              stype == HYPRESolverPCG ) then
+      if      ( C_ASSOCIATED(solver) ) then
+        continue ! (kept from a previous solve)
+      else if ( stype == HYPRESolverGMRES ) then
         call HYPRE_StructGMRESCreate(asolver%comm_hypre,solver,ierr)
         call HYPRE_StructGMRESSetMaxIter(solver,maxiter,ierr)
         call HYPRE_StructGMRESSetTol(solver,maxerror,ierr)
@@ -431,6 +597,11 @@ module mod_solver_vc
         call HYPRE_StructFGMRESSetMaxIter(solver,maxiter,ierr)
         call HYPRE_StructFGMRESSetTol(solver,maxerror,ierr)
         if(hypre_gmres_k_dim(iq) > 0) call HYPRE_StructFGMRESSetKDim(solver,hypre_gmres_k_dim(iq),ierr)
+      else if ( stype == HYPRESolverPCG ) then
+        call HYPRE_StructPCGCreate(asolver%comm_hypre,solver,ierr)
+        call HYPRE_StructPCGSetMaxIter(solver,maxiter,ierr)
+        call HYPRE_StructPCGSetTol(solver,maxerror,ierr)
+        call HYPRE_StructPCGSetTwoNorm(solver,1,ierr)
       end if
       !
       ! preconditioner
@@ -454,6 +625,8 @@ module mod_solver_vc
         call HYPRE_StructBiCGSTABSetPrecond(solver,precond_id,precond,ierr)
       else if ( stype == HYPRESolverFlexGMRES ) then
         call HYPRE_StructFGMRESSetPrecond(solver,precond_id,precond,ierr)
+      else if ( stype == HYPRESolverPCG ) then
+        call HYPRE_StructPCGSetPrecond(solver,precond_id,precond,ierr)
       end if
     end if
     asolver%precond = precond
@@ -486,10 +659,12 @@ module mod_solver_vc
       call HYPRE_StructBiCGSTABSetup(solver,mat,rhs,sol,ierr)
     else if ( stype == HYPRESolverFlexGMRES ) then
       call HYPRE_StructFGMRESSetup(solver,mat,rhs,sol,ierr)
+    else if ( stype == HYPRESolverPCG ) then
+      call HYPRE_StructPCGSetup(solver,mat,rhs,sol,ierr)
     end if
   end subroutine setup_solver
   !
-  subroutine solve_helmholtz(iq,asolver,ng,lo,hi,nh_p,nh_g,dzfi,p,po)
+  subroutine solve_helmholtz(iq,asolver,ng,lo,hi,nh_p,nh_g,dzf,p,po)
     !
     ! solves the system for the (scaled) right-hand side `p` with initial guess `po`, and returns the
     ! solution in both; warns if the solver did not converge within its maximum number of iterations
@@ -499,13 +674,13 @@ module mod_solver_vc
     type(hypre_solver), target, intent(in   )               :: asolver
     integer           ,         intent(in   ), dimension(3) :: ng,lo,hi
     integer           ,         intent(in   )               :: nh_p,nh_g
-    real(rp)          ,         intent(in   ), dimension(lo(3)-nh_g:) :: dzfi
+    real(rp)          ,         intent(in   ), dimension(lo(3)-nh_g:) :: dzf
     real(rp)          ,         intent(inout), dimension(lo(1)-nh_p:,lo(2)-nh_p:,lo(3)-nh_p:) :: p,po
     type(C_PTR), pointer :: solver,mat,rhs,sol
     integer    , pointer :: stype
     integer , dimension(asolver%ndim) :: lo_s,hi_s
-    real(rp) :: pmean(2)
-    integer  :: k,niter
+    real(rp) :: pmean(2),pmean_1,psum
+    integer  :: i,j,k,q,nx,ny,niter
     solver  => asolver%solver
     mat     => asolver%mat
     rhs     => asolver%rhs
@@ -513,25 +688,47 @@ module mod_solver_vc
     stype   => asolver%stype
     lo_s(:) = lo(asolver%idirs(1:asolver%ndim))
     hi_s(:) = hi(asolver%idirs(1:asolver%ndim))
+    nx = hi(1)-lo(1)+1; ny = hi(2)-lo(2)+1
     !
+    pmean_1 = 0._rp
     if(asolver%is_singular) then
       !
       ! the right-hand side of a singular problem must sum to zero: remove what round-off leaves
       !
-      pmean(1) = sum(p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)))
-      call MPI_ALLREDUCE(MPI_IN_PLACE,pmean(1),1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-      pmean(1) = pmean(1)/(1._rp*ng(1)*ng(2)*ng(3))
-      p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)) = p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)) - pmean(1)
+      !$acc parallel loop collapse(3) default(present) reduction(+:pmean_1) async(1)
+      do k=lo(3),hi(3)
+        do j=lo(2),hi(2)
+          do i=lo(1),hi(1)
+            pmean_1 = pmean_1 + p(i,j,k)
+          end do
+        end do
+      end do
+      !$acc wait(1)
+      call MPI_ALLREDUCE(MPI_IN_PLACE,pmean_1,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+      pmean_1 = pmean_1/(1._rp*ng(1)*ng(2)*ng(3))
     end if
-    call HYPRE_StructVectorSetBoxValues(rhs,lo_s,hi_s,p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)),ierr)
+    !
+    ! right-hand side and initial guess
+    !
+    !$acc parallel loop collapse(3) default(present) private(q) async(1)
+    do k=lo(3),hi(3)
+      do j=lo(2),hi(2)
+        do i=lo(1),hi(1)
+          q = 1 + (i-lo(1)) + nx*((j-lo(2)) + ny*(k-lo(3)))
+          rhsvalues(q) = p(i,j,k) - pmean_1
+          solvalues(q) = po(i,j,k)
+        end do
+      end do
+    end do
+    !$acc wait(1)
+    !$acc host_data use_device(rhsvalues,solvalues)
+    call HYPRE_StructVectorSetBoxValues(rhs,lo_s,hi_s,rhsvalues,ierr)
     call HYPRE_StructVectorAssemble(rhs,ierr)
-    !
-    ! create solution vector
-    !
-    call HYPRE_StructVectorSetBoxValues(sol,lo_s,hi_s,po(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)),ierr)
+    call HYPRE_StructVectorSetBoxValues(sol,lo_s,hi_s,solvalues,ierr)
     call HYPRE_StructVectorAssemble(sol,ierr)
+    !$acc end host_data
     !
-    ! setup solver, and solve
+    ! solve
     !
     niter = 0
     if      ( stype == HYPRESolverSMG ) then
@@ -549,6 +746,9 @@ module mod_solver_vc
     else if ( stype == HYPRESolverFlexGMRES ) then
       call HYPRE_StructFGMRESSolve(solver,mat,rhs,sol,ierr)
       call HYPRE_StructFGMRESGetNumIter(solver,niter,ierr)
+    else if ( stype == HYPRESolverPCG ) then
+      call HYPRE_StructPCGSolve(solver,mat,rhs,sol,ierr)
+      call HYPRE_StructPCGGetNumIterations(solver,niter,ierr)
     end if ! stype
     if(niter >= hypre_maxiter(iq)) then
       if(myid == 0) print*, 'WARNING: HYPRE solver not converged after ',niter,' iterations (maximum: `hypre_maxiter`).'
@@ -556,26 +756,68 @@ module mod_solver_vc
     !
     ! fetch results and update old solution
     !
-    call HYPRE_StructVectorGetBoxValues(sol,lo_s,hi_s,p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)),ierr)
+    !$acc host_data use_device(solvalues)
+    call HYPRE_StructVectorGetBoxValues(sol,lo_s,hi_s,solvalues,ierr)
+    !$acc end host_data
+    call sync_hypre()
+    pmean_1 = 0._rp
     if(asolver%is_singular) then
       !
       ! fix the constant of the solution: zero mean
       !
       pmean(:) = 0._rp
+      !$acc parallel loop gang default(present) private(psum) reduction(+:pmean_1) async(1)
       do k=lo(3),hi(3)
-        pmean(1) = pmean(1) + sum(p(lo(1):hi(1),lo(2):hi(2),k))/dzfi(k)
-        pmean(2) = pmean(2) + (hi(1)-lo(1)+1)*(hi(2)-lo(2)+1)/dzfi(k)
+        psum = 0._rp
+        !$acc loop collapse(2) private(q) reduction(+:psum)
+        do j=lo(2),hi(2)
+          do i=lo(1),hi(1)
+            q = 1 + (i-lo(1)) + nx*((j-lo(2)) + ny*(k-lo(3)))
+            psum = psum + solvalues(q)
+          end do
+        end do
+        pmean_1 = pmean_1 + psum*dzf(k)
       end do
+      do k=lo(3),hi(3)
+        pmean(2) = pmean(2) + (hi(1)-lo(1)+1)*(hi(2)-lo(2)+1)*dzf(k)
+      end do
+      !$acc wait(1)
+      pmean(1) = pmean_1
       call MPI_ALLREDUCE(MPI_IN_PLACE,pmean,2,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
-      pmean(1) = pmean(1)/pmean(2)
-      p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)) = p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)) - pmean(1)
+      pmean_1 = pmean(1)/pmean(2)
     end if
-    po(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)) = p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3))
+    !$acc parallel loop collapse(3) default(present) private(q) async(1)
+    do k=lo(3),hi(3)
+      do j=lo(2),hi(2)
+        do i=lo(1),hi(1)
+          q = 1 + (i-lo(1)) + nx*((j-lo(2)) + ny*(k-lo(3)))
+          p( i,j,k) = solvalues(q) - pmean_1
+          po(i,j,k) = p(i,j,k)
+        end do
+      end do
+    end do
   end subroutine solve_helmholtz
   !
-  subroutine finalize_solver(asolver)
+  subroutine sync_hypre()
+    !
+    ! waits for the work of HYPRE on the device, which uses its own stream(s), before the OpenACC queues
+    ! touch the same data
+    !
     implicit none
-    type(hypre_solver), target, intent(in) :: asolver
+#if defined(_OPENACC)
+    integer :: istat
+    istat = cudaDeviceSynchronize()
+#endif
+  end subroutine sync_hypre
+  !
+  subroutine finalize_solver(asolver,is_all)
+    !
+    ! destroys what `create_solver` creates at every solve: a multigrid solver, or the preconditioner
+    ! of a Krylov solver; and the Krylov solver itself with `is_all`, otherwise kept for the next solve
+    !
+    implicit none
+    type(hypre_solver), target, intent(inout) :: asolver
+    logical           ,         intent(in   ) :: is_all
     type(C_PTR), pointer :: precond,solver
     integer    , pointer :: stype,ptype
     !
@@ -583,22 +825,30 @@ module mod_solver_vc
     solver  => asolver%solver
     stype   => asolver%stype
     ptype   => asolver%ptype
+    if      ( ptype == HYPREPrecondSMG ) then
+      call HYPRE_StructSMGDestroy(precond,ierr)
+    else if ( ptype == HYPREPrecondPFMG ) then
+      call HYPRE_StructPFMGDestroy(precond,ierr)
+    end if
+    precond = C_NULL_PTR
+    ptype   = HYPREPrecondNone
+    if(.not.C_ASSOCIATED(solver)) return
     if      ( stype == HYPRESolverSMG ) then
       call HYPRE_StructSMGDestroy(solver,ierr)
     else if ( stype == HYPRESolverPFMG ) then
       call HYPRE_StructPFMGDestroy(solver,ierr)
+    else if ( .not.is_all ) then
+      return
     else if ( stype == HYPRESolverGMRES ) then
       call HYPRE_StructGMRESDestroy(solver,ierr)
     else if ( stype == HYPRESolverBiCGSTAB ) then
       call HYPRE_StructBiCGSTABDestroy(solver,ierr)
     else if ( stype == HYPRESolverFlexGMRES ) then
       call HYPRE_StructFGMRESDestroy(solver,ierr)
+    else if ( stype == HYPRESolverPCG ) then
+      call HYPRE_StructPCGDestroy(solver,ierr)
     end if
-    if      ( ptype == HYPREPrecondSMG ) then
-      call HYPRE_StructSMGDestroy(precond,ierr)
-    else if ( ptype == HYPREPrecondPFMG ) then
-      call HYPRE_StructPFMGDestroy(precond,ierr)
-    end if
+    solver = C_NULL_PTR
   end subroutine finalize_solver
   !
   subroutine finalize_matrix(asolver)
