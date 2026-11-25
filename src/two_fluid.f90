@@ -392,7 +392,7 @@ module mod_two_fluid
       ! interface at the mid height of the plane, with a sinusoidal bump
       ! with amplitude zfilm_max and wavelength equal to the width of the plane
       !
-      zfilm_max = 0.01*l(ia)
+      zfilm_max = 0.01_rp*l(ia)
       do k=lo(3),hi(3)
         xyz(3) = zc_g(k)
         do j=lo(2),hi(2)
@@ -412,10 +412,10 @@ module mod_two_fluid
       !
       block
         real(rp) :: sw,sl,shift,xxc_slot,zzc_slot
-        r   = 0.15 ! disk radius
+        r   = 0.15_rp ! disk radius
         xxc = 0.5
         zzc = 0.75
-        sw  = 0.05/2 ! slot half width
+        sw  = 0.05_rp/2 ! slot half width
         sl  = 0.25/2 ! slot half length
         shift = r/2
         xxc_slot = xxc
@@ -668,15 +668,15 @@ module mod_two_fluid
       case(3) ! 'flm'
         sdf = z-l(3)/2
       case(4) ! 'cap-wav-1d'
-        zfilm_max = 0.01*l(ia)
+        zfilm_max = 0.01_rp*l(ia)
         eta  =  zfilm_max*cos(2*pi*xyz(ia)/l(ia))
         deta = -zfilm_max*2*pi/l(ia)*sin(2*pi*xyz(ia)/l(ia))
         sdf  = (xyz(ib)-l(ib)/2-eta)/sqrt(1._rp+deta**2)
       case(5) ! 'zalesak-disk'
-        r   = 0.15 ! (same constants as in `init2fl`)
+        r   = 0.15_rp ! (same constants as in `init2fl`)
         xxc = 0.5
         zzc = 0.75
-        sw  = 0.05/2
+        sw  = 0.05_rp/2
         sl  = 0.25/2
         shift = r/2
         xx = xyz(ia)/l(ia)

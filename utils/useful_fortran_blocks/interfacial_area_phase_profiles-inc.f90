@@ -7,7 +7,7 @@ block
   use mod_output, only: cmpt_total_area,velstats
   real(rp) :: area
   call cmpt_total_area(n,nh_psi,nh_g,dli,dzci,dzfi,psi,area)
-  var(1) = 1.*istep
+  var(1) = 1._rp*istep
   var(2) = time
   var(3) = area
   call out0d(trim(datadir)//'log_area.out',3,var)

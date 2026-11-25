@@ -1000,7 +1000,7 @@ program cans
     !
     if(is_output_due(istep,iout0d,tout0d,time_start,time)) then
       !allocate(var(4))
-      var(1) = 1.*istep
+      var(1) = 1._rp*istep
       var(2) = dt
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
@@ -1169,7 +1169,7 @@ program cans
         end if
       end if
       if(is_overwrite_save.and.nsaves_max > 0) then
-        var(1) = 1.*istep
+        var(1) = 1._rp*istep
         var(2) = time
         var(3) = 1.*savecounter
         call out0d(trim(datadir)//'log_checkpoints.out',3,var)

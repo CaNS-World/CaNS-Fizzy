@@ -613,7 +613,7 @@ module mod_interface_capturing
       ! numbers of interfacial cells with height-function curvature, neighbour average, and no estimate
       !
       call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol,clip,fmin,fmax,cfl,nsub,kstats)
-      var(1)    = 1.*istep
+      var(1)    = 1._rp*istep
       var(2)    = time
       var(3)    = vol
       var(4)    = (vol-vol0)/max(vol0,tiny(1._rp))
@@ -621,11 +621,11 @@ module mod_interface_capturing
       var(6)    = fmin
       var(7)    = fmax
       var(8:10) = cfl(:)
-      var(11)   = 1.*nsub
+      var(11)   = 1._rp*nsub
       var(12:14) = kstats(:)
       call out0d(trim(datadir)//'log_vof.out',14,var)
     else if(is_ifc_acdi) then
-      var(1) = 1.*istep
+      var(1) = 1._rp*istep
       var(2) = time
       var(3) = gam
       var(4) = seps
