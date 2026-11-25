@@ -38,6 +38,8 @@ logical , protected :: is_solve_ns,is_track_interface
 !
 character(len=100), protected :: inivel
 logical, protected :: is_wallturb,is_forced_hit
+character(len=3), protected :: forced_hit_type ! 'tgv' (Taylor-Green) or 'abc' (Arnold-Beltrami-Childress)
+real(rp), protected :: forced_hit_amp
 !
 integer , protected :: nstep
 real(rp), protected :: time_max,tw_max
@@ -188,7 +190,7 @@ contains
                   cfl,dtmax,dt_f, &
                   is_solve_ns,is_track_interface, &
                   inivel, &
-                  is_wallturb,is_forced_hit, &
+                  is_wallturb,is_forced_hit,forced_hit_type,forced_hit_amp, &
                   nstep,time_max,tw_max, &
                   stop_type, &
                   restart,is_overwrite_save,nsaves_max, &
@@ -249,7 +251,7 @@ contains
     cfl = 0.95; dtmax = 1.e9; dt_f = -1.
     is_solve_ns = .true.; is_track_interface = .true.
     inivel = 'zer'
-    is_wallturb = .false.; is_forced_hit = .false.
+    is_wallturb = .false.; is_forced_hit = .false.; forced_hit_type = 'tgv'; forced_hit_amp = 0.5
     nstep = 1000; time_max = 1.; tw_max = 0.5
     stop_type = [.true.,.false.,.false.]
     restart = .false.; is_overwrite_save = .true.; nsaves_max = 0
