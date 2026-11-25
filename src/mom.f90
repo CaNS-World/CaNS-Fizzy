@@ -1133,6 +1133,9 @@ module mod_mom
     if(is_brack) surf_factor = sigma*2._rp/(rho12(1)+rho12(2)) ! density-based scaling of Brackbill et al.
     rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
     !
+    bforcex = bforce(1); bforcey = bforce(2); bforcez = bforce(3)
+    gaccx = gacc(1); gaccy = gacc(2); gaccz = gacc(3)
+    !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
     !                                        all scalars should be firstprivate/private
     !
@@ -1170,13 +1173,6 @@ module mod_mom
           c_pcc = psi(i+1,j  ,k  )
           c_cpc = psi(i  ,j+1,k  )
           c_ccp = psi(i  ,j  ,k+1)
-          !
-          bforcex = bforce(1)
-          bforcey = bforce(2)
-          bforcez = bforce(3)
-          gaccx = gacc(1)
-          gaccy = gacc(2)
-          gaccz = gacc(3)
           !
           psixp = 0.5*(c_pcc+c_ccc)
           psiyp = 0.5*(c_cpc+c_ccc)
@@ -1815,7 +1811,7 @@ module mod_mom
     end do
   end subroutine cmpt_capillary_force
   !
-  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,is_brack,psi_p,psi,kappa,s, &
+  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,psi_p,psi,kappa,s, &
                                factor,u,v,w)
     !
     ! capillary force of the variation of the surface tension with the first scalar,
@@ -1839,7 +1835,6 @@ module mod_mom
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ) :: dsigma,s_ref
-    logical , intent(in   ) :: is_brack
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi_p,psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
@@ -1847,8 +1842,10 @@ module mod_mom
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp) :: rho,drho,mu,dmu,bfac,mfac,dxi,dyi,hz_c
     real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif,c_min,c_max
+    logical  :: is_brack
     integer  :: i,j,k
     !
+    is_brack = is_brackbill_normalization
     rho = rho12(2); drho = rho12(1)-rho12(2)
     mu  = mu12(2) ; dmu  = mu12(1) -mu12(2)
     bfac = 2._rp/(rho12(1)+rho12(2))

@@ -33,13 +33,12 @@ module mod_scal
   end type scalar
   !
   contains
-  subroutine scal_ad(nx,ny,nz,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dxi,dyi,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w, &
-                     s,dsdt)
+  subroutine scal_ad(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,ka12,rhocp12,psiflx_x,psiflx_y,psiflx_z,psi,u,v,w,s,dsdt)
     !
     implicit none
-    integer , intent(in) :: nx,ny,nz
+    integer , intent(in), dimension(3) :: n
     integer , intent(in) :: nh_v,nh_s,nh_psi,nh_ifc,nh_g
-    real(rp), intent(in) :: dxi,dyi
+    real(rp), intent(in), dimension(3) :: dli
     real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
     real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
@@ -52,7 +51,7 @@ module mod_scal
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
     real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm
-    real(rp) :: ka,dka,rhocp,drhocp
+    real(rp) :: ka,dka,rhocp,drhocp,dxi,dyi
     logical  :: is_adv,is_harm
     !
     is_adv = .not.is_ifc_split ! (otherwise, advection is computed in `scal_a_cons` or along with the phase indicator)
@@ -64,13 +63,14 @@ module mod_scal
       ka    = ka12(2)   ; dka    = ka12(1)-ka12(2)
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
+    dxi = dli(1); dyi = dli(2)
     !
     !$acc parallel loop collapse(3) default(present) &
     !$acc private(usip,usim,vsjp,vsjm,wskp,wskm,psixp,psixm,psiyp,psiym,psizp,psizm,kaxp,kaxm,kayp,kaym,kazp,kazm,dsdxp) &
     !$acc private(dsdxm,dsdyp,dsdym,dsdzp,dsdzm) async(1)
-    do k=1,nz
-      do j=1,ny
-        do i=1,nx
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
           if(is_adv) then
             usip = 0.5*(rhocp*u(i  ,j,k)+drhocp*psiflx_x(i  ,j,k))*(s(i+1,j,k)+s(i,j,k))
             usim = 0.5*(rhocp*u(i-1,j,k)+drhocp*psiflx_x(i-1,j,k))*(s(i-1,j,k)+s(i,j,k))
