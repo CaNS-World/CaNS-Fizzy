@@ -354,22 +354,24 @@ module mod_rk
       end do
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
-    if(.not.is_vof_sweep_transport) then
-      !$acc parallel loop collapse(3) default(present) async(1)
+    if(is_ifc_split .and. .not.is_vof_sweep_transport) then
+      !
+      ! the update, together with the advection term, in a single kernel
+      !
+      call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psio,psiflx_x,psiflx_y,psiflx_z, &
+                       uadv,vadv,wadv,sadv,factor1,factor2,factor12,ssource,dsdtrk,dsdtrko,s)
+    else if(.not.is_vof_sweep_transport) then
+      !$acc parallel loop collapse(3) default(present) private(rhocp_p,rhocp_n) async(1)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
             rhocp_p = rhocp + drhocp*psi( i,j,k)
             rhocp_n = rhocp + drhocp*psio(i,j,k)
-            s(i,j,k) = s(i,j,k)*rhocp_n/rhocp_p + (factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
+            s(i,j,k) = (s(i,j,k)*rhocp_n + factor1*dsdtrk(i,j,k) + factor2*dsdtrko(i,j,k) + factor12*ssource)/rhocp_p
             dsdtrko(i,j,k) = dsdtrk(i,j,k)
           end do
         end do
       end do
-      if(is_ifc_split) then
-        call scal_a_cons(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzfi,rhocp12,psi,psiflx_x,psiflx_y,psiflx_z,uadv,vadv,wadv,sadv, &
-                         factor12,s)
-      end if
     else
       !
       ! the other terms are added to the scalar transported along with the volume fraction
