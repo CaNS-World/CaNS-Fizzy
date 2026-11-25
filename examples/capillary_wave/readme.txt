@@ -11,7 +11,7 @@ and viscosity ratios are both 10 (kinematic viscosity 0.01).
 Set-up
 ------
 * Domain of 1 x 3 in the y-z plane (one cell along x), 128 x 384 cells;
-  periodic along y, walls along z.
+  periodic along y, open along z (zero-gradient velocity, fixed pressure).
 * Initial condition `cap-wav-1d-x`: one wavelength along y with an amplitude
   of 1 % of it, interface at mid height, fluids at rest; surface tension 1.
 * ACDI by default, with `psi_thickness_factor = 1`; other interface methods

@@ -277,7 +277,7 @@ module mod_acdi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel loop collapse(3) default(present) private(psi_aux) async(1)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
