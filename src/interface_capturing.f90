@@ -22,8 +22,9 @@ module mod_interface_capturing
   !   ifc_update_params -> update of the method parameters after each time step
   !   ifc_write_log     -> log file of the method
   !
+  use mpi
   use mod_types
-  use mod_common_mpi, only: myid
+  use mod_common_mpi, only: myid,ierr
   use mod_param     , only: datadir,ng,nb,is_bound,cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpsi,bcpsi,cbcnor,bcnor, &
                             cbccur,bccur,contact_angle, &
                             acdi_gam_factor,acdi_gam_min,vof_thinc_beta, &
@@ -39,7 +40,7 @@ module mod_interface_capturing
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
   use mod_scal      , only: scalar
   use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_contact_angle, &
-                            vof_split_diagnostics,vof_marker
+                            vof_split_diagnostics,vof_split_curvature_reset,vof_marker
   use mod_thinc     , only: thinc_cmpt_phi
   implicit none
   private
@@ -219,10 +220,12 @@ module mod_interface_capturing
     end if
   end subroutine advance_split
   !
-  subroutine ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
+  subroutine ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,is_restart,markers,psi)
     !
     ! initialization of the markers from their initial (or loaded) phase indicators, already present on the
-    ! device: boundary conditions, normals and curvature of each, and the total phase indicator
+    ! device: boundary conditions, normals and curvature of each, and the total phase indicator; in a
+    ! restarted run, the total must reproduce the loaded one, which it does not if `inipsi` or `nmarker`
+    ! differ from those of the run that saved the checkpoint (see `markers_offset`)
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
@@ -230,10 +233,14 @@ module mod_interface_capturing
     real(rp), intent(in   ), dimension(3) :: dl,dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: seps
+    logical , intent(in   ) :: is_restart
     type(marker), intent(inout), dimension(:) :: markers
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: vol_o,vol
     integer :: m
     !
+    if(is_restart) vol_o = psi_sum(n,nh_psi,psi)
+    if(is_ifc_plic) call vof_split_curvature_reset
     do m=1,size(markers)
       call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,markers(m)%psi)
       if(is_ifc_split) call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,markers(m)%psi)
@@ -242,7 +249,43 @@ module mod_interface_capturing
       call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
     end do
     call markers_total(n,nh_v,nh_psi,nh_ifc,size(markers),psi)
+    if(is_restart) then
+      vol = psi_sum(n,nh_psi,psi)
+      if(abs(vol-vol_o) > 1.e-4_rp*product(1._rp*ng(:))) then
+        if(myid == 0) print*, 'ERROR: the total phase indicator of the checkpoint is not that of its markers: `inipsi` &
+                                      &(`bub*`, or `drp*`/`dis*`) and `nmarker` must be those of the run that saved it.'
+        call MPI_FINALIZE(ierr)
+        error stop
+      end if
+    end if
   end subroutine ifc_markers_init
+  !
+  real(rp) function psi_sum(n,nh_psi,psi)
+    !
+    ! sum of the phase indicator over the cells of the domain
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: nh_psi
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: psis
+    integer  :: i,j,k
+    !
+    psis = 0._rp
+    !$acc data copy(psis) async(1)
+    !$acc parallel loop collapse(3) default(present) reduction(+:psis) async(1)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          psis = psis + psi(i,j,k)
+        end do
+      end do
+    end do
+    !$acc end data
+    !$acc wait(1)
+    call MPI_ALLREDUCE(MPI_IN_PLACE,psis,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    psi_sum = psis
+  end function psi_sum
   !
   subroutine ifc_markers_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                                  is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars)

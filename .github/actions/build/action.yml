@@ -13,13 +13,16 @@ inputs:
   no-rebuild:
     description: "Do not rebuild CaNS and dependencies"
     default: false
+  get-dependencies:
+    description: "With no-rebuild, also get the compiled dependencies (only needed by a test that builds the code)"
+    default: true
 
 runs:
   using: "composite"
   steps:
     - name: Set up Intel oneAPI
       if: ${{ inputs.compiler == 'INTEL' }}
-      uses: rscohn2/setup-oneapi@v0
+      uses: rscohn2/setup-oneapi@e45e38db502de365efd15f94e8faa4e5542a1c6f # v0
       with:
         components: |
           ifx
@@ -33,7 +36,15 @@ runs:
         source ./.github/actions/build/scripts/install-${{ inputs.compiler }}.sh
 
     - name: Get dependencies
-      if: ${{ inputs.no-rebuild == 'true' }}
+      id: get-dependencies
+      if: ${{ inputs.no-rebuild == 'true' && inputs.get-dependencies == 'true' }}
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: compiled-libs-${{ inputs.name }}
+        path: dependencies/
+    - name: Get dependencies (second attempt)
+      if: ${{ steps.get-dependencies.outcome == 'failure' }}
       uses: actions/download-artifact@v8
       with:
         name: compiled-libs-${{ inputs.name }}
@@ -53,7 +64,15 @@ runs:
         retention-days: 1
 
     - name: Get CaNS build
+      id: get-build
       if: ${{ inputs.no-rebuild == 'true' }}
+      continue-on-error: true
+      uses: actions/download-artifact@v8
+      with:
+        name: cans-${{ inputs.name }}
+        path: run/
+    - name: Get CaNS build (second attempt)
+      if: ${{ steps.get-build.outcome == 'failure' }}
       uses: actions/download-artifact@v8
       with:
         name: cans-${{ inputs.name }}

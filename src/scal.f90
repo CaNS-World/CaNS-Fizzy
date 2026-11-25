@@ -42,7 +42,7 @@ module mod_scal
     real(rp), intent(in) :: dxi,dyi
     real(rp), intent(in), dimension(1-nh_g:) :: dzci,dzfi
     real(rp), intent(in), dimension(2) :: ka12,rhocp12
-    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
@@ -50,7 +50,7 @@ module mod_scal
     integer :: i,j,k
     real(rp) :: usip,usim,vsjp,vsjm,wskp,wskm
     real(rp) :: dsdxp,dsdxm,dsdyp,dsdym,dsdzp,dsdzm
-    real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm,rhocp_c
+    real(rp) :: kaxp,kaxm,kayp,kaym,kazp,kazm
     real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm
     real(rp) :: ka,dka,rhocp,drhocp
     logical  :: is_adv,is_harm

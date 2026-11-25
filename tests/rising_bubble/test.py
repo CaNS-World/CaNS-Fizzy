@@ -4,7 +4,9 @@ def test_rising_bubble():
     from read_single_field_binary import read_single_field_binary
     #
     # comparing rising bubble interface location at t=3 against
-    # reference data from Hysing et al. IJNMF 60.11 (2009): 1259-1288
+    # reference data from Hysing et al. IJNMF 60.11 (2009): 1259-1288;
+    # the largest distance of the interface to the reference contour is between 0.005 and 0.009 for the
+    # interface methods and pressure solvers of the code, on this grid of 64 x 128 cells
     #
     data,xp,yp,zp,xu,yv,zw = read_single_field_binary("data/","psi_fld_0006000.bin",np.array([1,1,1]))
     import matplotlib
@@ -16,7 +18,7 @@ def test_rising_bubble():
     plt.clf()
     v_ref=np.loadtxt("c1g2l3s.txt")
     err = directed_hausdorff(v,v_ref)[0]
-    err_max = 1.e-1
+    err_max = 2.e-2
     assert err < err_max, f"Error is too large: {err} >= {err_max}."
     #
     # plotting

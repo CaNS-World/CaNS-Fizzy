@@ -185,7 +185,11 @@ module mod_thinc
   subroutine thinc_transport_psi_gauss(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidt, &
                                        flux_x,flux_y,flux_z)
     !
-    ! compute right-hand side of the VoF transport equation
+    ! compute right-hand side of the VoF transport equation, with Gaussian quadrature of the fluxes and a
+    ! Newton iteration for the intercept (see `cmpt_intercept`)
+    !
+    ! this routine is not called: it is kept as a reference for `thinc_transport_psi`, which uses the
+    ! mid-point rule instead, and has no directives for GPUs
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
@@ -336,7 +340,7 @@ module mod_thinc
     sol = 1./psi - 1. ! careful about division by zero
     iter = 0
     res = huge(1._rp)
-    do while(abs(res) > resmax .or. iter < itermax)
+    do while(abs(res) > resmax .and. iter < itermax)
       f0 = -psi
       f1 = 0.
       do k=1,ngauss

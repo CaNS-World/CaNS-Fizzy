@@ -19,11 +19,7 @@ public
 ! parameters
 !
 real(rp), parameter :: pi = acos(-1._rp)
-#if !defined(_EPS_EXACT_ZERO) /* recommended */
 real(rp), parameter :: eps = epsilon(1._rp)
-#else
-real(rp), parameter :: eps = 0._rp
-#endif
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
 character(len=100), parameter :: datadir = 'data/'
 !
@@ -90,7 +86,9 @@ real(rp), protected               :: dsigma_ds,s_ref ! surface tension linear in
 real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, allocatable, dimension(:,:) :: ka12,cp12 ! size (2,nscal): conductivity and heat capacity of each scalar
 real(rp), protected, dimension(2) :: beta12
-real(rp), protected               :: acdi_gam_factor,acdi_gam_min,vof_thinc_beta
+real(rp), protected               :: vof_thinc_beta
+real(rp), parameter               :: acdi_gam_factor = 1., acdi_gam_min = 1.e-12 ! regularization velocity of ACDI: factor
+                                                                                 ! of the largest velocity, and lower bound
 real(rp), protected               :: psi_thickness_factor
 !
 ! interface method, selected with three inputs; blank entries take the default of the reconstruction:
@@ -268,7 +266,7 @@ contains
     contact_angle(:,:) = 90.
     sigma = 0.; dsigma_ds = 0.; s_ref = 0.; rho12(:) = 1.; mu12(:) = 0.01
     beta12(:) = 1.
-    psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
+    psi_thickness_factor = -1. ! (default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
     nmarker = 1
     is_sdf_normals = .true.; is_hf_normals = .false.
@@ -451,6 +449,15 @@ contains
       read(iunit,nml=two_fluid,iostat=ierr,iomsg=c_iomsg)
       if(ierr /= 0 .and. ierr /= iostat_end) then
         if(myid == 0) print*, 'ERROR: reading `two_fluid` namelist: ', trim(c_iomsg)
+        if(myid == 0) print*, 'Aborting...'
+        call MPI_FINALIZE(ierr)
+        close(iunit)
+        error stop
+      end if
+      if(any(rho12(:) <= 0.) .or. any(mu12(:) < 0.) .or. (nscal > 0 .and. any(cp12(:,:) <= 0.)) .or. &
+         psi_thickness_factor == 0.) then
+        if(myid == 0) print*, 'ERROR: reading the input file: `rho12` and, with `nscal > 0`, `cp12` must be positive, &
+                                     &`mu12` must not be negative, and `psi_thickness_factor` must not be zero.'
         if(myid == 0) print*, 'Aborting...'
         call MPI_FINALIZE(ierr)
         close(iunit)

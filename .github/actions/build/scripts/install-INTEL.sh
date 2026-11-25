@@ -4,4 +4,5 @@
 #
 # get packages
 #
-sudo apt-get install -y --no-install-recommends libfftw3-dev
+sudo apt-get update -y -o Acquire::Retries=3
+sudo apt-get install -y -o Acquire::Retries=3 --no-install-recommends libfftw3-dev

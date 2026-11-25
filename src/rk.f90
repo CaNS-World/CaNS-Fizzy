@@ -22,7 +22,7 @@ module mod_rk
   contains
   subroutine rk(rkpar,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
                 grid_vol_ratio_c,grid_vol_ratio_f,dt,dt_r, &
-                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,s, &
+                bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,po,s, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                 surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
@@ -59,14 +59,14 @@ module mod_rk
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)           :: kappa
     real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:)           :: p
-    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: po
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
 #endif
-    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:), optional :: psio
-    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psio
+    real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   )                                 :: is_first
     real(rp), intent(inout), dimension(3)                   :: wall_force_old
     real(rp), intent(inout), dimension(:,:,:)               :: dudtrko,dvdtrko,dwdtrko
@@ -223,7 +223,7 @@ module mod_rk
     ! pressure, surface tension, and buoyancy terms
     !
     call mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce_eff,gacc,sigma,rho0,rho_av, &
-                     p,psi,kappa,s,pn,po, &
+                     p,psi,kappa,s,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                      surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
