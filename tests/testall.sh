@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # builds the variants of CaNS-Fizzy that the tests need, and runs the tests of each variant;
-# the variants and their tests are the same as in the CI (.github/workflows/run-compiler.yml)
+# the variants and their tests are those of the GNU job of the CI (.github/workflows/run-all.yml); the Intel and
+# NVIDIA jobs run a subset (the defaults of .github/workflows/run-compiler.yml)
 #
 # usage, from this directory: ./testall.sh [variant ...]     (default: all variants)
 #
