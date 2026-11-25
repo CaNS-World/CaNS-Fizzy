@@ -2,7 +2,8 @@
 def test_contact_angle():
     import numpy as np
     #
-    # static contact angle of 60 degrees at the lower wall, with the three interface reconstructions: a
+    # static contact angle of 60 degrees at the lower wall, with the three interface reconstructions (THINC
+    # with the AB2 and with the direction-split advection): a
     # two-dimensional drop that starts as the circular cap of that angle (the equilibrium shape without
     # gravity) must stay there over 2000 time steps (one time unit, about the capillary time scale of the
     # drop); with an angle of 90 degrees instead, the wetted width changes by 10 % and the velocity is
@@ -14,7 +15,7 @@ def test_contact_angle():
     area = np.pi*0.5**2/2. # (the cap has the area of half a disk of radius 0.5)
     r = np.sqrt(area/(theta-np.sin(theta)*np.cos(theta)))
     height_cap, width_cap = r*(1.-np.cos(theta)), 2.*r*np.sin(theta)
-    for case in ['plic', 'thinc', 'acdi']:
+    for case in ['plic', 'thinc', 'thincsplit', 'acdi']:
         psi_beg = np.fromfile(f'data-{case}/psi_fld_0000000.bin').reshape((ny, nz), order='F')
         psi = np.fromfile(f'data-{case}/psi_fld_0002000.bin').reshape((ny, nz), order='F')
         assert np.all(np.isfinite(psi)), f"{case}: invalid values."
