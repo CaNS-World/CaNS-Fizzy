@@ -16,7 +16,7 @@ module mod_chkdt
   subroutine chkdt(n,nh,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dtmax,gam,seps,ka12,cp12)
     !
     ! computes maximum allowed time step
-    ! see Kang et al. Journal of Scientific Computing 15, 323–360
+    ! see Kang et al. Journal of Scientific Computing 15, 323-360
     !
     implicit none
     integer , intent(in), dimension(3) :: n

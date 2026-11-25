@@ -168,7 +168,7 @@ module mod_solver_vc
     !
     ndim = 0; idirs(:) = 0
     do idir=1,3
-      if(.not.(ng(idir) == 1.and.cbc(0,idir)//cbc(1,idir) == 'PP')) then
+      if(.not.(ng(idir) == 1 .and. cbc(0,idir)//cbc(1,idir) == 'PP')) then
         ndim = ndim + 1
         idirs(ndim) = idir
       end if
@@ -329,12 +329,12 @@ module mod_solver_vc
             end if
             cc = cc - (cs(0,idir)+cs(1,idir))
             if(.not.is_per(idir)) then
-              if(is_bound(0,idir).and.ijk(idir) == lo(idir)) then
+              if(is_bound(0,idir) .and. ijk(idir) == lo(idir)) then
                 cc   = cc   + sgn(0,idir)*cs(0,idir)
                 rhsb = rhsb + cs(0,idir)*factor(0,idir)
                 cs(0,idir) = 0._rp
               end if
-              if(is_bound(1,idir).and.ijk(idir) == hi(idir)) then
+              if(is_bound(1,idir) .and. ijk(idir) == hi(idir)) then
                 cc   = cc   + sgn(1,idir)*cs(1,idir)
                 rhsb = rhsb + cs(1,idir)*factor(1,idir)
                 cs(1,idir) = 0._rp
@@ -526,7 +526,7 @@ module mod_solver_vc
     call HYPRE_StructVectorSetBoxValues(rhs,lo_s,hi_s,p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)),ierr)
     call HYPRE_StructVectorAssemble(rhs,ierr)
     !
-    ! create soluction vector
+    ! create solution vector
     !
     call HYPRE_StructVectorSetBoxValues(sol,lo_s,hi_s,po(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)),ierr)
     call HYPRE_StructVectorAssemble(sol,ierr)
@@ -554,7 +554,7 @@ module mod_solver_vc
       if(myid == 0) print*, 'WARNING: HYPRE solver not converged after ',niter,' iterations (maximum: `hypre_maxiter`).'
     end if
     !
-    ! fecth results and update old solution
+    ! fetch results and update old solution
     !
     call HYPRE_StructVectorGetBoxValues(sol,lo_s,hi_s,p(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)),ierr)
     if(asolver%is_singular) then
