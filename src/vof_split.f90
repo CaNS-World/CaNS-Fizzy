@@ -47,7 +47,7 @@ module mod_vof_split
   implicit none
   private
   public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_curvature_reset, &
-         vof_split_diagnostics,vof_split_contact_angle
+         vof_split_diagnostics,vof_split_contact_angle,markers_sum
   !
   type, public :: vof_marker
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null() ! volume fraction of a marker (see `vof_split_advance`)

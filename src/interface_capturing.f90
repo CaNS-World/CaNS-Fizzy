@@ -40,7 +40,7 @@ module mod_interface_capturing
   use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
   use mod_scal      , only: scalar
   use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_contact_angle, &
-                            vof_split_diagnostics,vof_split_curvature_reset,vof_marker
+                            vof_split_diagnostics,vof_split_curvature_reset,vof_marker,markers_sum
   use mod_thinc     , only: thinc_cmpt_phi
   implicit none
   private
@@ -257,7 +257,7 @@ module mod_interface_capturing
       if(is_ifc_split) call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,markers(m)%psi)
       call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
                         markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
-      call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+      call markers_sum(m == 1,markers(m)%psi,psi)
     end do
     call markers_total(n,nh_v,nh_psi,nh_ifc,size(markers),psi)
     if(is_restart) then
@@ -333,10 +333,10 @@ module mod_interface_capturing
         call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                          markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%phi,markers(m)%kappa,markers(m)%psi, &
                          wflx_x,wflx_y,wflx_z,is_first,markers(m)%dpsidtrko,istep)
-        call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
-        call markers_add(n,nh_ifc,m == 1,wflx_x,psiflx_x)
-        call markers_add(n,nh_ifc,m == 1,wflx_y,psiflx_y)
-        call markers_add(n,nh_ifc,m == 1,wflx_z,psiflx_z)
+        call markers_sum(m == 1,markers(m)%psi,psi)
+        call markers_sum(m == 1,wflx_x,psiflx_x)
+        call markers_sum(m == 1,wflx_y,psiflx_y)
+        call markers_sum(m == 1,wflx_z,psiflx_z)
       end do
       call markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,u,v,w,psiflx_x,psiflx_y,psiflx_z)
     else
@@ -348,7 +348,7 @@ module mod_interface_capturing
       do m=1,nm
         call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
                           markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
-        if(.not.is_vof_sweep_transport) call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+        if(.not.is_vof_sweep_transport) call markers_sum(m == 1,markers(m)%psi,psi)
       end do
       !
       ! (with the transport along with the sweeps, the total phase indicator is formed there, and the phase
@@ -379,32 +379,6 @@ module mod_interface_capturing
                                 fsx,fsy,fsz)
     end do
   end subroutine ifc_markers_force
-  !
-  subroutine markers_add(n,nh,is_init,a_m,a)
-    !
-    ! copies (if `is_init`) or adds the field of a marker to the total, halo layers included
-    !
-    implicit none
-    integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh
-    logical , intent(in   )               :: is_init
-    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: a_m
-    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: a
-    integer :: i,j,k
-    !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1-nh,n(3)+nh
-      do j=1-nh,n(2)+nh
-        do i=1-nh,n(1)+nh
-          if(is_init) then
-            a(i,j,k) = a_m(i,j,k)
-          else
-            a(i,j,k) = a(i,j,k) + a_m(i,j,k)
-          end if
-        end do
-      end do
-    end do
-  end subroutine markers_add
   !
   integer function markers_offset(nm)
     !
