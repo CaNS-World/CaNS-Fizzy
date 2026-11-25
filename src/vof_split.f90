@@ -751,7 +751,7 @@ module mod_vof_split
     nj = jhi-jlo+1
     nlist(1) = 0
     !$acc update device(nlist) async(1)
-    !$acc parallel loop collapse(3) default(present) private(il) async(1)
+    !$acc parallel loop collapse(3) default(present) private(il,ii,vp,vm,is_own_p,is_own_m,fc) async(1)
     do k=klo,khi
       do j=jlo,jhi
         do i=ilo,ihi
@@ -784,7 +784,8 @@ module mod_vof_split
     !
     ! (the number of listed cells is read from the device copy of nlist, without a host synchronization)
     !
-    !$acc parallel loop default(present) private(c,dz3,act) async(1)
+    !$acc parallel loop default(present) &
+    !$acc private(c,dz3,act,lin,i,j,k,ii,h,vp,vm,is_own_p,is_own_m,fc,cfl_p,cfl_m,mx,my,mz,frac_p,frac_m) async(1)
     do il=1,nlist(1)
       lin = ilist(il)
       i = ilo+mod(lin,ni)
@@ -826,7 +827,7 @@ module mod_vof_split
     clip_sweep(2) = 0._rp
     clip_sweep(3) = 1._rp
     !$acc end serial
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel loop collapse(3) default(present) private(ii,rh,fnew,fcl) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -1230,7 +1231,7 @@ module mod_vof_split
         !
         ! planes of the wall cells with an interface
         !
-        !$acc parallel loop gang vector collapse(2) default(present) private(c3,dz3,m,act) async(1)
+        !$acc parallel loop gang vector collapse(2) default(present) private(c3,dz3,m,act,i,j,k,fw,dz,n1,n2,n3,tn) async(1)
         do ib=2-nh_psi,nb_+nh_psi-1
           do ia=2-nh_psi,na+nh_psi-1
             i = merge(iw,ia,id == 1)
@@ -1422,7 +1423,7 @@ module mod_vof_split
       !
       nlist(1) = 0
       !$acc update device(nlist) async(1)
-      !$acc parallel loop collapse(3) default(present) private(il) async(1)
+      !$acc parallel loop collapse(3) default(present) private(il,fc) async(1)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -1446,7 +1447,7 @@ module mod_vof_split
       !
       n1 = n(1)
       n2 = n(2)
-      !$acc parallel loop default(present) async(1)
+      !$acc parallel loop default(present) private(lin,i,j,k,ksum,kcnt,fc) async(1)
       do il=1,nlist(1)
         lin = ilist(il)
         i = 1+mod(lin,n1)
@@ -1479,7 +1480,7 @@ module mod_vof_split
           kap(i,j,k) = kappa(i,j,k)
         end if
       end do
-      !$acc parallel loop default(present) async(1)
+      !$acc parallel loop default(present) private(lin,i,j,k) async(1)
       do il=1,nlist(1)
         lin = ilist(il)
         i = 1+mod(lin,n1)
@@ -1492,7 +1493,7 @@ module mod_vof_split
       ! (in place: only the curvature of interfacial cells is read, and only that of the other cells, zero
       ! since the first stage, is written)
       !
-      !$acc parallel loop collapse(3) default(present) async(1)
+      !$acc parallel loop collapse(3) default(present) private(fc,ksum,kcnt,ii,jj,kk) async(1)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -1555,7 +1556,9 @@ module mod_vof_split
     is_act1 = is_active(1)
     is_act2 = is_active(2)
     is_act3 = is_active(3)
-    !$acc parallel loop default(present) private(m,act,c3,dz3,hgt,dm,dp,h,nrm) async(1)
+    !$acc parallel loop default(present) &
+    !$acc private(m,act,c3,dz3,hgt,dm,dp,h,nrm,lin,i,j,k,kap_c,is_valid,d1,d2,d3,itmp,d,ia,ib,lo,hi,f0,f1,sgn,vol,fq,dqq) &
+    !$acc private(na,nb,nq,s) async(1)
     do il=1,nlist(1)
       lin = ilist(il)
       i = ilo+mod(lin,ni)

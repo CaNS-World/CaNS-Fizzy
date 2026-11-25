@@ -885,7 +885,7 @@ module mod_output
     mass1 = 0._rp
     mass2 = 0._rp
     !$acc data copy(mass1,mass2) async(1)
-    !$acc parallel loop collapse(3) default(present) reduction(+:mass1,mass2) async(1)
+    !$acc parallel loop collapse(3) default(present) reduction(+:mass1,mass2) private(vcell) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -920,7 +920,7 @@ module mod_output
     en1 = 0._rp
     en2 = 0._rp
     !$acc data copy(en1,en2) async(1)
-    !$acc parallel loop collapse(3) default(present) reduction(+:en1,en2) async(1)
+    !$acc parallel loop collapse(3) default(present) reduction(+:en1,en2) private(vcell,ecell) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)

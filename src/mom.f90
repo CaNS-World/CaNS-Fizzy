@@ -535,7 +535,7 @@ module mod_mom
     !
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
     !
-    !$acc parallel loop collapse(3) default(present) private(factorp) async(1)
+    !$acc parallel loop collapse(3) default(present) private(factorp,psip) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -564,7 +564,7 @@ module mod_mom
     !
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
     !
-    !$acc parallel loop collapse(3) default(present) private(factorp) async(1)
+    !$acc parallel loop collapse(3) default(present) private(factorp,psip) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -1341,6 +1341,10 @@ module mod_mom
     buoyx = 0._rp; buoyy = 0._rp; buoyz = 0._rp
     momx = 0._rp; momy = 0._rp; momz = 0._rp
     !$acc data copy(gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz,momx,momy,momz) async(1)
+    !
+    ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
+    !                                        all scalars should be firstprivate/private
+    !
     !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
     !$acc reduction(+:gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz,momx,momy,momz) async(1)
     do k=1,n(3)
@@ -1480,8 +1484,8 @@ module mod_mom
     is_cmptx = is_cmpt(1); is_cmpty = is_cmpt(2); is_cmptz = is_cmpt(3)
     momx = 0._rp; momy = 0._rp; momz = 0._rp
     !$acc data copy(momx,momy,momz) async(1)
-    !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
-    !$acc reduction(+:momx,momy,momz) async(1)
+    !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) reduction(+:momx,momy,momz) &
+    !$acc private(weight_f,weight_c,rhoxp,rhoyp,rhozp) async(1)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)

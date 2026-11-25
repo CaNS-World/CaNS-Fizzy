@@ -65,7 +65,9 @@ module mod_scal
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     !
-    !$acc parallel loop collapse(3) default(present) async(1)
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(usip,usim,vsjp,vsjm,wskp,wskm,psixp,psixm,psiyp,psiym,psizp,psizm,kaxp,kaxm,kayp,kaym,kazp,kazm,dsdxp) &
+    !$acc private(dsdxm,dsdyp,dsdym,dsdzp,dsdzm) async(1)
     do k=1,nz
       do j=1,ny
         do i=1,nx
