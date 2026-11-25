@@ -334,6 +334,8 @@ contains
       !
       ! defaults
       !
+      cudecomp_t_comm_backend      = 0
+      cudecomp_h_comm_backend      = 0
       cudecomp_is_t_comm_autotune  = .true.
       cudecomp_is_h_comm_autotune  = .true.
       cudecomp_is_t_enable_nccl    = .true.
@@ -342,7 +344,7 @@ contains
       cudecomp_is_h_enable_nvshmem = .true.
       rewind(iunit)
       read(iunit,nml=cudecomp,iostat=ierr,iomsg=c_iomsg)
-      if(ierr /= 0) then
+      if(ierr /= 0 .and. ierr /= iostat_end) then
         if(myid == 0) print*, 'ERROR: reading `cudecomp` namelist: ', trim(c_iomsg)
         if(myid == 0) print*, 'Aborting...'
         call MPI_FINALIZE(ierr)
