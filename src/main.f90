@@ -769,9 +769,9 @@ program cans
              ka12,cp12)
   dt = min(cfl*dt_cfl,dtmax)
   if(dt_f > 0.) then
-    if(dt_f > dt) then
+    if(dt_f > dt_cfl) then
       if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
-      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt_cfl
     end if
     dt = dt_f
   end if
@@ -1004,17 +1004,7 @@ program cans
       call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps, &
                  ka12,cp12)
       dt = min(cfl*dt_cfl,dtmax)
-      if(dt_f > 0.) then
-        if(dt_f > dt) then
-          if(myid == 0) print*, 'ERROR: fixed time step exceeds estimated stability limit.'
-          if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
-          if(myid == 0) print*, 'Aborting...'
-          is_done = .true.
-          kill = .true.
-        else
-          dt = dt_f
-        end if
-      end if
+      if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
       dti = 1./dt
       call chkdiv(lo,hi,nh_v,nh_g,l,dli,dzfi,u,v,w,divtot,divmax)

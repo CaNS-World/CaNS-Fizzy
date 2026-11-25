@@ -45,7 +45,6 @@ module mod_chkdt
       dlmin = min(minval(dl(1:2)),dzmin)
     end if
     !
-    !
     ! largest eigenvalue of the discrete Laplacian, times the inverse of the stability interval of the
     ! AB2 scheme along the negative real axis (one): the diffusion terms limit the time step to
     ! 1/(diffusivity*dl2i); without the direction integrated implicitly, if any
@@ -79,24 +78,28 @@ module mod_chkdt
     !$acc end data
     !$acc wait(1)
     call MPI_ALLREDUCE(MPI_IN_PLACE,dti,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
+    !
+    ! each term limits the time step only if its rate is positive
+    !
+    dtmax = huge(1._rp)
     if(is_ifc_acdi) then
+      !
+      ! regularization term of the phase field, without the factor of the diffusion terms above: its
+      ! sharpening flux offsets the diffusion along the interface normal
+      !
       dtipsi = gam*seps/dlmin**2
-      if(dtipsi == 0.) dtipsi = 1.
     else
       dtipsi = dti
     end if
-    if(.not.is_solve_ns) then
-      dtmax = min(dti**(-1),dtipsi**(-1))
-    else
+    if(is_solve_ns) then
       dtiv = maxval(mu12(:)/rho12(:))*dl2i
       if(is_impdiff.and..not.is_impdiff_1d) dtiv = 0.
       dtik = sqrt(sigma/(minval(rho12(:)))/dlmin**3)
-      dtig = maxval(abs(gacc))/dlmin
+      dtig = sqrt(maxval(abs(gacc))/dlmin)
       dti = 0.5*(dti+dtiv+sqrt((dti+dtiv)**2+4.*(dtig**2+dtik**2)))
-      if(dti    == 0.) dti    = 1.
-      dtmax = dti**(-1)
-      if(is_track_interface.and.dtipsi > 0.) dtmax = min(dtmax,dtipsi**(-1))
     end if
+    if(dti > 0.) dtmax = dti**(-1)
+    if((is_track_interface .or. .not.is_solve_ns) .and. dtipsi > 0.) dtmax = min(dtmax,dtipsi**(-1))
     if(nscal > 0) then
       if(present(ka12) .and. present(cp12)) then
         dti = 0.
@@ -105,8 +108,7 @@ module mod_chkdt
         end do
       end if
       if(is_impdiff.and..not.is_impdiff_1d) dti = 0.
-      if(dti == 0.) dti = 1.
-      dtmax = min(dtmax,dti**(-1))
+      if(dti > 0.) dtmax = min(dtmax,dti**(-1))
     end if
   end subroutine chkdt
 end module mod_chkdt
