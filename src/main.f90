@@ -696,7 +696,6 @@ program cans
   !
   if(is_first) then
     !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1-nh_p,n(3)+nh_p
       do j=1-nh_p,n(2)+nh_p
         do i=1-nh_p,n(1)+nh_p
@@ -810,7 +809,6 @@ program cans
     ! phase field update
     !
     !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared)
     do k=1-nh_psi,n(3)+nh_psi
       do j=1-nh_psi,n(2)+nh_psi
         do i=1-nh_psi,n(1)+nh_psi
@@ -955,7 +953,6 @@ program cans
       end if
 #if defined(_CONSTANT_COEFFS_POISSON)
       !$acc parallel loop collapse(3) default(present) async(1)
-      !$OMP parallel do   collapse(3) DEFAULT(shared)
       do k=1-nh_p,n(3)+nh_p
         do j=1-nh_p,n(2)+nh_p
           do i=1-nh_p,n(1)+nh_p

@@ -184,8 +184,6 @@ module mod_two_fluid
     ! normals at the vertices, from the eight cells around them
     !
     !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared) &
-    !$OMP private(psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp,mx_1,my_1,mz_1,normi)
     do k=0,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -261,9 +259,6 @@ module mod_two_fluid
     ! normals and curvature at the cell centers
     !
     !$acc parallel loop collapse(3) default(present) async(1)
-    !$OMP parallel do   collapse(3) DEFAULT(shared) &
-    !$OMP private(mx_1,mx_2,mx_3,mx_4,mx_5,mx_6,mx_7,mx_8,my_1,my_2,my_3,my_4,my_5,my_6,my_7,my_8) &
-    !$OMP private(mz_1,mz_2,mz_3,mz_4,mz_5,mz_6,mz_7,mz_8,normi,norm_x,norm_y,norm_z)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
