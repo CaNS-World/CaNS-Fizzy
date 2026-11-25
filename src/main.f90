@@ -672,8 +672,19 @@ program cans
           is_first = is_first.or..not.is_done
         end do
         open(newunit=iunit,file=trim(datadir)//'fld_dt.out',status='old',action='read',iostat=istat)
-        if(istat == 0) read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3),wall_heat_old(1:nscal)
-        if(istat == 0) close(iunit)
+        if(istat == 0) then
+          read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3),wall_heat_old(1:nscal)
+          if(istat /= 0 .and. nscal > 0) then
+            !
+            ! a file written before the heat losses of the scalars were saved: the values before them, with the
+            ! heat losses left as dummies
+            !
+            rewind(iunit)
+            read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3)
+            wall_heat_old(:) = -huge(1._rp)
+          end if
+          close(iunit)
+        end if
         is_first = is_first.or.istat /= 0
       end if
       call MPI_BCAST(is_first      ,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
