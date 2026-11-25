@@ -590,10 +590,9 @@ module mod_mom
     real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
-    real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta,nu1,nu2
+    real(rp) :: rho,drho,mu,dmu,nu1,nu2
     real(rp) :: dxi,dyi
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
-                d_ccm,d_pcm,d_cpm,d_cmc,d_pmc,d_mcc,d_ccc,d_pcc,d_mpc,d_cpc,d_cmp,d_mcp,d_ccp,d_cpp,d_ppc,d_pcp, &
                 u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp, &
                 v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp, &
                 w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp, &
@@ -604,7 +603,6 @@ module mod_mom
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
-    real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     logical  :: is_adv,is_harm,is_lim,is_lim_c
     real(rp) :: c_min,c_max
@@ -1104,13 +1102,13 @@ module mod_mom
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta,rho0i
     real(rp) :: dxi,dyi
-    real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
+    real(rp) :: c_ccc,c_pcc,c_cpc,c_ccp, &
                 p_ccc,p_pcc,p_cpc,p_ccp, &
                 q_ccc,q_pcc,q_cpc,q_ccp, &
                 s_ccc,s_pcc,s_cpc,s_ccp, &
                 k_ccc,k_pcc,k_cpc,k_ccp, &
                 bforcex,bforcey,bforcez,gaccx,gaccy,gaccz,rhox_av,rhoy_av,rhoz_av, &
-                dzci_c,dzci_m,dzfi_c,dzfi_p, &
+                dzci_c, &
                 psixp,psiyp,psizp
     real(rp) :: rhoxp,rhoyp,rhozp, &
                 skappaxp,skappayp,skappazp, &

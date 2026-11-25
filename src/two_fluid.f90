@@ -10,7 +10,7 @@ module mod_two_fluid
   use mod_types
   implicit none
   private
-  public init2fl,init2fl_sharp,clip_field,cmpt_norm_curv_youngs,bulk_mean_12_stag
+  public init2fl,init2fl_sharp,clip_field,update_property,cmpt_norm_curv_youngs,bulk_mean_12_stag
   type sphere
     real(rp) :: xyz(3),r
     integer  :: imarker ! marker of the sphere (fifth, optional column of `spheres.in`; 1 if absent)
@@ -26,11 +26,21 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: psi
     real(rp), intent(out), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: p
     real(rp) :: prop1,prop2
+    integer, dimension(3) :: lo,hi
+    integer :: i,j,k
+    !
     prop1 = prop12(1)
     prop2 = prop12(2)
-    !$acc kernels default(present) async(1)
-    p(:,:,:) = psi(:,:,:)*prop1+(1.-psi(:,:,:))*prop2
-    !$acc end kernels
+    lo(:) = lbound(p)
+    hi(:) = ubound(p)
+    !$acc parallel loop collapse(3) default(present) async(1)
+    do k=lo(3),hi(3)
+      do j=lo(2),hi(2)
+        do i=lo(1),hi(1)
+          p(i,j,k) = psi(i,j,k)*prop1+(1.-psi(i,j,k))*prop2
+        end do
+      end do
+    end do
   end subroutine update_property
   !
   subroutine clip_field(nh,minmax,p)
@@ -286,78 +296,6 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv_youngs
   !
-  subroutine cmpt_norm_fd2(n,nh_psi,nh_ifc,nh_g,dli,dzfi,psi,normx,normy,normz)
-    !
-    ! computes the normals based on a volume-of-fluid or level-set field
-    ! using second-order finite-differences
-    !
-    implicit none
-    real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
-    real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz
-    real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm,dpsidx,dpsidy,dpsidz,norm
-    integer  :: i,j,k
-    !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
-          psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
-          psiyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
-          psiym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
-          psizp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
-          psizm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
-          dpsidx = (psixp-psixm)*dli(1)
-          dpsidy = (psiyp-psiym)*dli(2)
-          dpsidz = (psizp-psizm)*dzfi(k)
-          norm   = sqrt(dpsidx**2+dpsidy**2+dpsidz**2)
-          normx(i,j,k) = dpsidx/norm
-          normy(i,j,k) = dpsidy/norm
-          normz(i,j,k) = dpsidz/norm
-        end do
-      end do
-    end do
-  end subroutine cmpt_norm_fd2
-  !
-  subroutine cmpt_curv_fd2(n,nh_psi,nh_ifc,nh_g,dli,dzfi,psi,normx,normy,normz,kappa)
-    !
-    ! computes the curvature using second-order finite-differences
-    !
-    implicit none
-    real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
-    real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz
-    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: kappa
-    real(rp) :: normxp,normxm,normyp,normym,normzp,normzm
-    integer  :: i,j,k
-    !
-    !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          normxp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
-          normxm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
-          normyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
-          normym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
-          normzp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
-          normzm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
-          kappa(i,j,k) = - ( (normxp-normxm)*dli(1) + &
-                             (normyp-normym)*dli(2) + &
-                             (normzp-normzm)*dzfi(k) )
-        end do
-      end do
-    end do
-  end subroutine cmpt_curv_fd2
-  !
   subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi,imarker)
     use mod_common_mpi, only: myid
     !
@@ -375,9 +313,9 @@ module mod_two_fluid
     real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
     integer , intent(in), optional :: imarker
     integer  :: i,j,k,ii,jj,kk,q
-    real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
+    real(rp) :: x,y,z,xx,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
-    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2
+    real(rp) :: zfilm_max,sdist1,sdist2
     integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
     real(rp) :: psi_aux
@@ -890,120 +828,4 @@ module mod_two_fluid
       res = .5/eps + .5/eps*cos(pi*r/eps)
     end if
   end function smooth_impulse
-#if 0
-  subroutine cmpt_norm_curv_old(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
-    !
-    ! computes the normals and curvature based on a VoF field
-    ! using finite-differences based on Youngs method
-    ! (replaced by `cmpt_norm_curv` above, which is slightly faster on GPUs)
-    !
-    implicit none
-    real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3)           :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
-    real(rp), intent(in ), dimension(3)           :: dli
-    real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz,kappa
-    real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
-                psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
-                psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
-    real(rp) :: norm
-    logical , save :: is_first = .true.
-    real(rp), allocatable, dimension(:), save :: mx,my,mz
-    integer  :: i,j,k,q
-    !
-    if(is_first) then
-      is_first = .false.
-      allocate(mx(8),my(8),mz(8))
-      !$acc enter data create(mx,my,mz)
-    end if
-    !
-    !$acc parallel loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          psimmm = psi(i-1,j-1,k-1)
-          psimcm = psi(i-1,j  ,k-1)
-          psimpm = psi(i-1,j+1,k-1)
-          psicmm = psi(i  ,j-1,k-1)
-          psiccm = psi(i  ,j  ,k-1)
-          psicpm = psi(i  ,j+1,k-1)
-          psipmm = psi(i+1,j-1,k-1)
-          psipcm = psi(i+1,j  ,k-1)
-          psippm = psi(i+1,j+1,k-1)
-          psimmc = psi(i-1,j-1,k  )
-          psimcc = psi(i-1,j  ,k  )
-          psimpc = psi(i-1,j+1,k  )
-          psicmc = psi(i  ,j-1,k  )
-          psiccc = psi(i  ,j  ,k  )
-          psicpc = psi(i  ,j+1,k  )
-          psipmc = psi(i+1,j-1,k  )
-          psipcc = psi(i+1,j  ,k  )
-          psippc = psi(i+1,j+1,k  )
-          psimmp = psi(i-1,j-1,k+1)
-          psimcp = psi(i-1,j  ,k+1)
-          psimpp = psi(i-1,j+1,k+1)
-          psicmp = psi(i  ,j-1,k+1)
-          psiccp = psi(i  ,j  ,k+1)
-          psicpp = psi(i  ,j+1,k+1)
-          psipmp = psi(i+1,j-1,k+1)
-          psipcp = psi(i+1,j  ,k+1)
-          psippp = psi(i+1,j+1,k+1)
-          !
-          mx(1) = 0.25*((psipcc+psippc+psipcp+psippp)-(psiccc+psicpc+psiccp+psicpp))*dli(1)
-          mx(2) = 0.25*((psipcc+psipmc+psipcp+psipmp)-(psiccc+psicmc+psiccp+psicmp))*dli(1)
-          mx(3) = 0.25*((psipcc+psippc+psipcm+psippm)-(psiccc+psicpc+psiccm+psicpm))*dli(1)
-          mx(4) = 0.25*((psipcc+psipmc+psipcm+psipmm)-(psiccc+psicmc+psiccm+psicmm))*dli(1)
-          mx(5) = 0.25*((psiccc+psicpc+psiccp+psicpp)-(psimcc+psimpc+psimcp+psimpp))*dli(1)
-          mx(6) = 0.25*((psiccc+psicmc+psiccp+psicmp)-(psimcc+psimmc+psimcp+psimmp))*dli(1)
-          mx(7) = 0.25*((psiccc+psicpc+psiccm+psicpm)-(psimcc+psimpc+psimcm+psimpm))*dli(1)
-          mx(8) = 0.25*((psiccc+psicmc+psiccm+psicmm)-(psimcc+psimmc+psimcm+psimmm))*dli(1)
-          !
-          my(1) = 0.25*((psicpc+psippc+psicpp+psippp)-(psiccc+psipcc+psiccp+psipcp))*dli(2)
-          my(2) = 0.25*((psiccc+psipcc+psiccp+psipcp)-(psicmc+psipmc+psicmp+psipmp))*dli(2)
-          my(3) = 0.25*((psicpc+psippc+psicpm+psippm)-(psiccc+psipcc+psiccm+psipcm))*dli(2)
-          my(4) = 0.25*((psiccc+psipcc+psiccm+psipcm)-(psicmc+psipmc+psicmm+psipmm))*dli(2)
-          my(5) = 0.25*((psicpc+psimpc+psicpp+psimpp)-(psiccc+psimcc+psiccp+psimcp))*dli(2)
-          my(6) = 0.25*((psiccc+psimcc+psiccp+psimcp)-(psicmc+psimmc+psicmp+psimmp))*dli(2)
-          my(7) = 0.25*((psicpc+psimpc+psicpm+psimpm)-(psiccc+psimcc+psiccm+psimcm))*dli(2)
-          my(8) = 0.25*((psiccc+psimcc+psiccm+psimcm)-(psicmc+psimmc+psicmm+psimmm))*dli(2)
-          !
-          mz(1) = 0.25*((psiccp+psipcp+psicpp+psippp)-(psiccc+psipcc+psicpc+psippc))*dzci(k  )
-          mz(2) = 0.25*((psiccp+psipcp+psicmp+psipmp)-(psiccc+psipcc+psicmc+psipmc))*dzci(k  )
-          mz(3) = 0.25*((psiccc+psipcc+psicpc+psippc)-(psiccm+psipcm+psicpm+psippm))*dzci(k-1)
-          mz(4) = 0.25*((psiccc+psipcc+psicmc+psipmc)-(psiccm+psipcm+psicmm+psipmm))*dzci(k-1)
-          mz(5) = 0.25*((psiccp+psimcp+psicpp+psimpp)-(psiccc+psimcc+psicpc+psimpc))*dzci(k  )
-          mz(6) = 0.25*((psiccp+psimcp+psicmp+psimmp)-(psiccc+psimcc+psicmc+psimmc))*dzci(k  )
-          mz(7) = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
-          mz(8) = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
-          !
-          !$acc loop seq
-          do q=1,8
-            norm = sqrt(mx(q)**2+my(q)**2+mz(q)**2)+eps
-            mx(q) = mx(q)/norm
-            my(q) = my(q)/norm
-            mz(q) = mz(q)/norm
-          end do
-          !
-          ! compute the normal vector
-          !
-          normx(i,j,k) = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
-          normy(i,j,k) = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
-          normz(i,j,k) = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
-          norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
-          normx(i,j,k) = normx(i,j,k)/norm
-          normy(i,j,k) = normy(i,j,k)/norm
-          normz(i,j,k) = normz(i,j,k)/norm
-          !
-          ! compute the curvature
-          !
-          kappa(i,j,k) = - ( 0.25*((mx(1)+mx(2)+mx(3)+mx(4))-(mx(5)+mx(6)+mx(7)+mx(8)))*dli(1) + &
-                             0.25*((my(1)+my(3)+my(5)+my(7))-(my(2)+my(4)+my(6)+my(8)))*dli(2) + &
-                             0.25*((mz(1)+mz(2)+mz(5)+mz(6))-(mz(3)+mz(4)+mz(7)+mz(8)))*dzfi(k) )
-        end do
-      end do
-    end do
-  end subroutine cmpt_norm_curv_old
-#endif
 end module mod_two_fluid

@@ -200,7 +200,7 @@ module mod_sanity
   end subroutine chk_stop_type
   !
   subroutine chk_dims(ng,dims,cbcvel,cbcpre,passed)
-    use mod_param, only: nscal,cbcscal
+    use mod_param, only: cbcscal
     implicit none
     integer, intent(in), dimension(3) :: ng
     integer, intent(in), dimension(2) :: dims
@@ -269,7 +269,7 @@ module mod_sanity
   end subroutine chk_dims
   !
   subroutine chk_bc(cbcvel,cbcpre,bcvel,bcpre,passed)
-    use mod_param, only: nscal,cbcscal
+    use mod_param, only: cbcscal
     implicit none
     character(len=1), intent(in), dimension(0:1,3,3) :: cbcvel
     character(len=1), intent(in), dimension(0:1,3  ) :: cbcpre
