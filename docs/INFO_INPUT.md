@@ -603,7 +603,7 @@ Any other one stops the run with a message.
 0.5 0.7 0.5 0.18 2
 ```
 
-Where two markers overlap, the total phase indicator is clipped, and the markers are left as they are, each conserving its volume; there is no model of the film between two drops, which simply stay apart. Besides the total phase indicator (`psi_fld_*`, `fld_psi`), each marker is written to `psi_NNN_fld_*` and saved in the checkpoint file `fld_psi_NNN`. Several markers need an initial condition made of spheres (`inipsi = 'bub*'`, `'drp*'` or `'dis*'`).
+Where two markers overlap, the total phase indicator is clipped, and the markers are left as they are, each conserving its volume; there is no model of the film between two drops, which simply stay apart. Besides the total phase indicator (`psi_fld_*`, `fld_psi`), each marker is written to `psi_NNN_fld_*` and saved in the checkpoint file `fld_psi_NNN`. The curvature of each marker is written to `cur_NNN_fld_*`, instead of the single `cur_fld_*`. A restarted run needs the `nmarker` and the kind of `inipsi` (`bub*`, or `drp*`/`dis*`) of the run that saved the checkpoint, which is checked. Several markers need an initial condition made of spheres (`inipsi = 'bub*'`, `'drp*'` or `'dis*'`).
 
 `is_sdf_normals`, if true (default), computes the interface normals and curvature of `acdi` and `thinc`, and the THINC/QQ reconstruction, from an approximate signed-distance function; if false, they are computed directly from the phase indicator. It has no role with `plic`.
 
@@ -611,7 +611,7 @@ Where two markers overlap, the total phase indicator is clipped, and the markers
 
 `is_brackbill_normalization`, if true (default), scales the surface tension force with the local density over the mean density of the two phases (Brackbill et al., *J. Comput. Phys.* 100 (1992) 335–354), which spreads the acceleration evenly across the interface; if false, the force is not scaled.
 
-With `ifc_advection = 'split'`, every `iout0d` time steps the code appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate (zero with `thinc`, whose normals and curvature are computed as with `ifc_advection = 'ab2'`).
+With `ifc_advection = 'split'`, every `iout0d` time steps the code appends to `log_vof.out` the time step number, the time, the volume of phase 1 and its relative change since the start of the run, the accumulated volume added by clipping round-off errors, the extrema of the volume fraction before clipping, the CFL numbers along the three directions, the number of sub-steps of the last time step, and the numbers of interfacial cells (of all markers, if several) whose curvature comes from height functions, from the average of neighbouring cells, and without an estimate (zero with `thinc`, whose normals and curvature are computed as with `ifc_advection = 'ab2'`). The volume change and the clipped volume are counted from the start of each run, also of a restarted one.
 
 # About the `&numerics` namelist under `input.nml`
 
