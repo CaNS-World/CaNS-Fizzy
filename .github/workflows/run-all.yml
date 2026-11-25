@@ -5,9 +5,15 @@ on:
   push:
     branches:
     - main
+    paths-ignore:
+    - '**.md'
+    - 'docs/**'
   pull_request:
     branches:
     - main
+    paths-ignore:
+    - '**.md'
+    - 'docs/**'
     types:
     - opened
     - reopened
@@ -15,10 +21,11 @@ on:
     - ready_for_review
 
 #
-# a new push to a branch cancels the run of its previous commit (never on main)
+# a new push to a branch cancels the run of its previous commit; on main, every commit has a group of its own,
+# so that a run is neither cancelled nor replaced while it waits for an earlier one
 #
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -36,6 +43,7 @@ jobs:
       compiler: "INTEL"
       test_modes: '["dbg"]'
       variants: '["default"]'
+      tests_in_one_job: true
 
   NVIDIA:
     uses: ./.github/workflows/run-compiler.yml
@@ -44,3 +52,4 @@ jobs:
       cpu_target: "px"
       test_modes: '["opt"]'
       variants: '["default"]'
+      tests_in_one_job: true
