@@ -89,8 +89,8 @@ real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, allocatable, dimension(:,:) :: ka12,cp12 ! size (2,nscal): conductivity and heat capacity of each scalar
 real(rp), protected, dimension(2) :: beta12
 real(rp), protected               :: vof_thinc_beta
-real(rp), parameter               :: acdi_gam_factor = 1., acdi_gam_min = 1.e-12 ! regularization velocity of ACDI: factor
-                                                                                 ! of the largest velocity, and lower bound
+real(rp), parameter               :: acdi_gam_factor = 1._rp, acdi_gam_min = 1.e-12_rp ! regularization velocity of ACDI: factor
+                                                                                       ! of the largest velocity, and lower bound
 real(rp), protected               :: psi_thickness_factor
 !
 ! interface method, selected with three inputs; blank entries take the default of the reconstruction:
@@ -155,7 +155,7 @@ integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PF
                                      hypre_pfmg_num_pre_relax  = 1, &
                                      hypre_pfmg_num_post_relax = 1, &
                                      hypre_pfmg_max_levels = -1    ! 0: HYPRE's default, < 0: see `configure_pfmg`
-real(rp), protected, dimension(2) :: hypre_tol = 1.e-6
+real(rp), protected, dimension(2) :: hypre_tol = 1.e-6_rp
 !
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
 ! (one layer suffices for CaNS; extensions with wider stencils may increase them here); that of the phase
@@ -246,7 +246,7 @@ contains
     ng(:) = [128,128,128]
     l(:)  = [1. ,1. ,1. ]
     gtype = 1; gr = 0.
-    cfl = 0.95; dtmax = 1.e9; dt_f = -1.
+    cfl = 0.95_rp; dtmax = 1.e9; dt_f = -1.
     is_solve_ns = .true.; is_track_interface = .true.
     inivel = 'zer'
     is_wallturb = .false.; is_forced_hit = .false.; forced_hit_type = 'tgv'; forced_hit_amp = 0.5
@@ -266,7 +266,7 @@ contains
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     cbccur(:,:) = 'P'; bccur(:,:) = 0.
     contact_angle(:,:) = 90.
-    sigma = 0.; dsigma_ds = 0.; s_ref = 0.; rho12(:) = 1.; mu12(:) = 0.01
+    sigma = 0.; dsigma_ds = 0.; s_ref = 0.; rho12(:) = 1.; mu12(:) = 0.01_rp
     beta12(:) = 1.
     psi_thickness_factor = -1. ! (default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
@@ -446,7 +446,7 @@ contains
       ! allocated for one scalar if there is none, such that the input files may always set them)
       !
       allocate(ka12(2,max(nscal,1)),cp12(2,max(nscal,1)))
-      ka12(:,:) = 0.01; cp12(:,:) = 1.
+      ka12(:,:) = 0.01_rp; cp12(:,:) = 1.
       rewind(iunit)
       read(iunit,nml=two_fluid,iostat=ierr,iomsg=c_iomsg)
       if(ierr /= 0 .and. ierr /= iostat_end) then
@@ -476,7 +476,7 @@ contains
       if(ifc_transport == '') ifc_transport = merge('one-step','ab2     ',is_ifc_split)
       is_vof_sweep_transport = ifc_transport == 'sweeps'
       if(is_ifc_plic) is_sdf_normals = .false. ! no signed-distance function with the geometric reconstruction
-      if(psi_thickness_factor < 0.) psi_thickness_factor = merge(0.51,0.50,is_ifc_acdi) ! 0.25?
+      if(psi_thickness_factor < 0.) psi_thickness_factor = merge(0.51_rp,0.50_rp,is_ifc_acdi) ! 0.25?
       if(is_ifc_split) nh_psi = 4 ! nine-cell columns of the height functions (geometric reconstruction), and
                                   ! interface band of the transport along with the sweeps
       !
@@ -488,7 +488,7 @@ contains
       is_visc_limiter = is_ifc_plic
       !
       cbccur(:,:) = cbcpsi(:,:)
-      bccur(:,:) = bcpre(:,:)
+      bccur(:,:) = 0._rp
       !
       ! conditions of the interface normal, from those of the phase indicator: at a wall (zero gradient of
       ! the phase indicator) the interface is normal to it, i.e., the wall-normal component of the interface
