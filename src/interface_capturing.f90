@@ -260,8 +260,12 @@ module mod_interface_capturing
     end do
     call markers_total(n,nh_v,nh_psi,nh_ifc,size(markers),psi)
     if(is_restart) then
+      !
+      ! both totals come from the same marker fields, summed the same way: they agree to round-off (bitwise in
+      ! practice), and a marker left out (`nmarker` too small) shows even if it holds a single small drop
+      !
       vol = psi_sum(n,nh_psi,psi)
-      if(abs(vol-vol_o) > 1.e-4_rp*product(1._rp*ng(:))) then
+      if(abs(vol-vol_o) > 1.e3_rp*epsilon(1._rp)*product(1._rp*ng(:))) then
         if(myid == 0) print*, 'ERROR: the total phase indicator of the checkpoint is not that of its markers: `inipsi` &
                                       &(`bub*`, or `drp*`/`dis*`) and `nmarker` must be those of the run that saved it.'
         call MPI_FINALIZE(ierr)

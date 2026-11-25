@@ -24,9 +24,11 @@ cp $TESTDIR/*.* .
 # channel    : a bubble in a forced channel flow: the mass-averaged velocity is the target, and is kept
 #
 # the first two also with implicit diffusion: in all directions at five times the time step (`-impdiff`), and
-# along z (`-impdiff-z`)
+# along z (`-impdiff-z`); the channel also forced along y, with the perturbation of `is_wallturb` (`-wallturb`),
+# and in the frame moving with its bulk velocity (`-iop`, walls at -1, `velf = 0`): `velf` leaves the velocity of
+# the perturbation and the profile of `iop` as they are
 #
-for name in conduction conduction-impdiff bubble bubble-impdiff-z channel; do
+for name in conduction conduction-impdiff bubble bubble-impdiff-z channel channel-wallturb channel-iop; do
   base=${name%%-*}
   cp $TESTDIR/input-$base.nml input.nml
   if [ -f $TESTDIR/spheres-$base.in ]; then cp $TESTDIR/spheres-$base.in spheres.in; fi
@@ -34,6 +36,11 @@ for name in conduction conduction-impdiff bubble bubble-impdiff-z channel; do
     conduction-impdiff) sed -i "s/dt_f = 4.e-3/dt_f = 2.e-2/" input.nml; printf "\n&numerics\nis_impdiff = T\n/\n" >> input.nml;;
     bubble-impdiff-z)   sed -i "s/^dims(1:2) *=.*/dims(1:2) = 1, 4, ipencil_axis = 3/" input.nml
                         printf "\n&numerics\nis_impdiff = T, is_impdiff_1d = T\n/\n" >> input.nml;;
+    channel-wallturb)   sed -i -e "s/^is_wallturb = F/is_wallturb = T/" \
+                               -e "s/^is_forced(1:3) = T, F, F/is_forced(1:3) = T, T, F/" input.nml;;
+    channel-iop)        sed -i -e "s/^inivel = 'poi'/inivel = 'iop'/" -e "s/^velf(1:3) = 0.7, 0., 0./velf(1:3) = 0., 0., 0./" \
+                               -e "s/^bcvel(0:1,1:3,1) = 0.,0.,  0.,0.,  0.,0./bcvel(0:1,1:3,1) = 0.,0.,  0.,0.,  -1.,-1./" \
+                               input.nml;;
   esac
   #
   # interface method of the variant under test, if set (see `tests/testall.sh`): a line for the `two_fluid` namelist
@@ -54,6 +61,8 @@ for name in conduction conduction-impdiff bubble bubble-impdiff-z channel; do
     exit $status
   fi
   echo "INFO: Checking the results, case $name"
-  FORCING_CASE=$base pytest test.py
+  check=$base
+  if [[ $name == channel-* ]]; then check=$name; fi
+  FORCING_CASE=$check pytest test.py
   rm -rf $RUNDIR/data/*.* spheres.in
 done

@@ -16,7 +16,7 @@ module mod_initflow
   public initflow,initscal,add_noise,set_bulk_velocity
   contains
   subroutine initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho,mu, &
-                      is_forced,velf,bforce,is_wallturb,time,u,v,w,p)
+                      is_forced,velf,bforce,is_wallturb,time,u,v,w,p,is_velf)
     !
     ! computes initial conditions for the velocity field
     !
@@ -35,6 +35,7 @@ module mod_initflow
     real(rp), intent(in)               :: time
     real(rp), target, dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(inout) :: u,v,w
     real(rp), target, dimension(1-nh_p:,1-nh_p:,1-nh_p:), intent(inout) :: p
+    logical , intent(out), dimension(3) :: is_velf
     real(rp), pointer, dimension(:,:,:) :: us,ut,un
     real(rp), allocatable, dimension(:) :: u1d_n,u1d_t,rn,rt,rs,rft,rfn
     character(len=len(inivel)) :: ini
@@ -97,6 +98,12 @@ module mod_initflow
     uref  = 1.
     ubulk = uref
     if(is_forced(idir_s)) ubulk = velf(idir_s) ! (bulk velocity of the profile along a forced direction, as in CaNS)
+    !
+    ! direction whose mean velocity is set from `velf`: the profile direction of a forced profile with a mean;
+    ! `set_bulk_velocity` then makes it the mass-averaged velocity
+    !
+    is_velf(:) = .false.
+    is_velf(idir_s) = is_forced(idir_s) .and. any(trim(ini) == ['poi','hcp','log','hcl'])
     select case(trim(ini))
     case('cou')
       call couette(   n(idir_n),rn/lprof,1._rp,u1d_n)
@@ -422,16 +429,17 @@ module mod_initflow
     end if
   end subroutine initflow
   !
-  subroutine set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_forced,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
+  subroutine set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_velf,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
     !
-    ! along a forced direction, scales the initial velocity such that its mass-averaged value, total momentum over
-    ! total mass (the quantity that the zero-net-acceleration forcing keeps), is `velf`; it needs the phase indicator
-    ! with its halo, hence it is called after `initflow`, once the phase indicator is set
+    ! along the direction whose mean velocity `initflow` set from `velf` (`is_velf`), scales the initial velocity
+    ! such that its mass-averaged value, total momentum over total mass (the quantity that the zero-net-acceleration
+    ! forcing keeps), is `velf`; it needs the phase indicator with its halo, hence it is called after `initflow`, once
+    ! the phase indicator is set; it scales the interior points, and the boundary conditions are imposed afterwards
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_v,nh_psi,nh_g
-    logical , intent(in   ), dimension(3) :: is_forced
+    logical , intent(in   ), dimension(3) :: is_velf
     real(rp), intent(in   ), dimension(3) :: velf
     real(rp), intent(in   ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f,wzc
     real(rp), intent(in   ), dimension(2) :: rho12
@@ -441,9 +449,9 @@ module mod_initflow
     real(rp) :: mass
     integer  :: idir
     !
-    call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
+    call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
     do idir=1,3
-      if(.not.is_forced(idir) .or. abs(momentum(idir)) <= 0._rp) cycle
+      if(.not.is_velf(idir) .or. abs(momentum(idir)) <= 0._rp) cycle
       if(idir < 3) then
         call bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio_f,wzc,psi,rho12,mass)
       else
@@ -468,9 +476,9 @@ module mod_initflow
     real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
     integer :: i,j,k
     !$acc parallel loop collapse(3) default(present) async(1)
-    do k=1-nh,n(3)+nh
-      do j=1-nh,n(2)+nh
-        do i=1-nh,n(1)+nh
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
           p(i,j,k) = p(i,j,k)*factor
         end do
       end do
