@@ -88,6 +88,7 @@ module mod_rk
     real(rp), save, dimension(3) :: bforce_eff
     real(rp) :: factor1,factor2,factor12
     real(rp), dimension(3) :: taux,tauy,tauz,wall_force,wall_force_imp_ab,dwall_force_old,momentum,momentum_o
+    logical , dimension(3) :: is_anew
     integer :: i,j,k,m
     !
     factor1  = rkpar(1)*dt
@@ -110,7 +111,8 @@ module mod_rk
       wall_force(1) = sum(taux(:)/l(:))
       wall_force(2) = sum(tauy(:)/l(:))
       wall_force(3) = sum(tauz(:)/l(:))
-      where(is_first .or. wall_force_old(:) <= -huge(1._rp)) wall_force_old(:) = wall_force(:) ! (dummy values: none saved)
+      is_anew(:) = is_first .or. wall_force_old(:) <= -huge(1._rp) ! (dummy values: none saved, a first step for the forcing)
+      where(is_anew(:)) wall_force_old(:) = wall_force(:)
       force_balance(:,1) = rkpar(1)*wall_force(:)+rkpar(2)*wall_force_old(:)
       call cmpt_bodyforce(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_forced,dli,dzci,wzc,grid_vol_ratio_c,grid_vol_ratio_f,dt_r, &
                           rho12,beta12,gacc,sigma,rho0,rho_av,psi,psio,kappa,s,u,v,w, &
@@ -152,8 +154,8 @@ module mod_rk
         call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &
                                 wall_force_imp,dwall_force_old)
         wall_force_old(:)    = wall_force_old(:) - wall_force_imp(:)
-        wall_force_imp_ab(:) = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_force_imp(:)
-        if(.not.is_first) wall_force_imp_ab(:) = wall_force_imp_ab(:) - rkpar(2)*dwall_force_old(:)
+        wall_force_imp_ab(:) = merge(rkpar(1)+rkpar(2),rkpar(1),is_anew(:))*wall_force_imp(:)
+        where(.not.is_anew(:)) wall_force_imp_ab(:) = wall_force_imp_ab(:) - rkpar(2)*dwall_force_old(:)
         force_balance(:,1)   = force_balance(:,1) - wall_force_imp_ab(:)
         bforce_eff(:)        = bforce_eff(:)      - wall_force_imp_ab(:)
         force_balance(:,5) = bforce_eff(:)
@@ -311,6 +313,7 @@ module mod_rk
     real(rp) :: factor1,factor2,factor12
     real(rp) :: ssource_eff,wall_heat,wall_heat_imp_ab,dwall_heat_old,rhocp_mean
     real(rp), dimension(3) :: flux
+    logical :: is_anew
     integer :: i,j,k
     !
     factor1 = rkpar(1)*dt
@@ -331,7 +334,8 @@ module mod_rk
     if(is_sforced) then
       call cmpt_scalflux(n,nh_s,nh_psi,nh_g,is_bound,l,dli,dzci,dzfi,ka12,psi,s,flux)
       wall_heat = flux(1)/l(1)+flux(2)/l(2)+flux(3)/l(3)
-      if(is_first .or. wall_heat_old <= -huge(1._rp)) wall_heat_old = wall_heat ! (dummy value: none saved)
+      is_anew = is_first .or. wall_heat_old <= -huge(1._rp) ! (dummy value: none saved, a first step for the forcing)
+      if(is_anew) wall_heat_old = wall_heat
       sforce_balance(1) = rkpar(1)*wall_heat+rkpar(2)*wall_heat_old
       ssource_eff = sforce_balance(1)
       wall_heat_old = wall_heat
@@ -375,8 +379,8 @@ module mod_rk
         !
         call impdiff_wall_heat(n,nh_psi,nh_g,grid_vol_ratio_f,rhocp12,psi,psio,wall_heat_imp,dwall_heat_old)
         wall_heat_old    = wall_heat_old - wall_heat_imp
-        wall_heat_imp_ab = merge(rkpar(1)+rkpar(2),rkpar(1),is_first)*wall_heat_imp
-        if(.not.is_first) wall_heat_imp_ab = wall_heat_imp_ab - rkpar(2)*dwall_heat_old
+        wall_heat_imp_ab = merge(rkpar(1)+rkpar(2),rkpar(1),is_anew)*wall_heat_imp
+        if(.not.is_anew) wall_heat_imp_ab = wall_heat_imp_ab - rkpar(2)*dwall_heat_old
         sforce_balance(1) = sforce_balance(1) - wall_heat_imp_ab
         ssource_eff       = ssource_eff       - wall_heat_imp_ab
       end if

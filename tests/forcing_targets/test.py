@@ -36,17 +36,40 @@ def test_forcing_targets():
         assert err < 1.e-10, f"Mean of rho*cp*s changes by {err} (relative)."
         assert abs(mean[0]-0.5) < 1.e-6, f"Initial weighted mean of the scalar is {mean[0]}, not the target 0.5."
     else:
-        #
-        # a bubble ten times lighter than the fluid around it in a forced channel flow: the mass-averaged
-        # velocity (total momentum over total mass) of the initial condition is `velf` = 0.7, and it is kept
-        #
         n, velf = (12, 12, 12), 0.7
-        dzf = np.loadtxt('data/grid.out')[1:n[2]+1, 3]
-        for step, tol in (('0000000', 1.e-12), ('0000040', 1.e-6)):
-            u, psi = (np.fromfile(f'data/{q}_fld_{step}.bin').reshape(n, order='F') for q in ('vex', 'psi'))
-            rho = 1.+9.*0.5*(psi+np.roll(psi, -1, axis=0))
-            vel = np.sum(rho*u*dzf[None, None, :])/np.sum(rho*dzf[None, None, :])
-            assert abs(vel/velf-1.) < tol, f"Mass-averaged velocity at step {int(step)} is {vel}, not the target {velf}."
+        zc, dzf = (np.loadtxt('data/grid.out')[1:n[2]+1, i] for i in (2, 3))
+        if case in ('channel', 'channel-wallturb'):
+            #
+            # a bubble ten times lighter than the fluid around it in a forced channel flow: the mass-averaged
+            # velocity (total momentum over total mass) of the initial condition is `velf` = 0.7, and it is kept
+            # (with the perturbation, at this density ratio, only to the momentum left by the pressure split of the
+            # constant-coefficient solver: the initial condition is checked alone)
+            #
+            steps = (('0000000', 1.e-12), ('0000040', 1.e-6)) if case == 'channel' else (('0000000', 1.e-12),)
+            for step, tol in steps:
+                u, psi = (np.fromfile(f'data/{q}_fld_{step}.bin').reshape(n, order='F') for q in ('vex', 'psi'))
+                rho = 1.+9.*0.5*(psi+np.roll(psi, -1, axis=0))
+                vel = np.sum(rho*u*dzf[None, None, :])/np.sum(rho*dzf[None, None, :])
+                assert abs(vel/velf-1.) < tol, f"Mass-averaged velocity at step {int(step)} is {vel}, not the target {velf}."
+        if case == 'channel-wallturb':
+            #
+            # also forced along y, where the initial velocity is the Taylor-Green perturbation of `is_wallturb`,
+            # of amplitude `velf(1)`, which `velf(2) = 0` leaves as it is
+            #
+            x, y = (np.arange(n[0])+0.5)/n[0], (np.arange(n[1])+1.)/n[1]
+            v = np.fromfile('data/vey_fld_0000000.bin').reshape(n, order='F')
+            v_ref = velf*np.sin(2.*np.pi*x)[:, None, None]*np.cos(2.*np.pi*y)[None, :, None]*np.cos(2.*np.pi*zc)[None, None, :]
+            err = np.max(np.abs(v-v_ref))
+            assert err < 1.e-12, f"Initial spanwise velocity differs from the perturbation by {err}."
+        elif case == 'channel-iop':
+            #
+            # the channel in the frame moving with its bulk velocity (walls at -1): the initial velocity is the profile
+            # of `iop`, of zero mean, which `velf(1) = 0` leaves as it is
+            #
+            prof = 6.*zc*(1.-zc)
+            u = np.fromfile('data/vex_fld_0000000.bin').reshape(n, order='F')
+            err = np.max(np.abs(u-(prof/np.sum(prof*dzf)-1.)[None, None, :]))
+            assert err < 1.e-12, f"Initial velocity differs from the profile of 'iop' by {err}."
 if __name__ == "__main__":
     test_forcing_targets()
     print("Passed!")
