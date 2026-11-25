@@ -1,5 +1,33 @@
 # About the input file `input.nml`
 
+The input file is made of Fortran namelists, described below in this order:
+
+| Namelist | What it sets | |
+|---|---|---|
+| [`&dns`](#about-the-input-file-inputnml) | grid, time step, initial velocity, end of the run and restart, output, boundary conditions, forcing, domain decomposition | required |
+| [`&scalar`](#about-the-scalar-namelist-under-inputnml) | transport of the scalars | with `nscal > 0` |
+| [`&two_fluid`](#about-the-two_fluid-namelist-under-inputnml) | initial interface and its boundary conditions, properties of the two fluids, interface method | optional |
+| [`&numerics`](#about-the-numerics-namelist-under-inputnml) | implicit diffusion, interpolation of the properties, viscosity limiter | optional |
+| [`&hypre`](#about-the-hypre-namelist-under-inputnml) | iterative solver of the variable-coefficient builds | optional |
+| [`&other_options`](#about-the-other_options-namelist-under-inputnml) | debugging checks, timing | optional |
+| [`&io`](#about-the-io-namelist-under-inputnml) | I/O backend, exact restart | optional |
+| [`&cudecomp`](#about-the-cudecomp-namelist-under-inputnml) | communication backends of cuDecomp | required in GPU builds |
+
+The files that a run writes are listed [below](#about-the-output-files). Where to look for some common needs:
+
+| To... | see |
+|---|---|
+| run a two-dimensional case | [`ng`](#grid) |
+| choose the interface method (ACDI, THINC, geometric volume of fluid) | [`ifc_reconstruction`](#interface-method) |
+| keep drops or bubbles from merging | [`nmarker`](#interface-method) |
+| set a contact angle at a wall | [`contact_angle`](#contact-angle) |
+| make the surface tension vary with the temperature | [`dsigma_ds`](#properties) |
+| place drops, bubbles or films | [`inipsi` and the file `spheres.in`](#initial-interface) |
+| drive a flow at constant mean momentum | [`is_forced`](#forcing) |
+| stop and restart a run, exactly if needed | [`restart`](#end-of-the-run-and-restart) and [`is_full_restart`](#about-the-io-namelist-under-inputnml) |
+| integrate the diffusion implicitly | [`is_impdiff`](#about-the-numerics-namelist-under-inputnml) |
+| use the variable-coefficient pressure solver | [`&hypre`](#about-the-hypre-namelist-under-inputnml) and [`INFO_COMPILING.md`](INFO_COMPILING.md) |
+
 Consider the following input file as an example (corresponding to a turbulent plane channel flow with bubbles, and walls at different temperatures). `&dns` defines a Fortran namelist containing the necessary computational parameters to set a case.
 
 
@@ -79,6 +107,8 @@ endif
 ---
 ---
 
+<a id="grid"></a>
+
 ```fortran
 ng(1:3) = 512, 256, 144
 l(1:3) = 6., 3., 1.
@@ -122,7 +152,7 @@ This line controls the simulation time step size.
 
 The time step size is set to be equal to `min(cfl*dt_cfl,dtmax)` if `dt_f < 0`, and to `dt_f` otherwise. In the former case, the code prescribes the minimum value between `dtmax` and `cfl` times the maximum allowable time step `dt_cfl` (computed every `icheck` time steps; see below). `dtmax` is therefore used when a constant time step, smaller than `cfl*dt_cfl`, is required. If not, it should be set to a high value so that the time step is dynamically adjusted to `cfl*dt_cfl`. Finally, a constant time step size may be forced, irrespective of the temporal stability evaluation through `dt_f`. A warning is printed at the start of the run if `dt_f` exceeds `dt_cfl`.
 
-Note: the diffusion terms limit `dt_cfl` to `1/(4*nu*(1/dx**2+1/dy**2+1/dz**2))`, the stability limit of the AB2 scheme, with the largest diffusivity `nu` of the two fluids and the smallest grid spacing along each direction. The two cells of the invariant direction of a two-dimensional run count too, so a large domain length along that direction avoids restricting the time step.
+Note: the diffusion terms limit `dt_cfl` to `1/(4*nu*(1/dx**2+1/dy**2+1/dz**2))`, the stability limit of the AB2 scheme, with the largest diffusivity `nu` of the two fluids and the smallest grid spacing along each direction. The spacing along the invariant direction of a two-dimensional run counts too, so a large domain length along that direction avoids restricting the time step.
 
 ---
 
@@ -151,6 +181,7 @@ These lines set the initial velocity field.
 * `uni`: uniform velocity field equal to `uref`
 * `cou`: plane Couette flow profile using the prescribed velocities at the normal walls
 * `poi`: plane/duct Poiseuille flow profile with mean velocity `uref`
+* `iop`: plane Poiseuille flow profile in the frame of reference that moves with its mean velocity, set by the wall velocities of `bcvel` (moving walls, zero mean flow)
 * `tbl`: temporal boundary layer profile with wall velocity `uref`
 * `pdc`: plane Poiseuille flow profile with constant pressure gradient
 * `log`: logarithmic channel/duct profile with mean velocity `uref`
@@ -185,6 +216,8 @@ See `initflow.f90` for more details. The subroutines in this file may be easily 
 
 ---
 
+<a id="end-of-the-run-and-restart"></a>
+
 ```fortran
 nstep = 100000, time_max = 100., tw_max = 0.1
 stop_type(1:3) = T, F, F
@@ -211,7 +244,7 @@ These lines set the simulation termination criteria and whether the simulation s
 
 `nsaves_max`, if positive and `is_overwrite_save` is true, keeps instead the last `nsaves_max` checkpoints in rotating slots, `fld_????_<var>.bin` (with `????` denoting the slot number), with links `fld_<var>.bin` to the last one, and a log of the saves in `log_checkpoints.out`; a restarted run continues the rotation.
 
-Finally, note that a checkpoint file will be saved before the simulation ends. Checkpoints are written to temporary files (e.g., `fld_u.tmp.bin`), renamed once complete, so that an interrupted save leaves the previous checkpoint intact (except with the ADIOS2 backend). See `is_full_restart` under `&io` for restarting the time integration exactly.
+Finally, note that a checkpoint is also saved when the simulation ends, unless checkpoints are disabled (`isave = 0` and `tsave = 0.`) or the run is aborted by the divergence check. Checkpoints are written to temporary files (e.g., `fld_u.tmp.bin`), renamed once complete, so that an interrupted save leaves the previous checkpoint intact (except with the ADIOS2 backend). See `is_full_restart` under `&io` for restarting the time integration exactly.
 
 ---
 
@@ -226,9 +259,9 @@ These lines set the frequency of time step checking and output:
 * every `iout1d` time steps **1d profiles** are written (e.g. velocity and its moments) to a file
 * every `iout2d` time steps **2d slices of a 3d scalar field** are written to a file
 * every `iout3d` time steps **3d scalar fields** are written to a file
-* every `isave`  time steps a **checkpoint file** is written (`fld_???????.bin`), and a symbolic link for the restart file, `fld.bin`, will point to this last save so that, by default, the last saved checkpoint file is used to restart the simulation
+* every `isave`  time steps a **checkpoint** is written (the files `fld_<var>.bin`; see `restart`, `is_overwrite_save` and `nsaves_max` above)
 
-1d, 2d, and 3d outputs can be tweaked by modifying files `out?d.h90` and recompiling the source. See also `output.f90` for more details. _Set any of these variables to `0` to skip the corresponding operation._
+1d, 2d, and 3d outputs can be tweaked by modifying files `out?d.h90` and recompiling the source. See also `output.f90` for more details, and the [list of the output files](#about-the-output-files) below. _Set any of these variables to `0` to skip the corresponding operation._
 
 ```fortran
 tout0d = 0., tout1d = 0., tout2d = 0., tout3d = 0., tsave = 0.
@@ -277,6 +310,8 @@ This optional line sets a **Navier slip length** on each boundary, in the order 
 
 ---
 
+<a id="forcing"></a>
+
 ```fortran
 bforce(1:3) = 0., 0., 0.
 is_forced(1:3) = T, F, F
@@ -310,43 +345,6 @@ This line sets the domain decomposition and orientation of the computational sub
 `dims` is the **processor grid**, the number of domain partitions along the first and second decomposed directions (which depend on the selected default pencil orientation). `dims(1)*dims(2)` corresponds therefore to the total number of computational subdomains. Setting `dims(:) = [0,0]` will trigger a runtime autotuning step to find the processor grid that minimizes transpose times. Note, however, that other components of the algorithm (e.g., collective I/O) may also be affected by the choice of processor grid.
 
 `ipencil_axis` sets the **orientation of the computational subdomains** (or pencils), being one of `[1,2,3]` for `[X,Y,Z]`-aligned pencils. X-aligned is the default if this option is not set, and should be optimal for all cases except for Z-implicit diffusion, where Z-pencils are recommended if `dims(2) > 1` in the input file; see the description of the `&numerics` namelist below.
-
-# About the `&cudecomp` namelist under `input.nml`
-
-In addition to the `&dns` namelist in the input file, there is an **optional** namelist to set some runtime configurations for the *cuDecomp* library. Consider the following `&cudecomp` namelist, which corresponds to the default options in case the file is not provided:
-
-```fortran
-&cudecomp
-cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
-cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
-```
-
-The first line sets the configuration for the transpose communication backend autotuning. Here `cudecomp_t_comm_backend` can be one of:
-
-* `1` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P`
-* `2` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL`
-* `3` -> `CUDECOMP_TRANSPOSE_COMM_MPI_A2A`
-* `4` -> `CUDECOMP_TRANSPOSE_COMM_NCCL`
-* `5` -> `CUDECOMP_TRANSPOSE_COMM_NCCL_PL`
-* `6` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM`
-* `7` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL`
-* `8` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM_SM`
-* any other value -> enable runtime transpose backend autotuning
-
-The other two boolean values, enable/disable the NCCL (`cudecomp_is_t_enable_nccl`) and NVSHMEM (`cudecomp_is_t_enable_nvshmem`) options for *transpose* communication backend autotuning.
-
-The second line is analogous to the first one, but for halo communication backend autotuning. Here `cudecomp_h_comm_backend` can be one of:
-
-* `1` -> `CUDECOMP_HALO_COMM_MPI`
-* `2` -> `CUDECOMP_HALO_COMM_MPI_BLOCKING`
-* `3` -> `CUDECOMP_HALO_COMM_NCCL`
-* `4` -> `CUDECOMP_HALO_COMM_NVSHMEM`
-* `5` -> `CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING`
-* any other value -> enable runtime halo backend autotuning
-
-The other two boolean values, enable/disable the NCCL (`cudecomp_is_h_enable_nccl`) and NVSHMEM (`cudecomp_is_h_enable_nvshmem`) options for *halo* communication backend autotuning.
-
-Finally, it is worth recalling that passing `dims(1:2) = [0,0]` under `&dns` will trigger the *processor grid* autotuning, so there is no need to provide that option in the `&cudecomp` namelist.
 
 # About the `&scalar` namelist under `input.nml`
 
@@ -445,6 +443,8 @@ which, in this example, defines a negative gravitational acceleration along `z` 
 
 This namelist defines the initial condition and the boundary conditions of the interface, the physical and transport properties of the two fluids, and the interface thickness.
 
+<a id="initial-interface"></a>
+
 ```fortran
 inipsi            = 'bub3'
 ```
@@ -453,6 +453,7 @@ inipsi            = 'bub3'
 
 * `zer` : uniform (zero) volume fraction field
 * `uni` : uniform (unitary) volume fraction field
+* `flm` : flat interface at mid height (`z = l(3)/2`), with phase 1 above it
 * `bub1`: planar film (lighter phase)
 * `bub2`: two-dimensional (lighter phase) bubbles
 * `bub3`: three-dimensional (lighter phase) bubbles
@@ -512,6 +513,8 @@ Note: to conserve mass in the domain, a solid wall boundary requires a homogeneo
 
 ---
 
+<a id="contact-angle"></a>
+
 ```fortran
 contact_angle(0:1,1:3) = 90.,90.,  90.,90.,  90.,90.
 ```
@@ -524,6 +527,8 @@ This optional line sets a **static contact angle** on each boundary, in degrees 
 The contact line moves with the flow next to the wall.
 
 ---
+
+<a id="properties"></a>
 
 ```fortran
 sigma           = 1.
@@ -543,7 +548,7 @@ These lines specify the physical and transport properties of the two-phase syste
 * `mu12` sets the value of the dynamic viscosity of each phase.
 * `ka12` sets the value of the thermal conductivity of each phase, for each scalar (last subscript).
 * `cp12` sets the value of the constant pressure specific heat capacity of each phase, for each scalar (last subscript); it must be positive when scalars are transported.
-* `beta12` sets the value of the thermal expansion coeffcient of each phase.
+* `beta12` sets the value of the thermal expansion coefficient of each phase.
 
 With `dsigma_ds /= 0.`, the gradient of the surface tension along the interface drives a flow (Marangoni or thermocapillary effect): the normal and tangential forces of the variation of the surface tension are added to the force of `sigma`, the tangential one weighted with the local viscosity over the mean viscosity of the two phases. Choose `s_ref` close to the mean value of the scalar at the interface. See the examples `thermocapillary_migration_2d` and `thermocapillary_migration_3d`.
 
@@ -555,11 +560,13 @@ By default, viscosity and thermal conductivity are interpolated arithmetically b
 psi_thickness_factor = 0.51
 ```
 
-This value sets the interface thickness (the higher, the thicker). It corresponds to the non-dimensional epsilon parameter (`eps`) from the ACDI method which, for ACDI, should always be larger than `0.5`; for the THINC/QQ VoF method, a corresponding `beta` parameter is related related to this factor by `beta = 1./(2*eps)`. This parameter controls the interface thickness as given by the hyperbolic tangent function: `h = 0.5*(1.+tanh(r/(2.*eps))) = 0.5*(1.+tanh(r*beta))`, with `r` being the signed distance to the interface in computational space. The recommended default values are `psi_thickness_factor = 0.51` for ACDI (`eps = 0.51`), and `psi_thickness_factor = 0.5` to `0.25` (`beta = 1` to `2`), for the THINC/QQ VoF.
+This value sets the interface thickness (the higher, the thicker). It corresponds to the non-dimensional epsilon parameter (`eps`) from the ACDI method which, for ACDI, should always be larger than `0.5`; for the THINC/QQ VoF method, a corresponding `beta` parameter is related to this factor by `beta = 1./(2*eps)`. This parameter controls the interface thickness as given by the hyperbolic tangent function: `h = 0.5*(1.+tanh(r/(2.*eps))) = 0.5*(1.+tanh(r*beta))`, with `r` being the signed distance to the interface in computational space. The recommended default values are `psi_thickness_factor = 0.51` for ACDI (`eps = 0.51`), and `psi_thickness_factor = 0.5` to `0.25` (`beta = 1` to `2`), for the THINC/QQ VoF.
 
 Note: the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`, see below) keeps the interface sharp, and does not use this parameter.
 
 ---
+
+<a id="interface-method"></a>
 
 ```fortran
 ifc_reconstruction = 'acdi', ifc_advection = 'ab2', ifc_transport = 'ab2'
@@ -596,7 +603,7 @@ The valid combinations are:
 | `thinc` | `split` | `one-step` or `sweeps` |
 | `plic` | `split` | `one-step` or `sweeps` |
 
-Any other one stops the run with a message.
+Any other one stops the run with a message. Each task must hold at least as many grid cells along each direction as there are halo layers of the volume fraction, except along a periodic direction that is not split among tasks: one layer with `ifc_advection = 'ab2'`, four with `split` (five with `is_hf_normals = T`, six if also `ifc_transport = 'sweeps'`).
 
 `nmarker` sets the number of **markers**: phase indicators over which the dispersed phase (the drops or bubbles of the initial condition) is distributed. The default is one. With more, each marker is advanced on its own, as the phase indicator of a run with its drops only, so that drops of different markers do not merge when they come within a few grid cells of each other, as drops of the same marker do; the fluid properties follow the total phase indicator, and the surface tension forces of the markers are summed. The marker of each drop is the fifth, optional column of the file `spheres.in` (1 if absent):
 
@@ -647,7 +654,7 @@ Note: `is_impdiff` is set to true automatically with `is_impdiff_1d = T`.
 
 `is_visc_limiter`, if true, **limits the viscosity next to the interface**: the viscosity interpolated to a cell edge or centre is bounded such that the kinematic viscosity, relative to the lightest momentum control volume around it, does not exceed that of the phase that dominates there. Without it, a sharp interface can pair the viscosity of the heavy fluid with the density of the light one, and explicit diffusion goes unstable at large viscosity and density ratios. It is true by default with the geometric volume-of-fluid method (`ifc_reconstruction = 'plic'`), whose interface is sharp, and false otherwise. With implicit diffusion, the limiter acts on the terms that are integrated explicitly: the implicit operators of `is_impdiff_1d = T` and of the variable-coefficient solver keep the viscosity as interpolated.
 
-Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs.
+Finally, `is_poisson_dtdma`, if `.true.`, solves the Poisson/Helmholtz equations along Z with a distributed tridiagonal matrix algorithm (DTDMA). This approach may result in major gains in scalability for pencil-distributed simulations at scale, on many GPUs. It requires X- or Y-aligned pencils (`ipencil_axis = 1` or `2`) and at least two grid points along Z per task.
 
 # About the `&hypre` namelist under `input.nml`
 
@@ -685,6 +692,8 @@ With an iterative solver, the **velocity divergence** follows the tolerance rath
 
 Note: a periodic direction must have an even number of grid cells (or a single one, for a two-dimensional case), a requirement of the multigrid solvers of HYPRE.
 
+Note: the HYPRE solver is not available in single precision (`SINGLE_PRECISION=1`).
+
 Note: other parameters (`hypre_gmres_k_dim`, `hypre_pfmg_relax_type`, `hypre_pfmg_num_pre_relax`, `hypre_pfmg_num_post_relax`, `hypre_pfmg_max_levels`) are meant for advanced use, and can be found in `param.f90`.
 
 # About the `&other_options` namelist under `input.nml`
@@ -704,9 +713,9 @@ Finally, `is_mask_divergence_check`, if true, skips the threshold test of the **
 
 Note: other parameters for `&numerics` and `&other_options` are not exposed here, as they are meant for very specific, advanced use or developers. They can be found in `param.f90`.
 
-This optional namelist selects the **I/O backend** used for checkpointing and field output.
-
 # About the `&io` namelist under `input.nml`
+
+This optional namelist selects the **I/O backend** used for checkpointing and field output.
 
 ```fortran
 &io
@@ -720,12 +729,69 @@ The following options are currently available for `io_backend`:
 * `hdf5`: HDF5 output for checkpoint and visualization files (requires building with `USE_HDF5=1`)
 * `adios2`: ADIOS2 output for checkpoint and visualization files (requires building with `USE_ADIOS2=1`)
 
-The `hdf5` and `adios2` backends come from *CaNS*, and have not been tested yet with the two-fluid fields.
+The `hdf5` and `adios2` backends come from *CaNS*, and have not been tested yet with the two-fluid fields. With them, `is_use_compression = T` (default: false) compresses the field output files; it is ignored, with a warning, with `mpiio`.
 
 ```fortran
 is_full_restart = F
 ```
 
-`is_full_restart`, if true, saves in each checkpoint what is needed to **restart the time integration exactly**: the pressure and the right-hand sides of the previous time step (e.g., `fld_po.bin`, `fld_dudtrko.bin`), as one file per field, and the last two time step sizes in `fld_dt.out`. A run restarted from such a checkpoint reproduces an uninterrupted run. By default, or if these files are not found, a restarted run begins with a first-order time step. With `ifc_advection = 'split'`, the velocity and the scalar of the previous time step are saved as well (`fld_uo.bin`, `fld_so.bin`, ...), or the transported ones with `ifc_transport = 'sweeps'`.
+`is_full_restart`, if true, saves in each checkpoint what is needed to **restart the time integration exactly**: the pressure and the right-hand sides of the previous time step (e.g., `fld_po.bin`, `fld_dudtrko.bin`), as one file per field, and the last two time step sizes in `fld_dt.out`. A run restarted from such a checkpoint reproduces an uninterrupted run. By default, or if these files are not found, a restarted run begins with a first-order time step. With `ifc_advection = 'split'`, the velocity and the scalar of the previous time step are saved as well (`fld_uo.bin`, `fld_so_001.bin`, ...), or the transported ones with `ifc_transport = 'sweeps'`.
 
 If `&io` is not provided, *CaNS-Fizzy* defaults to `io_backend = 'mpiio'`. Note also that selecting `hdf5` or `adios2` requires compiling the code with support for the corresponding library; otherwise, *CaNS-Fizzy* falls back to `mpiio` with a warning at runtime.
+
+# About the output files
+
+All files are written to the directory `data/`. `NNNNNNN` is the time step number, and `NNN` the index of a scalar or of a marker; the extension `.bin` is that of the default I/O backend.
+
+| File | Written | Content |
+|---|---|---|
+| `geometry.out`, `grid.out`, `grid.bin` | at the start | number of grid cells and domain lengths; grid along Z (in `grid.out`, for each `k` from 0 to `ng(3)+1`: `0`, `zf`, `zc`, `dzf`, `dzc`) |
+| `time.out` | every `iout0d` steps | time step number, time step size, time |
+| `forcing.out`, `forcing_balance.out` | every `iout0d` steps, with a forcing | see [`bforce` and `is_forced`](#forcing) |
+| `log_acdi.out` | every `iout0d` steps, with `acdi` | time step number, time, regularization velocity and interface thickness of the method |
+| `log_vof.out` | every `iout0d` steps, with `ifc_advection = 'split'` | volume, bounds and curvature statistics of the volume fraction; see the [interface method](#interface-method) |
+| `umean_z_fld_NNNNNNN.out`, `vmean_...`, `wmean_...` | every `iout1d` steps | profile along Z of each velocity component averaged over X and Y: `z`, value |
+| `vex_slice_fld_NNNNNNN.bin`, `vey_...`, `vez_...`, `pre_...`, `psi_...`, `psi_NNN_...`, `sca_NNN_...` | every `iout2d` steps | velocity components, pressure, volume fraction (of each marker, if several) and scalars on the X-Z plane at mid Y; listed in `log_visu_2d_slice_1.out` |
+| `vex_fld_NNNNNNN.bin`, `vey_...`, `vez_...`, `pre_...`, `psi_...`, `cur_...`, `sca_NNN_...` | every `iout3d` steps | the same fields in three dimensions, and the interface curvature; with several markers, `psi_NNN_...` and `cur_NNN_...` of each one; listed in `log_visu_3d.out` |
+| `fld_<var>.bin` | every `isave` steps, and at the end | checkpoint, one file per field; see [`restart`](#end-of-the-run-and-restart) and [`is_full_restart`](#about-the-io-namelist-under-inputnml) |
+| `log_checkpoints.out` | with `nsaves_max > 0` | log of the rotating checkpoints |
+
+The fields are written at their staggered positions, as raw binary in the working precision; `utils/read_binary_data` reads them in Python or MATLAB, and `utils/visualize_fields` generates the Xdmf files to open them, e.g., in ParaView. The outputs can be changed in the files `out?d.h90`.
+
+# About the `&cudecomp` namelist under `input.nml`
+
+In GPU builds with the *cuDecomp* library (the default), this namelist sets some of its runtime configurations. It must be present in the input file of such a build (the run stops otherwise), but may be empty; CPU builds ignore it. Consider the following `&cudecomp` namelist, which corresponds to the default options:
+
+```fortran
+&cudecomp
+cudecomp_t_comm_backend = 0, cudecomp_is_t_enable_nccl = T, cudecomp_is_t_enable_nvshmem = T
+cudecomp_h_comm_backend = 0, cudecomp_is_h_enable_nccl = T, cudecomp_is_h_enable_nvshmem = T
+/
+```
+
+The first line sets the configuration for the transpose communication backend autotuning. Here `cudecomp_t_comm_backend` can be one of:
+
+* `1` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P`
+* `2` -> `CUDECOMP_TRANSPOSE_COMM_MPI_P2P_PL`
+* `3` -> `CUDECOMP_TRANSPOSE_COMM_MPI_A2A`
+* `4` -> `CUDECOMP_TRANSPOSE_COMM_NCCL`
+* `5` -> `CUDECOMP_TRANSPOSE_COMM_NCCL_PL`
+* `6` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM`
+* `7` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM_PL`
+* `8` -> `CUDECOMP_TRANSPOSE_COMM_NVSHMEM_SM`
+* any other value -> enable runtime transpose backend autotuning
+
+The other two boolean values, enable/disable the NCCL (`cudecomp_is_t_enable_nccl`) and NVSHMEM (`cudecomp_is_t_enable_nvshmem`) options for *transpose* communication backend autotuning.
+
+The second line is analogous to the first one, but for halo communication backend autotuning. Here `cudecomp_h_comm_backend` can be one of:
+
+* `1` -> `CUDECOMP_HALO_COMM_MPI`
+* `2` -> `CUDECOMP_HALO_COMM_MPI_BLOCKING`
+* `3` -> `CUDECOMP_HALO_COMM_NCCL`
+* `4` -> `CUDECOMP_HALO_COMM_NVSHMEM`
+* `5` -> `CUDECOMP_HALO_COMM_NVSHMEM_BLOCKING`
+* any other value -> enable runtime halo backend autotuning
+
+The other two boolean values, enable/disable the NCCL (`cudecomp_is_h_enable_nccl`) and NVSHMEM (`cudecomp_is_h_enable_nvshmem`) options for *halo* communication backend autotuning.
+
+Finally, it is worth recalling that passing `dims(1:2) = [0,0]` under `&dns` will trigger the *processor grid* autotuning, so there is no need to provide that option in the `&cudecomp` namelist.
