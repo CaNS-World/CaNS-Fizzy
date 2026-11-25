@@ -690,7 +690,7 @@ module mod_two_fluid
       else if(d <= -diag) then
         fr = 0._rp
       else if(level >= maxlevel) then
-        eg = 1.e-3_rp*min(hx,hy,hz)
+        eg = 0.5_rp*min(hx,hy,hz) ! (differences across the box: a much smaller step is lost in single precision)
         gx = (sdf(xc+eg,yc,zc)-sdf(xc-eg,yc,zc))/(2._rp*eg)
         gy = (sdf(xc,yc+eg,zc)-sdf(xc,yc-eg,zc))/(2._rp*eg)
         gz = (sdf(xc,yc,zc+eg)-sdf(xc,yc,zc-eg))/(2._rp*eg)
