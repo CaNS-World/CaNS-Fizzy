@@ -20,7 +20,7 @@ module mod_thinc
   !    interface (pointing out of phase 1), and d the offset that gives the cell its volume fraction
   !    (`thinc_intercept`, `thinc_slab`)
   !
-  ! Acknowledgements: We are grateful for the discussions with Dr. Naoki Hori, which gave valuable advise
+  ! Acknowledgements: We are grateful for the discussions with Dr. Naoki Hori, which gave valuable advice
   !                   on the practical implementation of THINC/QQ for multiphase flow simulations,
   !                   with two nice repos describing the method:
   !                     - github.com/NaokiHori/SimpleVOFSolver
@@ -303,7 +303,7 @@ module mod_thinc
   !
   pure function cmpt_intercept(psi,beta,normx,normy,normz) result(d)
     !
-    ! Newton-Rapshon iteration to compute the d parameter in the THINC/QQ reconstruction function,
+    ! Newton-Raphson iteration to compute the d parameter in the THINC/QQ reconstruction function,
     ! intercepting the numerical integration of the multi-dimensional hyperbolic tangent function
     ! with the cell volume fraction
     !
@@ -336,7 +336,7 @@ module mod_thinc
       end do
     end do
     !
-    ! initial guess based on the solution with the first-order Guassian quadrature
+    ! initial guess based on the solution with the first-order Gaussian quadrature
     ! careful about division by zero - should be avoided in other subroutines
     !
     sol = 1./psi - 1. ! careful about division by zero

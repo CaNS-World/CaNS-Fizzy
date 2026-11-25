@@ -318,8 +318,8 @@ module mod_vof_split
         cbc_tr(0,:) = 'P'
         cbc_tr(1,:) = 'P'
       end where
-      is_bound_tr(  :,:) = is_bound(:,:).and.cbc_tr(:,:) == 'P'
-      is_bound_phys(:,:) = is_bound(:,:).and.cbc_tr(:,:) /= 'P'
+      is_bound_tr(  :,:) = is_bound(:,:) .and. cbc_tr(:,:) == 'P'
+      is_bound_phys(:,:) = is_bound(:,:) .and. cbc_tr(:,:) /= 'P'
       call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
       !
       ! the phase fluxes are not used: they are set to zero once
@@ -1219,7 +1219,7 @@ module mod_vof_split
     is_act3 = is_active(3)
     do id=1,3
       do is=0,1
-        if(.not.(is_ca(is,id).and.is_bound(is,id))) cycle
+        if(.not.(is_ca(is,id) .and. is_bound(is,id))) cycle
         da = merge(2,1,id == 1) ! directions along the wall (da < db)
         db = merge(2,3,id == 3)
         na = n(da)

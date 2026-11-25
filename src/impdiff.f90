@@ -630,7 +630,7 @@ module mod_impdiff
           is_node = .false.
           do idir=1,3
             do ib=0,1
-              if(.not.(is_bound(ib,idir).and.ijk(idir) == merge(n(idir),1,ib == 1))) cycle
+              if(.not.(is_bound(ib,idir) .and. ijk(idir) == merge(n(idir),1,ib == 1))) cycle
               if(cbc(ib,idir) == 'P') cycle
               sgn = merge(-1._rp,1._rp,cbc(ib,idir) == 'D')
               if(idir /= iq) then
@@ -643,7 +643,7 @@ module mod_impdiff
                 is_node = .true.
               end if
             end do
-            if(idir == iq.and.is_bound(1,idir).and.ijk(idir) == n(idir)-1.and.cbc(1,idir) /= 'P') then
+            if(idir == iq .and. is_bound(1,idir) .and. ijk(idir) == n(idir)-1 .and. cbc(1,idir) /= 'P') then
               if(cbc(1,idir) /= 'D') cc = cc - cs(1,idir)
               cs(1,idir) = 0.
             end if

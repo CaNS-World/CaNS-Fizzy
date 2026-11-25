@@ -332,7 +332,7 @@ module mod_two_fluid
     ih = 2
     isuffix = len_trim(ini)
     if(isuffix > 2) then
-      if(ini(isuffix-1:isuffix-1) == '-'.and.index('xyz',ini(isuffix:isuffix)) > 0) then
+      if(ini(isuffix-1:isuffix-1) == '-' .and. index('xyz',ini(isuffix:isuffix)) > 0) then
         ih = index('xyz',ini(isuffix:isuffix))
         ini = ini(:isuffix-2)
       end if
@@ -544,7 +544,7 @@ module mod_two_fluid
     ih = 2
     isuffix = len_trim(ini)
     if(isuffix > 2) then
-      if(ini(isuffix-1:isuffix-1) == '-'.and.index('xyz',ini(isuffix:isuffix)) > 0) then
+      if(ini(isuffix-1:isuffix-1) == '-' .and. index('xyz',ini(isuffix:isuffix)) > 0) then
         ih = index('xyz',ini(isuffix:isuffix))
         ini = ini(:isuffix-2)
       end if
@@ -584,7 +584,7 @@ module mod_two_fluid
       error stop
     end select
     if(is_sphere) then
-      is_swap_pf = ini(1:3) == 'drp'.or.ini(1:3) == 'dis'
+      is_swap_pf = ini(1:3) == 'drp' .or. ini(1:3) == 'dis'
       call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       if(nspheres == 0 .and. .not.present(imarker)) then
         if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
@@ -801,7 +801,7 @@ module mod_two_fluid
   pure elemental real(rp) function smooth_step_erf(r,eps) result(res)
     !$acc routine seq
     !
-    ! smooth step function based on the hyperbolic tangent function
+    ! smooth step function based on the error function
     !
     implicit none
     !
@@ -813,7 +813,7 @@ module mod_two_fluid
   pure elemental real(rp) function smooth_step_tanh(r,eps) result(res)
     !$acc routine seq
     !
-    ! smooth step function based on the error function
+    ! smooth step function based on the hyperbolic tangent function
     !
     implicit none
     !
