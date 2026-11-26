@@ -6,11 +6,13 @@
 ! -
 module mod_two_fluid
   use mpi
-  use mod_param, only: pi
+  use mod_common_mpi, only: myid
+  use mod_param     , only: pi,is_contact_angle,nmarker
+  use mod_plic      , only: plic_volume
   use mod_types
   implicit none
   private
-  public init2fl,init2fl_sharp,clip_field,cmpt_norm_curv_youngs,bulk_mean_12_stag
+  public init2fl,init2fl_sharp,clip_field,update_property,cmpt_norm_curv_youngs,bulk_mean_12_stag
   type sphere
     real(rp) :: xyz(3),r
     integer  :: imarker ! marker of the sphere (fifth, optional column of `spheres.in`; 1 if absent)
@@ -26,14 +28,18 @@ module mod_two_fluid
     real(rp), intent(in ), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: psi
     real(rp), intent(out), dimension(1-nh(1):,1-nh(2):,1-nh(3):) :: p
     real(rp) :: prop1,prop2
-    integer  :: i,j,k
+    integer, dimension(3) :: lo,hi
+    integer :: i,j,k
+    !
     prop1 = prop12(1)
     prop2 = prop12(2)
+    lo(:) = lbound(p)
+    hi(:) = ubound(p)
     !$acc parallel     loop collapse(3) default(present) async(1)
     !$omp target teams loop collapse(3)
-    do k=lbound(p,3),ubound(p,3)
-      do j=lbound(p,2),ubound(p,2)
-        do i=lbound(p,1),ubound(p,1)
+    do k=lo(3),hi(3)
+      do j=lo(2),hi(2)
+        do i=lo(1),hi(1)
           p(i,j,k) = psi(i,j,k)*prop1+(1.-psi(i,j,k))*prop2
         end do
       end do
@@ -74,15 +80,13 @@ module mod_two_fluid
     !
     ! compute the mean value of an observable over the entire domain
     !
-    use mpi
-    use mod_types
     implicit none
-    integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_g
-    integer , intent(in)               :: idir
-    real(rp), intent(in), dimension(1-nh_g:) :: grid_vol_ratio,wzc
-    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in), dimension(2)        :: p12
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in ) :: nh_psi,nh_g
+    integer , intent(in )               :: idir
+    real(rp), intent(in ), dimension(1-nh_g:) :: grid_vol_ratio,wzc
+    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(in ), dimension(2)        :: p12
     real(rp), intent(out) :: mean
     real(rp) :: psi_loc
     integer  :: i,j,k
@@ -173,7 +177,7 @@ module mod_two_fluid
     implicit none
     real(rp), parameter :: eps = epsilon(1._rp)
     integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
+    integer , intent(in ) :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in ), dimension(3) :: dli
     real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
@@ -198,8 +202,10 @@ module mod_two_fluid
     !
     ! normals at the vertices, from the eight cells around them
     !
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp,mx_1,my_1,mz_1,normi) async(1)
+    !$omp target teams loop collapse(3) &
+    !$omp private(psiccc,psicpc,psiccp,psicpp,psipcc,psippc,psipcp,psippp,mx_1,my_1,mz_1,normi)
     do k=0,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -232,7 +238,7 @@ module mod_two_fluid
       do idir=1,3
         do ib=0,1
           cs = cos(theta_c(ib,idir)*acos(-1._rp)/180._rp)
-          if(.not.is_bound(ib,idir) .or. abs(cs) <= max(1.e-12_rp,1.e3_rp*epsilon(1._rp))) cycle
+          if(.not.is_bound(ib,idir) .or. .not.is_contact_angle(theta_c(ib,idir))) cycle
           sn = sin(theta_c(ib,idir)*acos(-1._rp)/180._rp)
           cn = -cs*merge(1._rp,-1._rp,ib == 0) ! component along the direction, for a unit tangential part
           iw = ib*n(idir)                      ! index of the vertices on the wall
@@ -277,8 +283,12 @@ module mod_two_fluid
     !
     ! normals and curvature at the cell centers
     !
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(mx_1,my_1,mz_1,mx_2,my_2,mz_2,mx_3,my_3,mz_3,mx_4,my_4,mz_4,mx_5,my_5,mz_5,mx_6,my_6,mz_6,mx_7,my_7) &
+    !$acc private(mz_7,mx_8,my_8,mz_8,norm_x,norm_y,norm_z,normi) async(1)
+    !$omp target teams loop collapse(3) &
+    !$omp private(mx_1,my_1,mz_1,mx_2,my_2,mz_2,mx_3,my_3,mz_3,mx_4,my_4,mz_4,mx_5,my_5,mz_5,mx_6,my_6,mz_6,mx_7,my_7) &
+    !$omp private(mz_7,mx_8,my_8,mz_8,norm_x,norm_y,norm_z,normi)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -311,100 +321,25 @@ module mod_two_fluid
     end do
   end subroutine cmpt_norm_curv_youngs
   !
-  subroutine cmpt_norm_fd2(n,nh_psi,nh_ifc,nh_g,dli,dzfi,psi,normx,normy,normz)
-    !
-    ! computes the normals based on a volume-of-fluid or level-set field
-    ! using second-order finite-differences
-    !
-    implicit none
-    real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
-    real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz
-    real(rp) :: psixp,psixm,psiyp,psiym,psizp,psizm,dpsidx,dpsidy,dpsidz,norm
-    integer  :: i,j,k
-    !
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          psixp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
-          psixm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
-          psiyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
-          psiym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
-          psizp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
-          psizm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
-          dpsidx = (psixp-psixm)*dli(1)
-          dpsidy = (psiyp-psiym)*dli(2)
-          dpsidz = (psizp-psizm)*dzfi(k)
-          norm   = sqrt(dpsidx**2+dpsidy**2+dpsidz**2)
-          normx(i,j,k) = dpsidx/norm
-          normy(i,j,k) = dpsidy/norm
-          normz(i,j,k) = dpsidz/norm
-        end do
-      end do
-    end do
-  end subroutine cmpt_norm_fd2
-  !
-  subroutine cmpt_curv_fd2(n,nh_psi,nh_ifc,nh_g,dli,dzfi,psi,normx,normy,normz,kappa)
-    !
-    ! computes the curvature using second-order finite-differences
-    !
-    implicit none
-    real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
-    real(rp), intent(in ), dimension(3) :: dli
-    real(rp), intent(in ), dimension(1-nh_g:)          :: dzfi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz
-    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: kappa
-    real(rp) :: normxp,normxm,normyp,normym,normzp,normzm
-    integer  :: i,j,k
-    !
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          normxp = 0.5*(psi(i+1,j,k)+psi(i  ,j,k))
-          normxm = 0.5*(psi(i  ,j,k)+psi(i-1,j,k))
-          normyp = 0.5*(psi(i,j+1,k)+psi(i,j  ,k))
-          normym = 0.5*(psi(i,j  ,k)+psi(i,j-1,k))
-          normzp = 0.5*(psi(i,j,k+1)+psi(i,j,k  ))
-          normzm = 0.5*(psi(i,j,k  )+psi(i,j,k-1))
-          kappa(i,j,k) = - ( (normxp-normxm)*dli(1) + &
-                             (normyp-normym)*dli(2) + &
-                             (normzp-normzm)*dzfi(k) )
-        end do
-      end do
-    end do
-  end subroutine cmpt_curv_fd2
-  !
   subroutine init2fl(inipsi,cbcpsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,psi,imarker)
-    use mod_common_mpi, only: myid
     !
     ! computes initial conditions for the volume fraction field psi; with `imarker`, only the spheres of that
     ! marker are initialized (none, if the file holds no sphere of that marker)
     !
     implicit none
-    character(len=*), intent(in) :: inipsi
-    character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
-    real(rp), intent(in)                :: seps
-    integer , intent(in), dimension(3)  :: lo,hi
-    integer , intent(in) :: nh_psi,nh_g
-    real(rp), intent(in), dimension(3)  :: l,dl
-    real(rp), intent(in), dimension(1-nh_g:) :: zc_g
-    real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
-    integer , intent(in), optional :: imarker
+    character(len=*), intent(in ) :: inipsi
+    character(len=*), intent(in ), dimension(0:1,3) :: cbcpsi
+    real(rp), intent(in )                :: seps
+    integer , intent(in ), dimension(3)  :: lo,hi
+    integer , intent(in ) :: nh_psi,nh_g
+    real(rp), intent(in ), dimension(3)  :: l,dl
+    real(rp), intent(in ), dimension(1-nh_g:) :: zc_g
+    real(rp), intent(out), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
+    integer , intent(in ), optional :: imarker
     integer  :: i,j,k,ii,jj,kk,q
-    real(rp) :: x,y,z,xl,yl,zl,xx,yy,zz,xxc,yyc,zzc,r
+    real(rp) :: x,y,z,xx,zz,xxc,yyc,zzc,r
     real(rp) :: sdist,sdistmin
-    real(rp) :: dfilm,zfilm,zfilm_top,zfilm_bot,zfilm_max,sdist1,sdist2
+    real(rp) :: zfilm_max,sdist1,sdist2
     integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
     real(rp) :: psi_aux
@@ -423,7 +358,7 @@ module mod_two_fluid
     ih = 2
     isuffix = len_trim(ini)
     if(isuffix > 2) then
-      if(ini(isuffix-1:isuffix-1) == '-'.and.index('xyz',ini(isuffix:isuffix)) > 0) then
+      if(ini(isuffix-1:isuffix-1) == '-' .and. index('xyz',ini(isuffix:isuffix)) > 0) then
         ih = index('xyz',ini(isuffix:isuffix))
         ini = ini(:isuffix-2)
       end if
@@ -483,7 +418,7 @@ module mod_two_fluid
       ! interface at the mid height of the plane, with a sinusoidal bump
       ! with amplitude zfilm_max and wavelength equal to the width of the plane
       !
-      zfilm_max = 0.01*l(ia)
+      zfilm_max = 0.01_rp*l(ia)
       do k=lo(3),hi(3)
         xyz(3) = zc_g(k)
         do j=lo(2),hi(2)
@@ -503,10 +438,10 @@ module mod_two_fluid
       !
       block
         real(rp) :: sw,sl,shift,xxc_slot,zzc_slot
-        r   = 0.15 ! disk radius
+        r   = 0.15_rp ! disk radius
         xxc = 0.5
         zzc = 0.75
-        sw  = 0.05/2 ! slot half width
+        sw  = 0.05_rp/2 ! slot half width
         sl  = 0.25/2 ! slot half length
         shift = r/2
         xxc_slot = xxc
@@ -555,7 +490,7 @@ module mod_two_fluid
     !
     if(is_sphere) then
       if(nspheres == 0 .and. .not.present(imarker)) then
-        if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
+        if(myid == 0) print*, 'Warning: `spheres.in` file not found.'
         if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
         nspheres = nspheres + 1
         allocate(spheres(nspheres))
@@ -601,8 +536,6 @@ module mod_two_fluid
   end subroutine init2fl
   !
   subroutine init2fl_sharp(inipsi,cbcpsi,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi,imarker)
-    use mod_common_mpi, only: myid
-    use mod_plic      , only: plic_volume
     !
     ! computes a sharp initial condition for the volume fraction field psi, i.e., the exact volume
     ! fraction of phase 1 in each cell, for the same initial geometries as in `init2fl`; the interface
@@ -612,14 +545,14 @@ module mod_two_fluid
     !
     implicit none
     integer, parameter :: maxlevel = 5
-    character(len=*), intent(in) :: inipsi
-    character(len=*), intent(in), dimension(0:1,3) :: cbcpsi
-    integer , intent(in), dimension(3)  :: lo,hi
-    integer , intent(in) :: nh_psi,nh_g
-    real(rp), intent(in), dimension(3)  :: l,dl
-    real(rp), intent(in), dimension(1-nh_g:) :: zc_g,dzf_g
-    real(rp), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:), intent(out) :: psi
-    integer , intent(in), optional :: imarker
+    character(len=*), intent(in ) :: inipsi
+    character(len=*), intent(in ), dimension(0:1,3) :: cbcpsi
+    integer , intent(in ), dimension(3)  :: lo,hi
+    integer , intent(in ) :: nh_psi,nh_g
+    real(rp), intent(in ), dimension(3)  :: l,dl
+    real(rp), intent(in ), dimension(1-nh_g:) :: zc_g,dzf_g
+    real(rp), intent(out), dimension(lo(1)-nh_psi:,lo(2)-nh_psi:,lo(3)-nh_psi:) :: psi
+    integer , intent(in ), optional :: imarker
     type(sphere), allocatable, dimension(:) :: spheres
     integer , dimension(3) :: iperiod,idir
     logical , dimension(3) :: is_dim
@@ -635,7 +568,7 @@ module mod_two_fluid
     ih = 2
     isuffix = len_trim(ini)
     if(isuffix > 2) then
-      if(ini(isuffix-1:isuffix-1) == '-'.and.index('xyz',ini(isuffix:isuffix)) > 0) then
+      if(ini(isuffix-1:isuffix-1) == '-' .and. index('xyz',ini(isuffix:isuffix)) > 0) then
         ih = index('xyz',ini(isuffix:isuffix))
         ini = ini(:isuffix-2)
       end if
@@ -675,10 +608,10 @@ module mod_two_fluid
       error stop
     end select
     if(is_sphere) then
-      is_swap_pf = ini(1:3) == 'drp'.or.ini(1:3) == 'dis'
+      is_swap_pf = ini(1:3) == 'drp' .or. ini(1:3) == 'dis'
       call read_sphere_file('spheres.in',spheres,nspheres,imarker)
       if(nspheres == 0 .and. .not.present(imarker)) then
-        if(myid == 0) print*, 'NOTE: `spheres.in` file not found.'
+        if(myid == 0) print*, 'Warning: `spheres.in` file not found.'
         if(myid == 0) print*, 'Initializing sphere/cylinder/plane in the domain center with radius r=0.25*minval(l(:)).'
         nspheres = 1
         allocate(spheres(nspheres))
@@ -717,7 +650,7 @@ module mod_two_fluid
       else if(d <= -diag) then
         fr = 0._rp
       else if(level >= maxlevel) then
-        eg = 1.e-3_rp*min(hx,hy,hz)
+        eg = 0.5_rp*min(hx,hy,hz) ! (differences across the box: a much smaller step is lost in single precision)
         gx = (sdf(xc+eg,yc,zc)-sdf(xc-eg,yc,zc))/(2._rp*eg)
         gy = (sdf(xc,yc+eg,zc)-sdf(xc,yc-eg,zc))/(2._rp*eg)
         gz = (sdf(xc,yc,zc+eg)-sdf(xc,yc,zc-eg))/(2._rp*eg)
@@ -759,15 +692,15 @@ module mod_two_fluid
       case(3) ! 'flm'
         sdf = z-l(3)/2
       case(4) ! 'cap-wav-1d'
-        zfilm_max = 0.01*l(ia)
+        zfilm_max = 0.01_rp*l(ia)
         eta  =  zfilm_max*cos(2*pi*xyz(ia)/l(ia))
         deta = -zfilm_max*2*pi/l(ia)*sin(2*pi*xyz(ia)/l(ia))
         sdf  = (xyz(ib)-l(ib)/2-eta)/sqrt(1._rp+deta**2)
       case(5) ! 'zalesak-disk'
-        r   = 0.15 ! (same constants as in `init2fl`)
+        r   = 0.15_rp ! (same constants as in `init2fl`)
         xxc = 0.5
         zzc = 0.75
-        sw  = 0.05/2
+        sw  = 0.05_rp/2
         sl  = 0.25/2
         shift = r/2
         xx = xyz(ia)/l(ia)
@@ -798,56 +731,78 @@ module mod_two_fluid
   subroutine read_sphere_file(fname,spheres,nspheres,imarker)
     !
     ! reads the spheres of the file: centre, radius and, optionally, marker (1 if absent); with `imarker`,
-    ! only the spheres of that marker are returned
+    ! only the spheres of that marker are returned, and the file must exist and hold markers between 1 and
+    ! `nmarker` only; blank lines are skipped
     !
     implicit none
-    character(len=*), intent(in) :: fname
+    character(len=*), intent(in ) :: fname
     type(sphere), allocatable, intent(out), dimension(:) :: spheres
     integer, intent(out) :: nspheres
     integer, intent(in ), optional :: imarker
     type(sphere), allocatable, dimension(:) :: spheres_all
     character(len=1024) :: dummy
     integer :: q,iunit,ierr
-    logical :: is_bubble_file
+    logical :: is_bubble_file,is_valid
     !
+    is_valid = .true.
     inquire(file=fname,exist=is_bubble_file)
     if(.not.is_bubble_file) then
       nspheres = 0
+      if(present(imarker)) then
+        if(myid == 0) print*, 'ERROR: several markers (`nmarker > 1`) need the file `'//trim(fname)//'`.'
+        is_valid = .false.
+      end if
     else
       open(newunit=iunit,file=fname,action='read',iostat=ierr)
-      if (ierr /= 0) then
-        error stop 'Error reading input file '//trim(fname)//'.'
+      if(ierr /= 0) then
+        if(myid == 0) print*, 'ERROR: reading the file `'//trim(fname)//'`.'
+        is_valid = .false.
       end if
-      nspheres = -1
+      nspheres = 0
       do while(ierr == 0)
-        read(iunit, '(A)', iostat=ierr) dummy
-        if(ierr > 0) then
-          error stop 'Error reading input file '//trim(fname)//'.'
-        end if
-        nspheres = nspheres + 1
+        read(iunit,'(A)',iostat=ierr) dummy
+        if(ierr == 0 .and. len_trim(dummy) > 0) nspheres = nspheres + 1
       end do
       allocate(spheres(nspheres))
-      rewind(iunit)
-      do q = 1,nspheres
+      if(is_valid) rewind(iunit)
+      q = 0
+      do while(q < nspheres .and. is_valid)
         read(iunit,'(A)') dummy
+        if(len_trim(dummy) == 0) cycle
+        q = q + 1
         read(dummy,*,iostat=ierr) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r,spheres(q)%imarker
         if(ierr /= 0) then
-          read(dummy,*) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
+          read(dummy,*,iostat=ierr) spheres(q)%xyz(1),spheres(q)%xyz(2),spheres(q)%xyz(3),spheres(q)%r
           spheres(q)%imarker = 1
+        end if
+        if(ierr /= 0) then
+          if(myid == 0) print*, 'ERROR: reading the file `'//trim(fname)//'`: invalid line: '//trim(dummy)
+          is_valid = .false.
         end if
       end do
       close(iunit)
-      if(present(imarker)) then
+      if(present(imarker) .and. is_valid) then
+        if(any(spheres(:)%imarker < 1 .or. spheres(:)%imarker > nmarker)) then
+          if(myid == 0) print*, 'ERROR: the markers of the spheres of `'//trim(fname)//'` (fifth column) must be &
+                                        &between 1 and `nmarker`.'
+          is_valid = .false.
+        end if
         call move_alloc(spheres,spheres_all)
         nspheres = count(spheres_all(:)%imarker == imarker)
         allocate(spheres(nspheres))
         spheres(:) = pack(spheres_all(:),spheres_all(:)%imarker == imarker)
       end if
     end if
+    if(.not.is_valid) then
+      if(myid == 0) print*, ''
+      if(myid == 0) print*, '*** Simulation aborted due to errors in the case file ***'
+      if(myid == 0) print*, '    check INFO_INPUT.md'
+      call MPI_FINALIZE(ierr)
+      error stop
+    end if
   end subroutine read_sphere_file
   !
   pure elemental real(rp) function smooth_step_sin(r,eps) result(res)
-    use mod_param, only:pi
     !$acc routine seq
     !$omp declare target
     !
@@ -869,7 +824,7 @@ module mod_two_fluid
     !$acc routine seq
     !$omp declare target
     !
-    ! smooth step function based on the hyperbolic tangent function
+    ! smooth step function based on the error function
     !
     implicit none
     !
@@ -882,7 +837,7 @@ module mod_two_fluid
     !$acc routine seq
     !$omp declare target
     !
-    ! smooth step function based on the error function
+    ! smooth step function based on the hyperbolic tangent function
     !
     implicit none
     !
@@ -907,7 +862,6 @@ module mod_two_fluid
   end function smooth_sign
   !
   pure elemental real(rp) function smooth_impulse(r,eps) result(res)
-    use mod_param, only:pi
     !$acc routine seq
     !$omp declare target
     !
@@ -922,122 +876,4 @@ module mod_two_fluid
       res = .5/eps + .5/eps*cos(pi*r/eps)
     end if
   end function smooth_impulse
-#if 0
-  subroutine cmpt_norm_curv_old(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa)
-    !
-    ! computes the normals and curvature based on a VoF field
-    ! using finite-differences based on Youngs method
-    ! (replaced by `cmpt_norm_curv` above, which is slightly faster on GPUs)
-    !
-    implicit none
-    real(rp), parameter :: eps = epsilon(1._rp)
-    integer , intent(in ), dimension(3)           :: n
-    integer , intent(in) :: nh_psi,nh_ifc,nh_g
-    real(rp), intent(in ), dimension(3)           :: dli
-    real(rp), intent(in ), dimension(1-nh_g:)          :: dzci,dzfi
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
-    real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: normx,normy,normz,kappa
-    real(rp) :: psimmm,psimcm,psimpm,psicmm,psiccm,psicpm,psipmm,psipcm,psippm, &
-                psimmc,psimcc,psimpc,psicmc,psiccc,psicpc,psipmc,psipcc,psippc, &
-                psimmp,psimcp,psimpp,psicmp,psiccp,psicpp,psipmp,psipcp,psippp
-    real(rp) :: norm
-    logical , save :: is_first = .true.
-    real(rp), allocatable, dimension(:), save :: mx,my,mz
-    integer  :: i,j,k,q
-    !
-    if(is_first) then
-      is_first = .false.
-      allocate(mx(8),my(8),mz(8))
-      !$acc        enter data create(mx,my,mz)
-      !$omp target enter data map(alloc:mx,my,mz)
-    end if
-    !
-    !$acc parallel     loop collapse(3) default(present) private(mx,my,mz,norm) async(1)
-    !$omp target teams loop collapse(3)                  private(mx,my,mz,norm)
-    do k=1,n(3)
-      do j=1,n(2)
-        do i=1,n(1)
-          psimmm = psi(i-1,j-1,k-1)
-          psimcm = psi(i-1,j  ,k-1)
-          psimpm = psi(i-1,j+1,k-1)
-          psicmm = psi(i  ,j-1,k-1)
-          psiccm = psi(i  ,j  ,k-1)
-          psicpm = psi(i  ,j+1,k-1)
-          psipmm = psi(i+1,j-1,k-1)
-          psipcm = psi(i+1,j  ,k-1)
-          psippm = psi(i+1,j+1,k-1)
-          psimmc = psi(i-1,j-1,k  )
-          psimcc = psi(i-1,j  ,k  )
-          psimpc = psi(i-1,j+1,k  )
-          psicmc = psi(i  ,j-1,k  )
-          psiccc = psi(i  ,j  ,k  )
-          psicpc = psi(i  ,j+1,k  )
-          psipmc = psi(i+1,j-1,k  )
-          psipcc = psi(i+1,j  ,k  )
-          psippc = psi(i+1,j+1,k  )
-          psimmp = psi(i-1,j-1,k+1)
-          psimcp = psi(i-1,j  ,k+1)
-          psimpp = psi(i-1,j+1,k+1)
-          psicmp = psi(i  ,j-1,k+1)
-          psiccp = psi(i  ,j  ,k+1)
-          psicpp = psi(i  ,j+1,k+1)
-          psipmp = psi(i+1,j-1,k+1)
-          psipcp = psi(i+1,j  ,k+1)
-          psippp = psi(i+1,j+1,k+1)
-          !
-          mx(1) = 0.25*((psipcc+psippc+psipcp+psippp)-(psiccc+psicpc+psiccp+psicpp))*dli(1)
-          mx(2) = 0.25*((psipcc+psipmc+psipcp+psipmp)-(psiccc+psicmc+psiccp+psicmp))*dli(1)
-          mx(3) = 0.25*((psipcc+psippc+psipcm+psippm)-(psiccc+psicpc+psiccm+psicpm))*dli(1)
-          mx(4) = 0.25*((psipcc+psipmc+psipcm+psipmm)-(psiccc+psicmc+psiccm+psicmm))*dli(1)
-          mx(5) = 0.25*((psiccc+psicpc+psiccp+psicpp)-(psimcc+psimpc+psimcp+psimpp))*dli(1)
-          mx(6) = 0.25*((psiccc+psicmc+psiccp+psicmp)-(psimcc+psimmc+psimcp+psimmp))*dli(1)
-          mx(7) = 0.25*((psiccc+psicpc+psiccm+psicpm)-(psimcc+psimpc+psimcm+psimpm))*dli(1)
-          mx(8) = 0.25*((psiccc+psicmc+psiccm+psicmm)-(psimcc+psimmc+psimcm+psimmm))*dli(1)
-          !
-          my(1) = 0.25*((psicpc+psippc+psicpp+psippp)-(psiccc+psipcc+psiccp+psipcp))*dli(2)
-          my(2) = 0.25*((psiccc+psipcc+psiccp+psipcp)-(psicmc+psipmc+psicmp+psipmp))*dli(2)
-          my(3) = 0.25*((psicpc+psippc+psicpm+psippm)-(psiccc+psipcc+psiccm+psipcm))*dli(2)
-          my(4) = 0.25*((psiccc+psipcc+psiccm+psipcm)-(psicmc+psipmc+psicmm+psipmm))*dli(2)
-          my(5) = 0.25*((psicpc+psimpc+psicpp+psimpp)-(psiccc+psimcc+psiccp+psimcp))*dli(2)
-          my(6) = 0.25*((psiccc+psimcc+psiccp+psimcp)-(psicmc+psimmc+psicmp+psimmp))*dli(2)
-          my(7) = 0.25*((psicpc+psimpc+psicpm+psimpm)-(psiccc+psimcc+psiccm+psimcm))*dli(2)
-          my(8) = 0.25*((psiccc+psimcc+psiccm+psimcm)-(psicmc+psimmc+psicmm+psimmm))*dli(2)
-          !
-          mz(1) = 0.25*((psiccp+psipcp+psicpp+psippp)-(psiccc+psipcc+psicpc+psippc))*dzci(k  )
-          mz(2) = 0.25*((psiccp+psipcp+psicmp+psipmp)-(psiccc+psipcc+psicmc+psipmc))*dzci(k  )
-          mz(3) = 0.25*((psiccc+psipcc+psicpc+psippc)-(psiccm+psipcm+psicpm+psippm))*dzci(k-1)
-          mz(4) = 0.25*((psiccc+psipcc+psicmc+psipmc)-(psiccm+psipcm+psicmm+psipmm))*dzci(k-1)
-          mz(5) = 0.25*((psiccp+psimcp+psicpp+psimpp)-(psiccc+psimcc+psicpc+psimpc))*dzci(k  )
-          mz(6) = 0.25*((psiccp+psimcp+psicmp+psimmp)-(psiccc+psimcc+psicmc+psimmc))*dzci(k  )
-          mz(7) = 0.25*((psiccc+psimcc+psicpc+psimpc)-(psiccm+psimcm+psicpm+psimpm))*dzci(k-1)
-          mz(8) = 0.25*((psiccc+psimcc+psicmc+psimmc)-(psiccm+psimcm+psicmm+psimmm))*dzci(k-1)
-          !
-          !$acc loop seq
-          do q=1,8
-            norm = sqrt(mx(q)**2+my(q)**2+mz(q)**2)+eps
-            mx(q) = mx(q)/norm
-            my(q) = my(q)/norm
-            mz(q) = mz(q)/norm
-          end do
-          !
-          ! compute the normal vector
-          !
-          normx(i,j,k) = .125*(mx(1)+mx(2)+mx(3)+mx(4)+mx(5)+mx(6)+mx(7)+mx(8))
-          normy(i,j,k) = .125*(my(1)+my(2)+my(3)+my(4)+my(5)+my(6)+my(7)+my(8))
-          normz(i,j,k) = .125*(mz(1)+mz(2)+mz(3)+mz(4)+mz(5)+mz(6)+mz(7)+mz(8))
-          norm = sqrt(normx(i,j,k)**2+normy(i,j,k)**2+normz(i,j,k)**2)+eps
-          normx(i,j,k) = normx(i,j,k)/norm
-          normy(i,j,k) = normy(i,j,k)/norm
-          normz(i,j,k) = normz(i,j,k)/norm
-          !
-          ! compute the curvature
-          !
-          kappa(i,j,k) = - ( 0.25*((mx(1)+mx(2)+mx(3)+mx(4))-(mx(5)+mx(6)+mx(7)+mx(8)))*dli(1) + &
-                             0.25*((my(1)+my(3)+my(5)+my(7))-(my(2)+my(4)+my(6)+my(8)))*dli(2) + &
-                             0.25*((mz(1)+mz(2)+mz(5)+mz(6))-(mz(3)+mz(4)+mz(7)+mz(8)))*dzfi(k) )
-        end do
-      end do
-    end do
-  end subroutine cmpt_norm_curv_old
-#endif
 end module mod_two_fluid

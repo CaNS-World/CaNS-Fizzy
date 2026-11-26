@@ -137,6 +137,7 @@ endif
 #
 # CaNS-Fizzy: two-fluid options
 #
+CONSTANT_COEFFS_POISSON ?= 1
 CUSTOM_DEFINES_2FL = CONSTANT_COEFFS_POISSON
 
 DEFINES += $(foreach var,$(CUSTOM_DEFINES_2FL),$(if $(filter 1,$(strip $($(var)))), -D_$(var)))

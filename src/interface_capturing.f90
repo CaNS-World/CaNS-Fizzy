@@ -16,14 +16,15 @@ module mod_interface_capturing
   !   ifc_init_field    -> initial phase indicator
   !   ifc_init          -> initialization from the initial (or loaded) phase indicator
   !   ifc_advance       -> one time step of the phase indicator, returning the (volumetric) phase fluxes
-  !                        used for the mass-consistent transport of momentum and scalars, and, for the
-  !                        geometric volume-of-fluid method, the advecting velocity of the time step
+  !                        used for the mass-consistent transport of momentum and scalars, and, with the
+  !                        direction-split advection, the advecting velocity of the time step
   !                        (ifc_advecting_velocity returns the latter when the interface is not tracked)
   !   ifc_update_params -> update of the method parameters after each time step
   !   ifc_write_log     -> log file of the method
   !
+  use mpi
   use mod_types
-  use mod_common_mpi, only: myid
+  use mod_common_mpi, only: myid,ierr
   use mod_param     , only: datadir,ng,nb,is_bound,cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpsi,bcpsi,cbcnor,bcnor, &
                             cbccur,bccur,contact_angle, &
                             acdi_gam_factor,acdi_gam_min,vof_thinc_beta, &
@@ -35,16 +36,15 @@ module mod_interface_capturing
   use mod_output    , only: out0d
   use mod_two_fluid , only: init2fl,init2fl_sharp,cmpt_norm_curv => cmpt_norm_curv_youngs
   use mod_rk        , only: rk_2fl
-  use mod_acdi      , only: acdi_set_epsilon
-  use mod_acdi      , only: acdi_set_gamma,acdi_cmpt_phi
+  use mod_acdi      , only: acdi_set_epsilon,acdi_set_gamma,acdi_cmpt_phi
   use mod_scal      , only: scalar
   use mod_vof_split , only: vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_contact_angle, &
-                            vof_split_diagnostics,vof_marker
+                            vof_split_diagnostics,vof_split_curvature_reset,vof_marker,markers_sum
   use mod_thinc     , only: thinc_cmpt_phi
   implicit none
   private
-  public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity,ifc_update_params,ifc_write_log
-  public marker,ifc_markers_init,ifc_markers_advance,ifc_markers_force
+  public ifc_init_params,ifc_init_field,ifc_init,ifc_advance,ifc_advecting_velocity,ifc_update_params,ifc_write_log, &
+         marker,ifc_markers_init,ifc_markers_advance,ifc_markers_force
   !
   ! several markers: the dispersed phase (drops or bubbles) is distributed over phase indicators that are
   ! advanced separately, each as the phase indicator of a run with its drops only, such that interfaces of
@@ -55,7 +55,7 @@ module mod_interface_capturing
     real(rp), allocatable, dimension(:,:,:) :: psi,dpsidtrko,kappa,normx,normy,normz,phi
   end type marker
   real(rp), allocatable, dimension(:,:,:) :: wflx_x,wflx_y,wflx_z ! phase fluxes of one marker
-  real(rp) :: vol0 ! initial volume of phase 1 (geometric volume-of-fluid method)
+  real(rp) :: vol0 ! initial volume of phase 1 (direction-split advection)
   contains
   subroutine ifc_init_params(dl,nh_g,dzfi,psi_thickness_factor,seps)
     !
@@ -77,7 +77,7 @@ module mod_interface_capturing
     ! of that marker alone
     !
     implicit none
-    character(len=*), intent(in) :: inipsi
+    character(len=*), intent(in ) :: inipsi
     real(rp), intent(in ) :: seps
     integer , intent(in ), dimension(3)        :: lo,hi
     integer , intent(in )                      :: nh_psi,nh_g
@@ -104,7 +104,8 @@ module mod_interface_capturing
     real(rp), intent(in   ) :: seps
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: normx,normy,normz ! (absent with `plic`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi ! (present with `is_sdf_normals`)
     real(rp), intent(inout) :: gam
     real(rp) :: clip,fmin,fmax,cfl(3),kstats(3)
@@ -122,13 +123,23 @@ module mod_interface_capturing
       do k=1-nh_ifc,n(3)+nh_ifc
         do j=1-nh_ifc,n(2)+nh_ifc
           do i=1-nh_ifc,n(1)+nh_ifc
-            normx(i,j,k) = 0.
-            normy(i,j,k) = 0.
-            normz(i,j,k) = 0.
             kappa(i,j,k) = 0.
           end do
         end do
       end do
+      if(.not.is_ifc_plic) then
+        !$acc parallel     loop collapse(3) default(present) async(1)
+        !$omp target teams loop collapse(3)
+        do k=1-nh_ifc,n(3)+nh_ifc
+          do j=1-nh_ifc,n(2)+nh_ifc
+            do i=1-nh_ifc,n(1)+nh_ifc
+              normx(i,j,k) = 0.
+              normy(i,j,k) = 0.
+              normz(i,j,k) = 0.
+            end do
+          end do
+        end do
+      end if
     end if
     call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
     if(is_ifc_acdi) then
@@ -143,8 +154,8 @@ module mod_interface_capturing
                          istep,uo,vo,wo,uadv,vadv,wadv,scalars)
     !
     ! advances the phase indicator over one time step, returns the phase fluxes (with their boundary
-    ! conditions), and updates the interface normals and curvature; with the geometric volume-of-fluid
-    ! method and `is_vof_sweep_transport`, the velocity (and the scalars) is transported along with the
+    ! conditions), and updates the interface normals and curvature; with the direction-split
+    ! advection and `is_vof_sweep_transport`, the velocity (and the scalars) is transported along with the
     ! phase indicator, and returned in uadv, vadv, wadv (and in `sadv` of each scalar) instead of the advecting
     ! velocity
     !
@@ -157,11 +168,12 @@ module mod_interface_capturing
     real(rp), intent(in   ) :: dt,dto,gam,seps
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: normx,normy,normz ! (absent with `plic`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi ! (present with `is_sdf_normals`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     logical , intent(in   ) :: is_first
-    real(rp), intent(inout), dimension(:,:,:) :: dpsidtrko
+    real(rp), intent(inout), dimension(:,:,:), optional :: dpsidtrko ! (present with the AB2 transport)
     integer , intent(in   ) :: istep
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:), optional :: uo,vo,wo,uadv,vadv,wadv
     type(scalar), intent(inout), dimension(:), optional :: scalars
@@ -199,7 +211,7 @@ module mod_interface_capturing
     integer , intent(in   ) :: istep
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: uo,vo,wo,uadv,vadv,wadv
     type(scalar), intent(inout), dimension(:), optional :: scalars
-    type(vof_marker), intent(in), dimension(:), optional :: psi_m
+    type(vof_marker), intent(in   ), dimension(:), optional :: psi_m
     integer , intent(in   ), optional :: nm_off
     real(rp), dimension(2,max(nscal,1)) :: rhocp12
     integer :: is
@@ -220,10 +232,12 @@ module mod_interface_capturing
     end if
   end subroutine advance_split
   !
-  subroutine ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
+  subroutine ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,is_restart,markers,psi)
     !
     ! initialization of the markers from their initial (or loaded) phase indicators, already present on the
-    ! device: boundary conditions, normals and curvature of each, and the total phase indicator
+    ! device: boundary conditions, normals and curvature of each, and the total phase indicator; in a
+    ! restarted run, the total must reproduce the loaded one, which it does not if `inipsi` or `nmarker`
+    ! differ from those of the run that saved the checkpoint (see `markers_offset`)
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n
@@ -231,19 +245,66 @@ module mod_interface_capturing
     real(rp), intent(in   ), dimension(3) :: dl,dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: seps
+    logical , intent(in   ) :: is_restart
     type(marker), intent(inout), dimension(:) :: markers
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: vol_o,vol
     integer :: m
     !
+    if(is_restart) vol_o = psi_sum(n,nh_psi,psi)
+    if(is_ifc_plic) call vof_split_curvature_reset
     do m=1,size(markers)
       call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,markers(m)%psi)
       if(is_ifc_split) call vof_split_contact_angle(n,nh_psi,nh_g,dl,dzc,dzf,cbcpsi,bcpsi,nb,is_bound,markers(m)%psi)
       call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
                         markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
-      call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+      call markers_sum(m == 1,markers(m)%psi,psi)
     end do
     call markers_total(n,nh_v,nh_psi,nh_ifc,size(markers),psi)
+    if(is_restart) then
+      !
+      ! both totals come from the same marker fields, summed the same way: they agree to round-off (bitwise in
+      ! practice), and a marker left out (`nmarker` too small) shows even if it holds a single small drop
+      !
+      vol = psi_sum(n,nh_psi,psi)
+      if(abs(vol-vol_o) > 1.e3_rp*epsilon(1._rp)*product(1._rp*ng(:))) then
+        if(myid == 0) print*, 'ERROR: the total phase indicator of the checkpoint is not that of its markers: `inipsi` &
+                                      &(`bub*`, or `drp*`/`dis*`) and `nmarker` must be those of the run that saved it.'
+        call MPI_FINALIZE(ierr)
+        error stop
+      end if
+    end if
   end subroutine ifc_markers_init
+  !
+  real(rp) function psi_sum(n,nh_psi,psi)
+    !
+    ! sum of the phase indicator over the cells of the domain
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: nh_psi
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: psis
+    integer  :: i,j,k
+    !
+    psis = 0._rp
+    !$acc        data copy(psis) async(1)
+    !$omp target data map(tofrom:psis)
+    !$acc parallel     loop collapse(3) default(present) reduction(+:psis) async(1)
+    !$omp target teams loop collapse(3)                  reduction(+:psis)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          psis = psis + psi(i,j,k)
+        end do
+      end do
+    end do
+    !$omp end target data
+    !$acc end        data
+    !$acc wait(1)
+    call MPI_ALLREDUCE(MPI_IN_PLACE,psis,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+    psi_sum = psis
+  end function psi_sum
   !
   subroutine ifc_markers_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                                  is_first,istep,markers,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars)
@@ -281,10 +342,10 @@ module mod_interface_capturing
         call ifc_advance(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,wzc,dt,dto,gam,seps,u,v,w, &
                          markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%phi,markers(m)%kappa,markers(m)%psi, &
                          wflx_x,wflx_y,wflx_z,is_first,markers(m)%dpsidtrko,istep)
-        call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
-        call markers_add(n,nh_ifc,m == 1,wflx_x,psiflx_x)
-        call markers_add(n,nh_ifc,m == 1,wflx_y,psiflx_y)
-        call markers_add(n,nh_ifc,m == 1,wflx_z,psiflx_z)
+        call markers_sum(m == 1,markers(m)%psi,psi)
+        call markers_sum(m == 1,wflx_x,psiflx_x)
+        call markers_sum(m == 1,wflx_y,psiflx_y)
+        call markers_sum(m == 1,wflx_z,psiflx_z)
       end do
       call markers_total(n,nh_v,nh_psi,nh_ifc,nm,psi,u,v,w,psiflx_x,psiflx_y,psiflx_z)
     else
@@ -296,7 +357,7 @@ module mod_interface_capturing
       do m=1,nm
         call ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers(m)%psi,markers(m)%phi, &
                           markers(m)%normx,markers(m)%normy,markers(m)%normz,markers(m)%kappa)
-        if(.not.is_vof_sweep_transport) call markers_add(n,nh_psi,m == 1,markers(m)%psi,psi)
+        if(.not.is_vof_sweep_transport) call markers_sum(m == 1,markers(m)%psi,psi)
       end do
       !
       ! (with the transport along with the sweeps, the total phase indicator is formed there, and the phase
@@ -317,7 +378,7 @@ module mod_interface_capturing
     integer , intent(in   )               :: nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3) :: dli
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
-    type(marker), intent(in), dimension(:) :: markers
+    type(marker), intent(in   ), dimension(:) :: markers
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(inout), dimension(:,:,:) :: fsx,fsy,fsz
     integer :: m
@@ -327,33 +388,6 @@ module mod_interface_capturing
                                 fsx,fsy,fsz)
     end do
   end subroutine ifc_markers_force
-  !
-  subroutine markers_add(n,nh,is_init,a_m,a)
-    !
-    ! copies (if `is_init`) or adds the field of a marker to the total, halo layers included
-    !
-    implicit none
-    integer , intent(in   ), dimension(3) :: n
-    integer , intent(in   )               :: nh
-    logical , intent(in   )               :: is_init
-    real(rp), intent(in   ), dimension(1-nh:,1-nh:,1-nh:) :: a_m
-    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: a
-    integer :: i,j,k
-    !
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
-    do k=1-nh,n(3)+nh
-      do j=1-nh,n(2)+nh
-        do i=1-nh,n(1)+nh
-          if(is_init) then
-            a(i,j,k) = a_m(i,j,k)
-          else
-            a(i,j,k) = a(i,j,k) + a_m(i,j,k)
-          end if
-        end do
-      end do
-    end do
-  end subroutine markers_add
   !
   integer function markers_offset(nm)
     !
@@ -413,10 +447,12 @@ module mod_interface_capturing
   subroutine ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                     u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars)
     !
-    ! advecting velocity of a time step in which the interface is not tracked (geometric volume-of-fluid
-    ! method only); with `is_vof_sweep_transport`, the velocity (and the scalars) is transported with the
-    ! sweeps, without updating the phase indicator, and returned in uadv, vadv, wadv (and in `sadv` of each
-    ! scalar) instead
+    ! phase fluxes of a time step in which the interface is not tracked: those of a frozen phase indicator
+    ! carried across the faces by the velocity (see `frozen_fluxes`), such that the mass fluxes of the
+    ! transport of momentum and scalars are those of the local fluid; with the direction-split advection,
+    ! also the advecting velocity, or, with `is_vof_sweep_transport`, the velocity (and the scalars)
+    ! transported with the sweeps, without updating the phase indicator, returned in uadv, vadv, wadv (and in
+    ! `sadv` of each scalar) instead
     !
     implicit none
     real(rp), intent(in   ), dimension(2) :: tm_coeff
@@ -436,7 +472,11 @@ module mod_interface_capturing
     real(rp), dimension(3) :: cfl
     integer :: is
     !
-    if(.not.is_ifc_split) return
+    if(.not.is_ifc_split) then
+      call frozen_fluxes(n,nh_v,nh_psi,nh_ifc,nh_g,wzc,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z)
+      call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
+      return
+    end if
     do is=1,max(nscal,1)
       rhocp12(:,is) = rho12(:)*cp12(:,is)
     end do
@@ -450,8 +490,38 @@ module mod_interface_capturing
       end do
     else
       call vof_split_velocity(tm_coeff,is_first,n,nh_v,nh_g,dl,dzfi,dt,u,v,w,uo,vo,wo,uadv,vadv,wadv,cfl)
+      call frozen_fluxes(n,nh_v,nh_psi,nh_ifc,nh_g,wzc,uadv,vadv,wadv,psi,psiflx_x,psiflx_y,psiflx_z)
+      call bounduvw(cbcvel,n,nh_ifc,nh_g,bcvel,nb,is_bound,dl,dzc,dzf,psiflx_x,psiflx_y,psiflx_z)
     end if
   end subroutine ifc_advecting_velocity
+  !
+  subroutine frozen_fluxes(n,nh_v,nh_psi,nh_ifc,nh_g,wzc,u,v,w,psi,psiflx_x,psiflx_y,psiflx_z)
+    !
+    ! phase fluxes of a phase indicator that is not advanced: its value at each face, interpolated with the
+    ! weights of the density of the staggered control volumes, times the face velocity; exact for a uniform
+    ! phase indicator (a single fluid)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_ifc,nh_g
+    real(rp), intent(in   ), dimension(1-nh_g:) :: wzc
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
+    integer :: i,j,k
+    !
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          psiflx_x(i,j,k) = 0.5*(psi(i,j,k)+psi(i+1,j,k))*u(i,j,k)
+          psiflx_y(i,j,k) = 0.5*(psi(i,j,k)+psi(i,j+1,k))*v(i,j,k)
+          psiflx_z(i,j,k) = (wzc(k)*psi(i,j,k)+(1.-wzc(k))*psi(i,j,k+1))*w(i,j,k)
+        end do
+      end do
+    end do
+  end subroutine frozen_fluxes
   !
   subroutine ifc_geometry(n,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,psi,phi,normx,normy,normz,kappa)
     !
@@ -464,7 +534,8 @@ module mod_interface_capturing
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi
     real(rp), intent(in   ) :: seps
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: normx,normy,normz,kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
+    real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: normx,normy,normz ! (absent with `plic`)
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi ! (present with `is_sdf_normals`)
     character(len=1), dimension(0:1,3) :: cbc_tmp
     !
@@ -495,9 +566,14 @@ module mod_interface_capturing
         call cmpt_norm_curv(n,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,psi,normx,normy,normz,kappa,is_bound,contact_angle)
       end if
       call boundp(cbccur,n,nh_ifc,nh_g,bccur,nb,is_bound,dl,dzc,kappa)
-      call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
-      call boundp(cbcnor(:,:,2),n,nh_ifc,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
-      call boundp(cbcnor(:,:,3),n,nh_ifc,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      if(.not.is_ifc_split) then
+        !
+        ! the halo of the normals is only read by the AB2 transport of the phase indicator
+        !
+        call boundp(cbcnor(:,:,1),n,nh_ifc,nh_g,bcnor(:,:,1),nb,is_bound,dl,dzc,normx)
+        call boundp(cbcnor(:,:,2),n,nh_ifc,nh_g,bcnor(:,:,2),nb,is_bound,dl,dzc,normy)
+        call boundp(cbcnor(:,:,3),n,nh_ifc,nh_g,bcnor(:,:,3),nb,is_bound,dl,dzc,normz)
+      end if
     end if
   end subroutine ifc_geometry
   !
@@ -540,7 +616,7 @@ module mod_interface_capturing
       ! numbers of interfacial cells with height-function curvature, neighbour average, and no estimate
       !
       call vof_split_diagnostics(n,nh_psi,nh_g,dl,dzf,psi,vol,clip,fmin,fmax,cfl,nsub,kstats)
-      var(1)    = 1.*istep
+      var(1)    = 1._rp*istep
       var(2)    = time
       var(3)    = vol
       var(4)    = (vol-vol0)/max(vol0,tiny(1._rp))
@@ -548,11 +624,11 @@ module mod_interface_capturing
       var(6)    = fmin
       var(7)    = fmax
       var(8:10) = cfl(:)
-      var(11)   = 1.*nsub
+      var(11)   = 1._rp*nsub
       var(12:14) = kstats(:)
       call out0d(trim(datadir)//'log_vof.out',14,var)
     else if(is_ifc_acdi) then
-      var(1) = 1.*istep
+      var(1) = 1._rp*istep
       var(2) = time
       var(3) = gam
       var(4) = seps

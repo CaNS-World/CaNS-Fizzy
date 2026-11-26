@@ -6,9 +6,9 @@
 ! -
 module mod_acdi
   use mpi
-  use mod_common_mpi, only:ierr
+  use mod_common_mpi, only: ierr
+  use mod_param     , only: eps,is_sdf_normals
   use mod_types
-  use mod_param , only: eps,is_sdf_normals
   implicit none
   private
   public acdi_set_epsilon,acdi_set_gamma,acdi_transport_pf,acdi_cmpt_phi
@@ -18,10 +18,10 @@ module mod_acdi
     ! computes the acdi epsilon parameter
     !
     implicit none
-    real(rp), intent(in), dimension(3) :: dl
-    integer , intent(in) :: nh_g
-    real(rp), intent(in), dimension(1-nh_g:) :: dzfi
-    real(rp), intent(in)  :: seps_factor
+    real(rp), intent(in ), dimension(3) :: dl
+    integer , intent(in ) :: nh_g
+    real(rp), intent(in ), dimension(1-nh_g:) :: dzfi
+    real(rp), intent(in )  :: seps_factor
     real(rp), intent(out) :: seps
     real(rp), save :: dlmax
     !
@@ -35,10 +35,10 @@ module mod_acdi
     ! computes the acdi gamma parameter
     !
     implicit none
-    integer , intent(in), dimension(3) :: n
-    integer , intent(in) :: nh_v
-    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
-    real(rp), intent(in) :: gam_factor
+    integer , intent(in ), dimension(3) :: n
+    integer , intent(in ) :: nh_v
+    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), intent(in ) :: gam_factor
     real(rp), intent(out) :: gam
     real(rp) :: uc,vc,wc,vel,velmax
     integer :: i,j,k
@@ -73,7 +73,7 @@ module mod_acdi
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzci,dzfi
     real(rp), intent(in   )                      :: gam,seps
@@ -82,10 +82,10 @@ module mod_acdi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: phi
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out  ), dimension(: ,: ,: ) :: dpsidt
-    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: flux_x,flux_y,flux_z
+    real(rp), intent(out  ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: flux_x,flux_y,flux_z
     integer :: i,j,k
     real(rp) :: dxi,dyi
-    real(rp) :: adv,diff,sharp,rglr
+    real(rp) :: adv,rglr
     real(rp) :: upsiip,upsiim,vpsijp,vpsijm,wpsikp,wpsikm
     real(rp) :: dpsidxp,dpsidxm,dpsidyp,dpsidym,dpsidzp,dpsidzm
     real(rp) :: sharpxp,sharpxm,sharpyp,sharpym,sharpzp,sharpzm
@@ -104,6 +104,9 @@ module mod_acdi
     is_sdf = is_sdf_normals
     dxi = dli(1)
     dyi = dli(2)
+    !
+    ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
+    !                                        all scalars should be firstprivate/private
     !
     !$acc parallel     loop collapse(3) default(present) async(1)
     !$omp target teams loop collapse(3)
@@ -271,15 +274,15 @@ module mod_acdi
     !
     implicit none
     integer , intent(in ), dimension(3)           :: n
-    integer , intent(in) :: nh_psi,nh_ifc
+    integer , intent(in ) :: nh_psi,nh_ifc
     real(rp), intent(in )                         :: seps
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)    :: psi
     real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)    :: phi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
+    !$acc parallel     loop collapse(3) default(present) private(psi_aux) async(1)
+    !$omp target teams loop collapse(3)                  private(psi_aux)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -291,7 +294,6 @@ module mod_acdi
   end subroutine acdi_cmpt_phi
   !
   pure elemental real(rp) function acdi_phi(psi,seps) result(phi)
-    use mod_param, only:eps
     !$acc routine seq
     !$omp declare target
     !

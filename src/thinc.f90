@@ -20,7 +20,7 @@ module mod_thinc
   !    interface (pointing out of phase 1), and d the offset that gives the cell its volume fraction
   !    (`thinc_intercept`, `thinc_slab`)
   !
-  ! Acknowledgements: We are grateful for the discussions with Dr. Naoki Hori, which gave valuable advise
+  ! Acknowledgements: We are grateful for the discussions with Dr. Naoki Hori, which gave valuable advice
   !                   on the practical implementation of THINC/QQ for multiphase flow simulations,
   !                   with two nice repos describing the method:
   !                     - github.com/NaokiHori/SimpleVOFSolver
@@ -59,7 +59,7 @@ module mod_thinc
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzfi
     real(rp), intent(in   )                      :: beta
@@ -79,8 +79,12 @@ module mod_thinc
     !
     is_sdf = is_sdf_normals
     d_full = 1.e3_rp/beta
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
+    !$acc parallel loop collapse(3) default(present) &
+    !$acc private(vel_x,vel_y,vel_z,ii,xx,jj,yy,kk,zz,lnormx_x,lnormy_y,lnormz_z,d_x,d_y,d_z,lpsi_x,lpsi_y,lpsi_z,arg_x) &
+    !$acc private(arg_y,arg_z,lflux_x,lflux_y,lflux_z) async(1)
+    !$omp target teams loop collapse(3) &
+    !$omp private(vel_x,vel_y,vel_z,ii,xx,jj,yy,kk,zz,lnormx_x,lnormy_y,lnormz_z,d_x,d_y,d_z,lpsi_x,lpsi_y,lpsi_z,arg_x) &
+    !$omp private(arg_y,arg_z,lflux_x,lflux_y,lflux_z)
     do k=0,n(3)
       do j=0,n(2)
         do i=0,n(1)
@@ -167,15 +171,15 @@ module mod_thinc
     !
     implicit none
     integer , intent(in ), dimension(3)        :: n
-    integer , intent(in) :: nh_psi,nh_ifc
+    integer , intent(in ) :: nh_psi,nh_ifc
     real(rp), intent(in )                      :: beta
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp), intent(out), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: phi
     real(rp) :: psi_aux
     integer  :: i,j,k
     !
-    !$acc parallel     loop collapse(3) default(present) firstprivate(beta) async(1)
-    !$omp target teams loop collapse(3)                  firstprivate(beta)
+    !$acc parallel     loop collapse(3) default(present) firstprivate(beta) private(psi_aux) async(1)
+    !$omp target teams loop collapse(3)                  firstprivate(beta) private(psi_aux)
     do k=0,n(3)+1
       do j=0,n(2)+1
         do i=0,n(1)+1
@@ -189,11 +193,15 @@ module mod_thinc
   subroutine thinc_transport_psi_gauss(n,nh_v,nh_psi,nh_ifc,nh_g,dli,dzfi,vofmin,beta,u,v,w,normx,normy,normz,psi,dpsidt, &
                                        flux_x,flux_y,flux_z)
     !
-    ! compute right-hand side of the VoF transport equation
+    ! compute right-hand side of the VoF transport equation, with Gaussian quadrature of the fluxes and a
+    ! Newton iteration for the intercept (see `cmpt_intercept`)
+    !
+    ! this routine is not called: it is kept as a reference for `thinc_transport_psi`, which uses the
+    ! mid-point rule instead, and has no directives for GPUs
     !
     implicit none
     integer , intent(in   ), dimension(3)        :: n
-    integer , intent(in) :: nh_v,nh_psi,nh_ifc,nh_g
+    integer , intent(in   ) :: nh_v,nh_psi,nh_ifc,nh_g
     real(rp), intent(in   ), dimension(3)        :: dli
     real(rp), intent(in   ), dimension(1-nh_g:)       :: dzfi
     real(rp), intent(in   )                      :: vofmin,beta
@@ -301,7 +309,7 @@ module mod_thinc
   !
   pure function cmpt_intercept(psi,beta,normx,normy,normz) result(d)
     !
-    ! Newton-Rapshon iteration to compute the d parameter in the THINC/QQ reconstruction function,
+    ! Newton-Raphson iteration to compute the d parameter in the THINC/QQ reconstruction function,
     ! intercepting the numerical integration of the multi-dimensional hyperbolic tangent function
     ! with the cell volume fraction
     !
@@ -335,13 +343,13 @@ module mod_thinc
       end do
     end do
     !
-    ! initial guess based on the solution with the first-order Guassian quadrature
+    ! initial guess based on the solution with the first-order Gaussian quadrature
     ! careful about division by zero - should be avoided in other subroutines
     !
     sol = 1./psi - 1. ! careful about division by zero
     iter = 0
     res = huge(1._rp)
-    do while(abs(res) > resmax .or. iter < itermax)
+    do while(abs(res) > resmax .and. iter < itermax)
       f0 = -psi
       f1 = 0.
       do k=1,ngauss

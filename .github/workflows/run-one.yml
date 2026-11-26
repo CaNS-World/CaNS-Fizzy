@@ -17,7 +17,11 @@ on:
       build_modes:
         description: "JSON array of build modes to compile"
         type: string
-        default: '["opt", "dbg", "opt-omp"]'
+        default: '["opt", "dbg"]'
+      tests_in_one_job:
+        description: "Run the tests of each build one after the other in a single job"
+        type: boolean
+        default: false
       variant:
         description: "Name of the build variant"
         type: string
@@ -32,7 +36,8 @@ on:
         type: string
 
 env:
-  MODE_FLAGS: '{"opt": "FFLAGS_OPT=1", "dbg": "FFLAGS_DEBUG_MAX=1 FFLAGS_OPT=0", "opt-omp": "FFLAGS_OPT=1 OPENMP=1 LIBS+=-lfftw3_threads"}'
+  MODE_FLAGS: '{"opt": "FFLAGS_OPT=1", "dbg": "FFLAGS_DEBUG_MAX=1 FFLAGS_OPT=0"}'
+  NVHPC_VERSION: "26.11" # version of the NVIDIA compiler (see `install-NVIDIA.sh`; `latest` follows the newest release)
 
 jobs:
   build:
@@ -62,6 +67,7 @@ jobs:
         compiler_flags: ${{ fromJSON(env.MODE_FLAGS)[matrix.mode] }} ${{ inputs.variant_flags }}
         no-rebuild: false
   test:
+    if: ${{ !inputs.tests_in_one_job }}
     timeout-minutes: 60 # 30 in CaNS; the debug builds of the long two-fluid tests need more
     runs-on: ubuntu-latest
     needs: build
@@ -69,6 +75,11 @@ jobs:
       matrix:
         mode: ${{ fromJSON(inputs.test_modes) }}
         test-name: ${{ fromJSON(inputs.tests) }}
+        exclude: # tests that do nothing more in a debug build: one is skipped there, the other builds its own program
+        - mode: dbg
+          test-name: single_precision
+        - mode: dbg
+          test-name: plic_unit
       fail-fast: false # ensures that jobs run in parallel
     name: test-${{ matrix.mode }}-${{ matrix.test-name }}
     steps:
@@ -82,6 +93,7 @@ jobs:
         name: ${{ inputs.compiler }}-${{ inputs.variant }}-${{ matrix.mode }}
         compiler: ${{ inputs.compiler }}
         no-rebuild: true
+        get-dependencies: ${{ matrix.test-name == 'single_precision' }} # the only test that builds the code
     - name: Run the test
       uses: ./.github/actions/test
       with:
@@ -89,3 +101,34 @@ jobs:
         compiler: ${{ inputs.compiler }}
         mode: ${{ matrix.mode }}
         test_name: ${{ matrix.test-name }}
+  test-all:
+    #
+    # the same tests, one after the other in one job per build
+    #
+    if: ${{ inputs.tests_in_one_job }}
+    timeout-minutes: 120
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      matrix:
+        mode: ${{ fromJSON(inputs.test_modes) }}
+      fail-fast: false # ensures that jobs run in parallel
+    name: test-${{ matrix.mode }}-all
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        submodules: false
+    - name: Set up the environment and get packages
+      uses: ./.github/actions/build
+      with:
+        name: ${{ inputs.compiler }}-${{ inputs.variant }}-${{ matrix.mode }}
+        compiler: ${{ inputs.compiler }}
+        no-rebuild: true
+    - name: Run the tests
+      uses: ./.github/actions/test
+      with:
+        name: ${{ inputs.compiler }}-${{ inputs.variant }}-${{ matrix.mode }}-all
+        compiler: ${{ inputs.compiler }}
+        mode: ${{ matrix.mode }}
+        test_name: ${{ join(fromJSON(inputs.tests), ' ') }}

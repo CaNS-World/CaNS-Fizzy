@@ -8,11 +8,11 @@ inputs:
     description: "Compiler environment used by the CaNS executable"
     required: true
   mode:
-    description: "Build mode of the executable (opt, dbg, opt-omp)"
+    description: "Build mode of the executable (opt, dbg)"
     required: false
     default: "opt"
   test_name:
-    description: "Test case name; a suffix selects the interface method: -thinc, -plic, or -thincsplit (THINC in the split advection)"
+    description: "Test case name, or several separated by blanks, run one after the other; a suffix selects the interface method: -thinc, -plic, or -thincsplit (THINC in the split advection)"
     required: true
 
 runs:
@@ -40,29 +40,46 @@ runs:
         # run-time errors: debug builds, and the CPU builds of the NVIDIA compiler
         #
         if [ "${{ inputs.mode }}" = "dbg" ] || [ "${{ inputs.compiler }}" = "NVIDIA" ]; then export TEST_SHORT=1; fi
-        test_name="${{ inputs.test_name }}"
-        case "$test_name" in
-          *-thincsplit) export TEST_TWO_FLUID_INPUT="ifc_reconstruction = 'thinc', ifc_advection = 'split'";;
-          *-*)          export TEST_TWO_FLUID_INPUT="ifc_reconstruction = '${test_name#*-}'";;
-        esac
-        test_name="${test_name%%-*}"
-        cd "tests/$test_name" || exit 1
-        bash ./testit.sh
+        #
+        # the tests are run one after the other; the logs of each are kept in `run/logs/<test>/`, and the step
+        # fails at the end if any test failed
+        #
+        root=$(pwd)
+        failed=""
+        for test in ${{ inputs.test_name }}; do
+          echo "::group::Test $test"
+          unset TEST_TWO_FLUID_INPUT
+          case "$test" in
+            *-thincsplit) export TEST_TWO_FLUID_INPUT="ifc_reconstruction = 'thinc', ifc_advection = 'split'";;
+            *-*)          export TEST_TWO_FLUID_INPUT="ifc_reconstruction = '${test#*-}'";;
+          esac
+          status=0
+          (cd "$root/tests/${test%%-*}" && bash ./testit.sh) || status=$?
+          mkdir -p "$root/run/logs/$test"
+          for log_file in "$root"/run/*.log; do
+            [ -e "$log_file" ] && mv "$log_file" "$root/run/logs/$test/"
+          done
+          rm -rf "$root"/run/data/* "$root"/run/data-* # (what a failed test may leave behind)
+          echo "::endgroup::"
+          if [ $status -ne 0 ]; then echo "ERROR: test $test failed"; failed="$failed $test"; fi
+        done
+        if [ -n "$failed" ]; then echo "ERROR: failed tests:$failed"; exit 1; fi
 
     - name: Upload log files
       if: ${{ always() }}
       uses: actions/upload-artifact@v7
       with:
         name: logs-${{ inputs.name }}
-        path: run/*.log
+        path: run/logs/
 
     - name: Print log files
       if: ${{ always() }}
       shell: bash
       run: |
-        for log_file in run/*.log
+        for log_file in run/logs/*/*.log
         do
           [ -e "$log_file" ] || continue
-          echo "Printing log file $log_file"
+          echo "::group::Log file $log_file"
           cat "$log_file"
+          echo "::endgroup::"
         done

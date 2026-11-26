@@ -37,6 +37,7 @@ iniscal(3)         = 'zer'
 cbcscal(0:1,1:3,3) = 'D','D',  'P','P',  'N','N'
 bcscal(0:1,1:3,3)  =  0.,1.,   0.,0.,   0.,0.
 ssource(3)         = 0.1
+is_sforced(1:2)    = T, T
 is_boussinesq_buoyancy = T
 /
 

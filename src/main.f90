@@ -38,10 +38,10 @@ program cans
   use mod_fft                , only: fftini,fftend
   use mod_fillps             , only: fillps
   use mod_forcing            , only: lscale_forcing
-  use mod_initflow           , only: initflow,initscal
+  use mod_initflow           , only: initflow,initscal,set_bulk_velocity
   use mod_initgrid           , only: initgrid,save_grid
   use mod_initmpi            , only: initmpi
-  use mod_impdiff            , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_wall_force,impdiff_updt_forcing, &
+  use mod_impdiff            , only: impdiff_z_mom_solve,impdiff_z_scal_solve,impdiff_updt_forcing,impdiff_updt_forcing_s, &
                                      impdiff_cc_mom_updt,impdiff_cc_scal_updt
 #if !defined(_CONSTANT_COEFFS_POISSON)
   use mod_impdiff            , only: impdiff_vc_mom_updt,impdiff_vc_mom_solve,impdiff_vc_scal_updt,impdiff_vc_scal_solve
@@ -60,14 +60,14 @@ program cans
                                      cfl,dtmax,dt_f, &
                                      is_solve_ns,is_track_interface, &
                                      inivel,iniscal,inipsi, &
-                                     is_wallturb,is_forced_hit, &
+                                     is_wallturb,is_forced_hit,forced_hit_type,forced_hit_amp, &
                                      nstep,time_max,tw_max,stop_type, &
                                      restart,is_overwrite_save,nsaves_max, &
                                      icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                                      tout0d,tout1d,tout2d,tout3d,tsave, &
                                      cbcvel,bcvel,cbcvel_halo,bcvel_halo,cbcpre,bcpre, &
                                      cbcscal,bcscal, &
-                                     is_forced,bforce,ssource, &
+                                     is_forced,velf,bforce,ssource,is_sforced,scalf,cbcpsi,bcpsi, &
                                      gacc,nscal,nmarker, &
                                      rho0,visc0,alpha0,rho12,mu12,sigma,ka12,cp12,beta12, &
                                      psi_thickness_factor, &
@@ -78,12 +78,12 @@ program cans
                                      read_input, &
                                      is_debug,is_debug_poisson, &
                                      is_timing, &
-                                     is_impdiff,is_impdiff_1d,is_ifc_split,is_sdf_normals,is_vof_sweep_transport, &
+                                     is_impdiff,is_impdiff_1d,is_ifc_split,is_ifc_plic,is_sdf_normals,is_vof_sweep_transport, &
                                      is_poisson_dtdma, &
                                      is_mask_divergence_check, &
                                      nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g
   use mod_sanity             , only: test_sanity_input,test_sanity_solver
-  use mod_scal               , only: scalar
+  use mod_scal               , only: scalar,cmpt_scal_mean
   use mod_solve_helmholtz    , only: solve_helmholtz,rhs_bound
   use mod_two_fluid          , only: bulk_mean_12_stag
 #if !defined(_CONSTANT_COEFFS_POISSON)
@@ -107,11 +107,11 @@ program cans
   implicit none
   integer , dimension(3) :: lo,hi,n,n_x_fft,n_y_fft,lo_z,hi_z,n_z
   real(rp), target, allocatable, dimension(:,:,:) :: u,v,w,p,pp
-  real(rp), allocatable, dimension(:,:,:) :: pn
   real(rp), target, allocatable, dimension(:,:,:) :: po
   real(rp), target, allocatable, dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko,dpsidtrko
   real(rp), target, allocatable, dimension(:,:,:) :: uo,vo,wo ! previous velocity (direction-split advection)
   real(rp), dimension(3) :: wall_force_old
+  logical , dimension(3) :: is_velf ! direction whose initial mean velocity is set from `velf` (see `initflow`)
   logical :: is_first
   real(rp), dimension(3) :: rho_av
   logical , dimension(3) :: is_cmpt_rho_av
@@ -139,7 +139,7 @@ program cans
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
   logical :: is_impdiff_cc
   !
-  real(rp) :: dt,dto,dt_r,dti,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
+  real(rp) :: dt,dto,dt_r,dt_cfl,time,time_start,dtrk,dtrki,divtot,divmax
   real(rp), dimension(2) :: dt_restart
   real(rp) :: gam,seps
   integer :: istep,iunit
@@ -148,7 +148,14 @@ program cans
                                          xc_g,xf_g,yc_g,yf_g, &
                                          grid_vol_ratio_c,grid_vol_ratio_f,wzc
   real(rp), dimension(3) :: dpdl,meanvel,momentum,momentum_o,wall_force_imp
-  real(rp), dimension(3,6) :: force_balance
+  !
+  ! zero-net-heating forcing of the scalars (the counterpart of the zero-net-acceleration forcing): heat lost through
+  ! the boundaries in the previous step, balance of each scalar, and the part of the implicit diffusion
+  !
+  real(rp), allocatable, dimension(:)   :: wall_heat_old
+  real(rp), allocatable, dimension(:,:) :: sforce_balance
+  real(rp) :: wall_heat_imp,stot,stot_o,rhocp_mean
+  real(rp), dimension(3,7) :: force_balance
   real(rp), dimension(2) :: tm_coeff
   !
   ! scalar fields (see `mod_scal`)
@@ -221,14 +228,11 @@ program cans
            w( 1-nh_v:n(1)+nh_v,1-nh_v:n(2)+nh_v,1-nh_v:n(3)+nh_v), &
            p( 1-nh_p:n(1)+nh_p,1-nh_p:n(2)+nh_p,1-nh_p:n(3)+nh_p), &
            pp(1-nh_p:n(1)+nh_p,1-nh_p:n(2)+nh_p,1-nh_p:n(3)+nh_p))
-#if defined(_CONSTANT_COEFFS_POISSON)
-  allocate(pn,mold=pp)
-#endif
   allocate(po,mold=pp)
   allocate(dudtrko(n(1),n(2),n(3)), &
            dvdtrko(n(1),n(2),n(3)), &
-           dwdtrko(n(1),n(2),n(3)), &
-           dpsidtrko(n(1),n(2),n(3)))
+           dwdtrko(n(1),n(2),n(3)))
+  if(.not.is_ifc_split) allocate(dpsidtrko(n(1),n(2),n(3))) ! (only the AB2 transport of the phase indicator uses it)
   !
   ! scalars (one element is allocated if there is none: `scalars(1)%val` is then not allocated, and can be
   ! passed as an absent argument)
@@ -310,13 +314,14 @@ program cans
   allocate(psi(1-nh_psi:n(1)+nh_psi,1-nh_psi:n(2)+nh_psi,1-nh_psi:n(3)+nh_psi))
   allocate(psio,mold=psi)
   allocate(kappa(1-nh_ifc:n(1)+nh_ifc,1-nh_ifc:n(2)+nh_ifc,1-nh_ifc:n(3)+nh_ifc))
-  allocate(normx,normy,normz,mold=kappa)
-  if(is_sdf_normals) allocate(phi,mold=kappa) ! (otherwise an absent argument of the routines that take it)
+  if(.not.is_ifc_plic) allocate(normx,normy,normz,mold=kappa) ! (these three are otherwise absent arguments of the
+  if(is_sdf_normals) allocate(phi,mold=kappa)                 !  routines that take them)
   allocate(markers(nmk))
   do imark=1,nmk
     allocate(markers(imark)%psi,mold=psi)
-    allocate(markers(imark)%dpsidtrko(n(1),n(2),n(3)))
-    allocate(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz,mold=kappa)
+    if(.not.is_ifc_split) allocate(markers(imark)%dpsidtrko(n(1),n(2),n(3)))
+    allocate(markers(imark)%kappa,mold=kappa)
+    if(.not.is_ifc_plic) allocate(markers(imark)%normx,markers(imark)%normy,markers(imark)%normz,mold=kappa)
     if(is_sdf_normals) allocate(markers(imark)%phi,mold=kappa)
   end do
   if(nmk > 0) then
@@ -509,7 +514,8 @@ program cans
   !
   nio_s = nio
   if(is_full_restart) then
-    nio_s = nio + 5 + nscal + nmk
+    nio_s = nio + 4 + nscal
+    if(.not.is_ifc_split) nio_s = nio_s + 1 + nmk
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     nio_s = nio_s + 6
 #endif
@@ -542,18 +548,23 @@ program cans
     io_vars(is+2)%arr => dudtrko  ; c_io_vars(is+2) = 'dudtrko'
     io_vars(is+3)%arr => dvdtrko  ; c_io_vars(is+3) = 'dvdtrko'
     io_vars(is+4)%arr => dwdtrko  ; c_io_vars(is+4) = 'dwdtrko'
-    io_vars(is+5)%arr => dpsidtrko; c_io_vars(is+5) = 'dpsidtrko'
-    is = is + 5
+    is = is + 4
+    if(.not.is_ifc_split) then
+      io_vars(is+1)%arr => dpsidtrko; c_io_vars(is+1) = 'dpsidtrko'
+      is = is + 1
+    end if
     do iscal=1,nscal
       write(scalnum,'(i3.3)') iscal
       io_vars(is+1)%arr => scalars(iscal)%dsdtrko; c_io_vars(is+1) = 'dsdtrko_'//scalnum
       is = is + 1
     end do
-    do imark=1,nmk
-      write(marknum,'(i3.3)') imark
-      io_vars(is+1)%arr => markers(imark)%dpsidtrko; c_io_vars(is+1) = 'dpsidtrko_'//marknum
-      is = is + 1
-    end do
+    if(.not.is_ifc_split) then
+      do imark=1,nmk
+        write(marknum,'(i3.3)') imark
+        io_vars(is+1)%arr => markers(imark)%dpsidtrko; c_io_vars(is+1) = 'dpsidtrko_'//marknum
+        is = is + 1
+      end do
+    end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     io_vars(is+1)%arr => surfx_n; c_io_vars(is+1) = 'surfx_n'
     io_vars(is+2)%arr => surfy_n; c_io_vars(is+2) = 'surfy_n'
@@ -606,7 +617,7 @@ program cans
   dudtrko(:,:,:) = 0.
   dvdtrko(:,:,:) = 0.
   dwdtrko(:,:,:) = 0.
-  dpsidtrko(:,:,:) = 0.
+  if(.not.is_ifc_split) dpsidtrko(:,:,:) = 0.
   do iscal=1,nscal
     scalars(iscal)%dsdtrko(:,:,:) = 0.
   end do
@@ -622,29 +633,33 @@ program cans
       scalars(iscal)%sadv(:,:,:) = 0.
     end do
   end if
-  wall_force_old(:) = 0.
+  allocate(wall_heat_old(nscal),sforce_balance(4,nscal))
+  wall_force_old(:) = -huge(1._rp) ! (dummy values, saved also where nothing is forced; see `fld_dt.out`)
+  wall_heat_old(:)  = -huge(1._rp)
+  sforce_balance(:,:) = 0.
   is_first = .true.
-#if defined(_CONSTANT_COEFFS_POISSON)
-  pn(:,:,:) = 0.
-#endif
   do iscal=1,nscal
     scalars(iscal)%val(:,:,:) = 0.
   end do
   psi(:,:,:) = 0.
   do imark=1,nmk
     markers(imark)%psi(:,:,:) = 0.
-    markers(imark)%dpsidtrko(:,:,:) = 0.
+    if(.not.is_ifc_split) markers(imark)%dpsidtrko(:,:,:) = 0.
     markers(imark)%kappa(:,:,:) = 0.
-    markers(imark)%normx(:,:,:) = 0.
-    markers(imark)%normy(:,:,:) = 0.
-    markers(imark)%normz(:,:,:) = 0.
+    if(.not.is_ifc_plic) then
+      markers(imark)%normx(:,:,:) = 0.
+      markers(imark)%normy(:,:,:) = 0.
+      markers(imark)%normz(:,:,:) = 0.
+    end if
     if(is_sdf_normals) markers(imark)%phi(:,:,:) = 0.
   end do
   psio(:,:,:) = 0.
   kappa(:,:,:) = 0.
-  normx(:,:,:) = 0.
-  normy(:,:,:) = 0.
-  normz(:,:,:) = 0.
+  if(.not.is_ifc_plic) then
+    normx(:,:,:) = 0.
+    normy(:,:,:) = 0.
+    normz(:,:,:) = 0.
+  end if
   if(is_sdf_normals) phi(:,:,:) = 0.
   psiflx_x(:,:,:) = 0.
   psiflx_y(:,:,:) = 0.
@@ -653,9 +668,10 @@ program cans
     istep = 0
     time = 0.
     call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
-                  bforce,is_wallturb,time,u,v,w,p)
+                  is_forced,velf,bforce,is_wallturb,time,u,v,w,p,is_velf)
     do iscal=1,nscal
-      call initscal(iniscal(iscal),bcscal(:,:,iscal),ng,lo,nh_s,nh_g,l,dl,zc,dzf,scalars(iscal)%val)
+      call initscal(iniscal(iscal),bcscal(:,:,iscal),ng,lo,nh_s,nh_g,l,dl,zc,dzf,is_sforced(iscal),scalf(iscal), &
+                    scalars(iscal)%val)
     end do
     call ifc_init_field(inipsi,seps,lo,hi,nh_psi,nh_g,l,dl,zc_g,dzf_g,psi)
     do imark=1,nmk
@@ -681,13 +697,25 @@ program cans
           is_first = is_first.or..not.is_done
         end do
         open(newunit=iunit,file=trim(datadir)//'fld_dt.out',status='old',action='read',iostat=istat)
-        if(istat == 0) read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3)
-        if(istat == 0) close(iunit)
+        if(istat == 0) then
+          read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3),wall_heat_old(1:nscal)
+          if(istat /= 0 .and. nscal > 0) then
+            !
+            ! a file written before the heat losses of the scalars were saved: the values before them, with the
+            ! heat losses left as dummies
+            !
+            rewind(iunit)
+            read(iunit,*,iostat=istat) dt_restart(1:2),wall_force_old(1:3)
+            wall_heat_old(:) = -huge(1._rp)
+          end if
+          close(iunit)
+        end if
         is_first = is_first.or.istat /= 0
       end if
       call MPI_BCAST(is_first      ,1,MPI_LOGICAL,0,MPI_COMM_WORLD,ierr)
       call MPI_BCAST(dt_restart    ,2,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
       call MPI_BCAST(wall_force_old,3,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
+      call MPI_BCAST(wall_heat_old ,nscal,MPI_REAL_RP,0,MPI_COMM_WORLD,ierr)
       if(.not.is_first) then
         do is=nio+1,nio_s
           call load_one('r',trim(datadir)//'fld_'//trim(c_io_vars(is))//trim(io_ext), &
@@ -708,10 +736,14 @@ program cans
       call MPI_BCAST(savecounter,1,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
     end if
   end if
-  !$acc        enter data copyin(u,v,w,p,pp,pn,po)
-  !$omp target enter data map(to:u,v,w,p,pp,pn,po)
-  !$acc        enter data copyin(dudtrko,dvdtrko,dwdtrko,dpsidtrko)
-  !$omp target enter data map(to:dudtrko,dvdtrko,dwdtrko,dpsidtrko)
+  !$acc        enter data copyin(u,v,w,p,pp,po)
+  !$omp target enter data map(to:u,v,w,p,pp,po)
+  !$acc        enter data copyin(dudtrko,dvdtrko,dwdtrko)
+  !$omp target enter data map(to:dudtrko,dvdtrko,dwdtrko)
+  if(.not.is_ifc_split) then
+    !$acc        enter data copyin(dpsidtrko)
+    !$omp target enter data map(to:dpsidtrko)
+  end if
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
   !$acc        enter data copyin(surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
   !$omp target enter data map(to:surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o)
@@ -727,17 +759,22 @@ program cans
     end if
   end if
 #if defined(_CONSTANT_COEFFS_POISSON)
-  !$acc parallel     loop collapse(3) default(present) async(1)
-  !$omp target teams loop collapse(3)
-  do k=1-nh_p,n(3)+nh_p
-    do j=1-nh_p,n(2)+nh_p
-      do i=1-nh_p,n(1)+nh_p
-        pn(i,j,k) = p(i,j,k)
-        if(is_first) po(i,j,k) = p(i,j,k)
+  !
+  ! pressure of the previous time step, for the extrapolation of the pressure splitting
+  !
+  if(is_first) then
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
+    do k=1-nh_p,n(3)+nh_p
+      do j=1-nh_p,n(2)+nh_p
+        do i=1-nh_p,n(1)+nh_p
+          po(i,j,k) = p(i,j,k)
+        end do
       end do
     end do
-  end do
-  if(.not.is_first) call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,po)
+  else
+    call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,po)
+  end if
 #endif
   do iscal=1,nscal
     s => scalars(iscal)
@@ -756,23 +793,44 @@ program cans
       end if
     end if
   end do
-  !$acc        enter data copyin(psi) create(kappa,normx,normy,normz) async(1)
-  !$omp target enter data map(to:psi) map(alloc:kappa,normx,normy,normz)
+  !$acc        enter data copyin(psi) create(kappa) async(1)
+  !$omp target enter data map(to:psi) map(alloc:kappa)
+  if(.not.is_ifc_plic) then
+    !$acc        enter data create(normx,normy,normz) async(1)
+    !$omp target enter data map(alloc:normx,normy,normz)
+  end if
   if(is_sdf_normals) then
     !$acc        enter data create(phi) async(1)
     !$omp target enter data map(alloc:phi)
   end if
   !$acc        enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
   !$omp target enter data map(alloc:psio,psiflx_x,psiflx_y,psiflx_z)
+  if(.not.restart .and. is_solve_ns) then
+    if(any(is_velf(:))) then
+      !
+      ! bulk velocity of the initial condition along a forced direction, before the interface method uses the
+      ! velocity (not with a prescribed velocity field, which stays the one of `initflow`, as at every time step)
+      !
+      call boundp(cbcpsi,n,nh_psi,nh_g,bcpsi,nb,is_bound,dl,dzc,psi)
+      call set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_velf,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
+      call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w,restart)
+    end if
+  end if
   call ifc_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,u,v,w,psi,phi,normx,normy,normz,kappa,gam)
   if(nmk > 0) then
     !$acc        enter data copyin(markers(:))
     !$omp target enter data map(to:markers(:))
     do imark=1,nmk
-      !$acc        enter data copyin(markers(imark)%psi,markers(imark)%dpsidtrko) async(1)
-      !$omp target enter data map(to:markers(imark)%psi,markers(imark)%dpsidtrko)
-      !$acc        enter data create(markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
-      !$omp target enter data map(alloc:markers(imark)%kappa,markers(imark)%normx,markers(imark)%normy,markers(imark)%normz)
+      !$acc        enter data copyin(markers(imark)%psi) create(markers(imark)%kappa) async(1)
+      !$omp target enter data map(to:markers(imark)%psi) map(alloc:markers(imark)%kappa)
+      if(.not.is_ifc_split) then
+        !$acc        enter data copyin(markers(imark)%dpsidtrko) async(1)
+        !$omp target enter data map(to:markers(imark)%dpsidtrko)
+      end if
+      if(.not.is_ifc_plic) then
+        !$acc        enter data create(markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
+        !$omp target enter data map(alloc:markers(imark)%normx,markers(imark)%normy,markers(imark)%normz)
+      end if
       if(is_sdf_normals) then
         !$acc        enter data create(markers(imark)%phi) async(1)
         !$omp target enter data map(alloc:markers(imark)%phi)
@@ -780,7 +838,7 @@ program cans
     end do
     !$acc        enter data create(fsx,fsy,fsz) async(1)
     !$omp target enter data map(alloc:fsx,fsy,fsz)
-    call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,markers,psi)
+    call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,restart,markers,psi)
   end if
   !
   ! post-process and write initial condition
@@ -790,8 +848,8 @@ program cans
   !$acc        update self(u,v,w,p,psi,kappa)
   !$omp target update from(u,v,w,p,psi,kappa)
   do imark=1,nmk
-    !$acc        update self(markers(imark)%psi)
-    !$omp target update from(markers(imark)%psi)
+    !$acc        update self(markers(imark)%psi,markers(imark)%kappa)
+    !$omp target update from(markers(imark)%psi,markers(imark)%kappa)
   end do
   do iscal=1,nscal
     !$acc        update self(scalars(iscal)%val)
@@ -811,9 +869,9 @@ program cans
              ka12,cp12)
   dt = min(cfl*dt_cfl,dtmax)
   if(dt_f > 0.) then
-    if(dt_f > dt) then
+    if(dt_f > dt_cfl) then
       if(myid == 0) print*, 'WARNING: fixed time step exceeds estimated stability limit.'
-      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
+      if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt_cfl
     end if
     dt = dt_f
   end if
@@ -826,7 +884,6 @@ program cans
     dto = dt_restart(2)
   end if
   if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
-  dti = 1./dt
   kill = .false.
   force_balance(:,:) = 0._rp
   force_balance(:,5) = bforce(:)
@@ -872,26 +929,25 @@ program cans
                        normx,normy,normz,phi,kappa,psi,psiflx_x,psiflx_y,psiflx_z,is_first,dpsidtrko, &
                        istep,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     else
-      !$acc parallel     loop collapse(3) default(present) async(1)
-      !$omp target teams loop collapse(3)
-      do k=1-nh_ifc,n(3)+nh_ifc
-        do j=1-nh_ifc,n(2)+nh_ifc
-          do i=1-nh_ifc,n(1)+nh_ifc
-            psiflx_x(i,j,k) = 0.
-            psiflx_y(i,j,k) = 0.
-            psiflx_z(i,j,k) = 0.
-          end do
-        end do
-      end do
       call ifc_advecting_velocity(tm_coeff,is_first,istep,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dl,dzc,dzf,dzci,dzfi,wzc,dt,dto, &
                                   u,v,w,psi,psiflx_x,psiflx_y,psiflx_z,uo,vo,wo,uadv,vadv,wadv,scalars(1:nscal))
     end if
     do iscal=1,nscal
       s => scalars(iscal)
-      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,dt,ssource(iscal),rho12,ka12(:,iscal),cp12(:,iscal), &
-                   alpha0(iscal),psi,u,v,w, &
-                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,s%dsdtrko,s%val,s%so,s%sadv,uadv,vadv,wadv)
+      call tm_scal(tm_coeff,n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_sforced(iscal),l,dli,dzci,dzfi,grid_vol_ratio_f,dt, &
+                   ssource(iscal),rho12,ka12(:,iscal),cp12(:,iscal),alpha0(iscal),psi,u,v,w, &
+                   psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_heat_old(iscal),s%dsdtrko,s%val,sforce_balance(:,iscal), &
+                   wall_heat_imp,s%so,s%sadv,uadv,vadv,wadv)
       if(is_impdiff) then
+        if(is_sforced(iscal)) then
+          !
+          ! zero-net-heating forcing: the heat lost through the boundaries by the terms integrated implicitly is
+          ! balanced here, first with its value at the old time level (returned by `tm_scal`), before the solve
+          !
+          call cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio_f,rho12*cp12(:,iscal),psi,s%val,stot_o,rhocp_mean)
+          wall_heat_imp = wall_heat_imp*dt
+          call impdiff_updt_forcing_s(n,nh_s,nh_psi,rho12*cp12(:,iscal),psi,wall_heat_imp,s%val)
+        end if
         if(is_impdiff_1d) then
           call impdiff_z_scal_solve(n,nh_s,nh_psi,nh_g,cbcscal(:,:,iscal),bcscal(:,:,iscal),dzc,dzci,dzfi,0.5_rp*dt, &
                                     rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
@@ -907,12 +963,31 @@ program cans
                                      rho12*cp12(:,iscal),ka12(:,iscal),psi,s%val)
 #endif
         end if
+        if(is_sforced(iscal)) then
+          !
+          ! and then with the small remainder that keeps the total of rho*cp*s unchanged by the implicit integration
+          !
+          call cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio_f,rho12*cp12(:,iscal),psi,s%val,stot,rhocp_mean)
+          stot = stot_o-stot
+          call impdiff_updt_forcing_s(n,nh_s,nh_psi,rho12*cp12(:,iscal),psi,stot,s%val)
+          sforce_balance(1,iscal) = sforce_balance(1,iscal) + (wall_heat_imp+stot)/dt
+        end if
       end if
       call boundp(cbcscal(:,:,iscal),n,nh_s,nh_g,bcscal(:,:,iscal),nb,is_bound,dl,dzc,s%val)
+      if(is_sforced(iscal)) then
+        !
+        ! measured rate of change of the mean of rho*cp*s, from its value at the start of the step (returned by
+        ! `tm_scal`), and the means
+        !
+        call cmpt_scal_mean(n,nh_s,nh_psi,nh_g,grid_vol_ratio_f,rho12*cp12(:,iscal),psi,s%val,stot,rhocp_mean)
+        sforce_balance(2,iscal) = (stot-sforce_balance(2,iscal))/dt
+        sforce_balance(3,iscal) = stot
+        sforce_balance(4,iscal) = stot/rhocp_mean
+      end if
     end do
     if(.not.is_solve_ns) then
       call initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho12(2),mu12(2), &
-                    bforce,is_wallturb,time,u,v,w,p)
+                    is_forced,velf,bforce,is_wallturb,time,u,v,w,p,is_velf)
       !$acc wait(1)
       !$acc        update device(u,v,w,p) async(1)
       !$omp target update to(u,v,w,p)
@@ -941,14 +1016,14 @@ program cans
       if(nmk > 0) call ifc_markers_force(n,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,markers,psi,fsx,fsy,fsz)
       call tm(tm_coeff,n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,is_bound,is_forced,l,dli,dzci,dzfi,wzc, &
               grid_vol_ratio_c,grid_vol_ratio_f, &
-              dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,pn,po,scalars(1)%val, &
+              dt,dt_r,bforce,gacc,sigma,rho_av,rho12,mu12,beta12,rho0,psi,kappa,p,po,scalars(1)%val, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
               surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
               psio,psiflx_x,psiflx_y,psiflx_z,is_first,wall_force_old,dudtrko,dvdtrko,dwdtrko,u,v,w,force_balance, &
-              uadv,vadv,wadv,fsx,fsy,fsz,mfields)
+              wall_force_imp,uadv,vadv,wadv,fsx,fsy,fsz,mfields)
       if(is_forced_hit) then
-        call lscale_forcing(2,lo,hi,nh_v,nh_g,0.5_rp,dtrk,l,dl,zc,zf,u,v,w)
+        call lscale_forcing(forced_hit_type,lo,hi,nh_v,nh_g,forced_hit_amp,dtrk,l,dl,zc,u,v,w)
       end if
       if(is_impdiff) then
         !
@@ -957,11 +1032,9 @@ program cans
         if(any(is_forced(:))) then
           !
           ! zero-net-acceleration forcing: the wall shear of the terms integrated implicitly is balanced
-          ! here, first with its value at the old time level, before the solve
+          ! here, first with its value at the old time level (returned by `tm`), before the solve
           !
           call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum_o)
-          call impdiff_wall_force(n,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,psio, &
-                                  wall_force_imp,momentum)
           wall_force_imp(:) = wall_force_imp(:)*dtrk
           call impdiff_updt_forcing(n,nh_v,nh_psi,nh_g,wzc,rho12,psi,wall_force_imp,u,v,w)
         end if
@@ -1010,21 +1083,20 @@ program cans
         call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_forced,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
         where(is_forced(:)) force_balance(:,6) = (momentum(:)-force_balance(:,6))/dt
       end if
+#if defined(_CONSTANT_COEFFS_POISSON)
+      !$acc parallel     loop collapse(3) default(present) async(1)
+      !$omp target teams loop collapse(3)
+      do k=1-nh_p,n(3)+nh_p
+        do j=1-nh_p,n(2)+nh_p
+          do i=1-nh_p,n(1)+nh_p
+            po(i,j,k) = p(i,j,k)
+          end do
+        end do
+      end do
+#endif
       call updatep(n,nh_p,nh_g,dli,dzci,dzfi,alpha,pp,p)
       call boundp(cbcpre,n,nh_p,nh_g,bcpre,nb,is_bound,dl,dzc,p)
     end if
-#if defined(_CONSTANT_COEFFS_POISSON)
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
-    do k=1-nh_p,n(3)+nh_p
-      do j=1-nh_p,n(2)+nh_p
-        do i=1-nh_p,n(1)+nh_p
-          po(i,j,k) = pn(i,j,k)
-          pn(i,j,k) =  p(i,j,k)
-        end do
-      end do
-    end do
-#endif
     is_first = .false.
     !
     ! check simulation stopping criteria
@@ -1047,19 +1119,8 @@ program cans
       call chkdt(n,nh_v,nh_g,dl,dzci,dzfi,is_solve_ns,is_track_interface,mu12,rho12,sigma,gacc,u,v,w,dt_cfl,gam,seps, &
                  ka12,cp12)
       dt = min(cfl*dt_cfl,dtmax)
-      if(dt_f > 0.) then
-        if(dt_f > dt) then
-          if(myid == 0) print*, 'ERROR: fixed time step exceeds estimated stability limit.'
-          if(myid == 0) print*, 'dt_f = ', dt_f, 'Estimated stable dt = ', dt
-          if(myid == 0) print*, 'Aborting...'
-          is_done = .true.
-          kill = .true.
-        else
-          dt = dt_f
-        end if
-      end if
+      if(dt_f > 0.) dt = dt_f
       if(myid == 0) print*, 'dt_cfl = ', dt_cfl, 'dt = ', dt
-      dti = 1./dt
       call chkdiv(lo,hi,nh_v,nh_g,l,dli,dzfi,u,v,w,divtot,divmax)
       if(myid == 0) print*, 'Velocity divergence norms: Mean = ', divtot, '| Maximum = ', divmax
       if((divmax > small.and..not.is_mask_divergence_check).or.is_nan(divtot)) then
@@ -1074,7 +1135,7 @@ program cans
     !
     if(is_output_due(istep,iout0d,tout0d,time_start,time)) then
       !allocate(var(4))
-      var(1) = 1.*istep
+      var(1) = 1._rp*istep
       var(2) = dt
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
@@ -1106,8 +1167,17 @@ program cans
         var(11:13) = force_balance(:,4)
         var(14:16) = force_balance(:,5)
         var(17:19) = force_balance(:,6)
-        call out0d(trim(datadir)//'forcing_balance.out',19,var)
+        var(20:22) = force_balance(:,7)
+        call out0d(trim(datadir)//'forcing_balance.out',22,var)
       end if
+      do iscal=1,nscal
+        if(is_sforced(iscal)) then
+          write(scalnum,'(i3.3)') iscal
+          var(1) = time
+          var(2:5) = sforce_balance(1:4,iscal)
+          call out0d(trim(datadir)//'forcing_scalar_'//scalnum//'.out',5,var)
+        end if
+      end do
       !
       call ifc_write_log(istep,time,n,nh_psi,nh_g,dl,dzf,gam,seps,psi)
     end if
@@ -1145,8 +1215,8 @@ program cans
       !$acc        update self(u,v,w,p,psi,kappa)
       !$omp target update from(u,v,w,p,psi,kappa)
       do imark=1,nmk
-        !$acc        update self(markers(imark)%psi)
-        !$omp target update from(markers(imark)%psi)
+        !$acc        update self(markers(imark)%psi,markers(imark)%kappa)
+        !$omp target update from(markers(imark)%psi,markers(imark)%kappa)
       end do
       do iscal=1,nscal
         !$acc        update self(scalars(iscal)%val)
@@ -1178,12 +1248,16 @@ program cans
         !$omp target update from(scalars(iscal)%val)
       end do
       if(is_full_restart) then
-        !$acc        update self(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
-        !$omp target update from(po,dudtrko,dvdtrko,dwdtrko,dpsidtrko)
-        do imark=1,nmk
-          !$acc        update self(markers(imark)%dpsidtrko)
-          !$omp target update from(markers(imark)%dpsidtrko)
-        end do
+        !$acc        update self(po,dudtrko,dvdtrko,dwdtrko)
+        !$omp target update from(po,dudtrko,dvdtrko,dwdtrko)
+        if(.not.is_ifc_split) then
+          !$acc        update self(dpsidtrko)
+          !$omp target update from(dpsidtrko)
+          do imark=1,nmk
+            !$acc        update self(markers(imark)%dpsidtrko)
+            !$omp target update from(markers(imark)%dpsidtrko)
+          end do
+        end if
         do iscal=1,nscal
           !$acc        update self(scalars(iscal)%dsdtrko)
           !$omp target update from(scalars(iscal)%dsdtrko)
@@ -1249,11 +1323,11 @@ program cans
       end if
       if(is_full_restart) then
         !
-        ! time steps and wall force of the previous time step
+        ! time steps, and wall force and heat loss (of each scalar) of the previous time step
         !
         if(myid == 0) then
           open(newunit=iunit,file=trim(datadir)//trim(filename)//'_dt.out',status='replace')
-          write(iunit,'(*(es24.16e3,1x))') dt,dto,wall_force_old(1:3)
+          write(iunit,'(*(es24.16e3,1x))') dt,dto,wall_force_old(1:3),wall_heat_old(1:nscal)
           close(iunit)
         end if
         if(.not.is_overwrite_save.or.nsaves_max > 0) then
@@ -1261,7 +1335,7 @@ program cans
         end if
       end if
       if(is_overwrite_save.and.nsaves_max > 0) then
-        var(1) = 1.*istep
+        var(1) = 1._rp*istep
         var(2) = time
         var(3) = 1.*savecounter
         call out0d(trim(datadir)//'log_checkpoints.out',3,var)

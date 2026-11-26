@@ -21,3 +21,5 @@ build.conf
 configs/*.mk
 build/
 !.github/actions/build/
+__pycache__/
+*.pyc

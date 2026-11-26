@@ -7,13 +7,14 @@
 module mod_mom
   use mpi
   use mod_param, only: is_boussinesq_buoyancy,is_harmonic_interpolation,is_ifc_split,is_visc_limiter, &
-                       is_brackbill_normalization
+                       is_brackbill_normalization,psi_eps
   use mod_types
   implicit none
   private
-  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum,cmpt_capillary_force
+  public mom_xyz_ad,mom_xyz_a_cons,mom_xyz_oth,mom_xyz_marangoni,cmpt_wallshear,cmpt_bodyforce,cmpt_momentum, &
+         cmpt_capillary_force,marker_fields
   !
-  type, public :: marker_fields
+  type :: marker_fields
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null(),kappa => null() ! phase indicator and curvature of a
                                                                                      ! marker (see `rk`)
   end type marker_fields
@@ -554,8 +555,8 @@ module mod_mom
     !
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
     !
-    !$acc parallel     loop collapse(3) default(present) private(factorp) async(1)
-    !$omp target teams loop collapse(3)                  private(factorp)
+    !$acc parallel     loop collapse(3) default(present) private(factorp,psip) async(1)
+    !$omp target teams loop collapse(3)                  private(factorp,psip)
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -584,8 +585,8 @@ module mod_mom
     !
     rhobeta = rho12(2)*beta12(2); drhobeta = rho12(1)*beta12(1)-rho12(2)*beta12(2)
     !
-    !$acc parallel     loop collapse(3) default(present) private(factorp) async(1)
-    !$omp target teams loop collapse(3)                  private(factorp)
+    !$acc parallel     loop collapse(3) default(present) private(factorp,psip) async(1)
+    !$omp target teams loop collapse(3)                  private(factorp,psip)
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -608,13 +609,12 @@ module mod_mom
     real(rp), intent(in ), dimension(2) :: rho12,mu12
     real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:), optional :: psiflx_x,psiflx_y,psiflx_z
+    real(rp), intent(in ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(out), dimension( :, :, :) :: dudt,dvdt,dwdt
     integer :: i,j,k
-    real(rp) :: rho,drho,mu,dmu,rhobeta,drhobeta,nu1,nu2
+    real(rp) :: rho,drho,mu,dmu,nu1,nu2
     real(rp) :: dxi,dyi
     real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
-                d_ccm,d_pcm,d_cpm,d_cmc,d_pmc,d_mcc,d_ccc,d_pcc,d_mpc,d_cpc,d_cmp,d_mcp,d_ccp,d_cpp,d_ppc,d_pcp, &
                 u_ccm,u_pcm,u_cpm,u_cmc,u_pmc,u_mcc,u_ccc,u_pcc,u_mpc,u_cpc,u_cmp,u_mcp,u_ccp, &
                 v_ccm,v_pcm,v_cpm,v_cmc,v_pmc,v_mcc,v_ccc,v_pcc,v_mpc,v_cpc,v_cmp,v_mcp,v_ccp, &
                 w_ccm,w_pcm,w_cpm,w_cmc,w_pmc,w_mcc,w_ccc,w_pcc,w_mpc,w_cpc,w_cmp,w_mcp,w_ccp, &
@@ -625,12 +625,9 @@ module mod_mom
     real(rp) :: uuip,uuim,vujp,vujm,wukp,wukm,uvip,uvim,vvjp,vvjm,wvkp,wvkm,uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     real(rp) :: muxp,muxm,muyp,muym,muzp,muzm
-    real(rp) :: rhoxp,rhoyp,rhozp
     real(rp) :: dudt_aux,dvdt_aux,dwdt_aux
     logical  :: is_adv,is_harm,is_lim,is_lim_c
     real(rp) :: c_min,c_max
-    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! full and empty cells for the viscosity
-                                                                         ! limiter (as for the reconstruction)
     !
     rho = rho12(2); drho = rho12(1)-rho12(2)
     is_harm = is_harmonic_interpolation
@@ -715,13 +712,13 @@ module mod_mom
           c_pcp = psi(i+1,j  ,k+1)
           !
           ! the viscosity limiter only matters where the two phases meet: it is skipped where all the cells of
-          ! the stencil are full, or all empty, to the tolerance `c_eps`
+          ! the stencil are full, or all empty, to the tolerance `psi_eps`
           !
           is_lim_c = is_lim
           if(is_lim) then
             c_min = min(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
             c_max = max(c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp)
-            is_lim_c = c_min < 1._rp-c_eps .and. c_max > c_eps
+            is_lim_c = c_min < 1._rp-psi_eps .and. c_max > psi_eps
           end if
           !
           flx_x_mcc = rho*u_mcc + drho*psiflx_x(i-1,j  ,k  )
@@ -1094,7 +1091,7 @@ module mod_mom
   end subroutine mom_xyz_a_cons
   !
   subroutine mom_xyz_oth(n,nh_v,nh_p,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,dzfi,wzc,dt_r,rho12,beta12,bforce,gacc,sigma,rho0,rho_av, &
-                         p,psi,kappa,s,pn,po, &
+                         p,psi,kappa,s,po, &
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
                          surfx_n,surfy_n,surfz_n,surfx_o,surfy_o,surfz_o, &
 #endif
@@ -1118,7 +1115,7 @@ module mod_mom
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:)           :: psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:)           :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
-    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: pn,po
+    real(rp), intent(in   ), dimension(1-nh_p:,1-nh_p:,1-nh_p:), optional :: po
 #if defined(_BALANCED_CAPILLARY_PRESSURE_SPLIT)
     real(rp), intent(inout), dimension(:,:,:) :: surfx_n,surfy_n,surfz_n, &
                                                  surfx_o,surfy_o,surfz_o
@@ -1129,13 +1126,13 @@ module mod_mom
     integer :: i,j,k
     real(rp) :: rho,drho,rhobeta,drhobeta,rho0i
     real(rp) :: dxi,dyi
-    real(rp) :: c_ccm,c_pcm,c_cpm,c_cmc,c_pmc,c_mcc,c_ccc,c_pcc,c_mpc,c_cpc,c_cmp,c_mcp,c_ccp,c_cpp,c_ppc,c_pcp, &
+    real(rp) :: c_ccc,c_pcc,c_cpc,c_ccp, &
                 p_ccc,p_pcc,p_cpc,p_ccp, &
                 q_ccc,q_pcc,q_cpc,q_ccp, &
                 s_ccc,s_pcc,s_cpc,s_ccp, &
                 k_ccc,k_pcc,k_cpc,k_ccp, &
                 bforcex,bforcey,bforcez,gaccx,gaccy,gaccz,rhox_av,rhoy_av,rhoz_av, &
-                dzci_c,dzci_m,dzfi_c,dzfi_p, &
+                dzci_c, &
                 psixp,psiyp,psizp
     real(rp) :: rhoxp,rhoyp,rhozp, &
                 skappaxp,skappayp,skappazp, &
@@ -1162,6 +1159,9 @@ module mod_mom
     if(is_brack) surf_factor = sigma*2._rp/(rho12(1)+rho12(2)) ! density-based scaling of Brackbill et al.
     rhox_av = rho_av(1); rhoy_av = rho_av(2); rhoz_av = rho_av(3)
     !
+    bforcex = bforce(1); bforcey = bforce(2); bforcez = bforce(3)
+    gaccx = gacc(1); gaccy = gacc(2); gaccz = gacc(3)
+    !
     ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
     !                                        all scalars should be firstprivate/private
     !
@@ -1178,10 +1178,10 @@ module mod_mom
           p_ccp = p(i  ,j  ,k+1)
           !
 #if defined(_CONSTANT_COEFFS_POISSON)
-          q_ccc = (1.+dt_r)*pn(i  ,j  ,k  )-dt_r*po(i  ,j  ,k  )
-          q_pcc = (1.+dt_r)*pn(i+1,j  ,k  )-dt_r*po(i+1,j  ,k  )
-          q_cpc = (1.+dt_r)*pn(i  ,j+1,k  )-dt_r*po(i  ,j+1,k  )
-          q_ccp = (1.+dt_r)*pn(i  ,j  ,k+1)-dt_r*po(i  ,j  ,k+1)
+          q_ccc = (1.+dt_r)*p_ccc-dt_r*po(i  ,j  ,k  )
+          q_pcc = (1.+dt_r)*p_pcc-dt_r*po(i+1,j  ,k  )
+          q_cpc = (1.+dt_r)*p_cpc-dt_r*po(i  ,j+1,k  )
+          q_ccp = (1.+dt_r)*p_ccp-dt_r*po(i  ,j  ,k+1)
 #endif
           !
           if(is_buoyant) then
@@ -1200,13 +1200,6 @@ module mod_mom
           c_pcc = psi(i+1,j  ,k  )
           c_cpc = psi(i  ,j+1,k  )
           c_ccp = psi(i  ,j  ,k+1)
-          !
-          bforcex = bforce(1)
-          bforcey = bforce(2)
-          bforcez = bforce(3)
-          gaccx = gacc(1)
-          gaccy = gacc(2)
-          gaccz = gacc(3)
           !
           psixp = 0.5*(c_pcc+c_ccc)
           psiyp = 0.5*(c_cpc+c_ccc)
@@ -1370,6 +1363,10 @@ module mod_mom
     momx = 0._rp; momy = 0._rp; momz = 0._rp
     !$acc        data copy(gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz,momx,momy,momz) async(1)
     !$omp target data map(tofrom:gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz,momx,momy,momz)
+    !
+    ! making an exception for this kernel -- private variables not explicitly mentioned for the sake of conciseness
+    !                                        all scalars should be firstprivate/private
+    !
     !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
     !$acc reduction(+:gravx,gravy,gravz,surfsumx,surfsumy,surfsumz,buoyx,buoyy,buoyz,momx,momy,momz) async(1)
     !$omp target teams loop collapse(3) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
@@ -1513,10 +1510,10 @@ module mod_mom
     momx = 0._rp; momy = 0._rp; momz = 0._rp
     !$acc        data copy(momx,momy,momz) async(1)
     !$omp target data map(tofrom:momx,momy,momz)
-    !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
-    !$acc reduction(+:momx,momy,momz) async(1)
-    !$omp target teams loop collapse(3) firstprivate(is_cmptx,is_cmpty,is_cmptz) &
-    !$omp reduction(+:momx,momy,momz)
+    !$acc parallel loop collapse(3) default(present) firstprivate(is_cmptx,is_cmpty,is_cmptz) reduction(+:momx,momy,momz) &
+    !$acc private(weight_f,weight_c,rhoxp,rhoyp,rhozp) async(1)
+    !$omp target teams loop collapse(3) firstprivate(is_cmptx,is_cmpty,is_cmptz) reduction(+:momx,momy,momz) &
+    !$omp private(weight_f,weight_c,rhoxp,rhoyp,rhozp)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -1887,7 +1884,7 @@ module mod_mom
     end do
   end subroutine cmpt_capillary_force
   !
-  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,is_brack,psi_p,psi,kappa,s, &
+  subroutine mom_xyz_marangoni(n,nh_v,nh_s,nh_psi,nh_ifc,nh_g,dli,dzci,wzc,rho12,mu12,dsigma,s_ref,psi_p,psi,kappa,s, &
                                factor,u,v,w)
     !
     ! capillary force of the variation of the surface tension with the first scalar,
@@ -1911,7 +1908,6 @@ module mod_mom
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzci,wzc
     real(rp), intent(in   ), dimension(2) :: rho12,mu12
     real(rp), intent(in   ) :: dsigma,s_ref
-    logical , intent(in   ) :: is_brack
     real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi_p,psi
     real(rp), intent(in   ), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: kappa
     real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:) :: s
@@ -1919,9 +1915,10 @@ module mod_mom
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
     real(rp) :: rho,drho,mu,dmu,bfac,mfac,dxi,dyi,hz_c
     real(rp) :: fx,fy,fz,ga,gb,gc,sa,sb,sc,gm2,psif,c_min,c_max
-    real(rp), parameter :: c_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! (as for the reconstruction and the limiter)
+    logical  :: is_brack
     integer  :: i,j,k
     !
+    is_brack = is_brackbill_normalization
     rho = rho12(2); drho = rho12(1)-rho12(2)
     mu  = mu12(2) ; dmu  = mu12(1) -mu12(2)
     bfac = 2._rp/(rho12(1)+rho12(2))
@@ -1944,7 +1941,7 @@ module mod_mom
                       psi(i+1,j+1,k  ),psi(i+1,j-1,k  ),psi(i-1,j+1,k  ), &
                       psi(i  ,j  ,k+1),psi(i+1,j  ,k+1),psi(i-1,j  ,k+1),psi(i  ,j+1,k+1),psi(i  ,j-1,k+1), &
                       psi(i  ,j  ,k-1),psi(i+1,j  ,k-1),psi(i  ,j+1,k-1))
-          if(c_max-c_min <= c_eps) cycle
+          if(c_max-c_min <= psi_eps) cycle
           hz_c = dzci(k)*dzci(k-1)/(dzci(k)+dzci(k-1)) ! (factor of the centred difference along z)
           !
           ! x face

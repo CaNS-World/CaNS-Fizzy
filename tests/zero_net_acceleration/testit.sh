@@ -42,6 +42,8 @@ run_case channel input.nml test.py
 run_case capillary input_capillary.nml test_capillary.py
 run_case capillary_equal_density input_capillary.nml test_capillary_momentum.py 's/rho12(1:2) = 10., 1./rho12(1:2) = 1., 1./'
 run_case boussinesq input_boussinesq.nml test_boussinesq.py
+run_case marangoni input_capillary.nml test_marangoni.py \
+         "s/rho12(1:2) = 10., 1./rho12(1:2) = 1., 1./;s/^iniscal.*/iniscal(1) = 'cos'/;/^&two_fluid/a dsigma_ds = -0.04, s_ref = 0."
 
 #
 # inputs that must be rejected

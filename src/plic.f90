@@ -356,9 +356,9 @@ module mod_plic
     ! along the first and second transverse directions (na, nb) and along the columns (nq)
     !
     implicit none
-    real(rp), intent(in), dimension(-1:1,-1:1) :: hgt
-    real(rp), intent(in) :: sgn,dam,dap,dbm,dbp
-    logical , intent(in) :: is_act_a,is_act_b
+    real(rp), intent(in ), dimension(-1:1,-1:1) :: hgt
+    real(rp), intent(in ) :: sgn,dam,dap,dbm,dbp
+    logical , intent(in ) :: is_act_a,is_act_b
     real(rp), intent(out) :: na,nb,nq
     real(rp) :: ha,hb,s
     !$acc routine seq

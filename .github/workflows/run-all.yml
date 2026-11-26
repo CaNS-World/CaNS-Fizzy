@@ -5,9 +5,15 @@ on:
   push:
     branches:
     - main
+    paths-ignore:
+    - '**.md'
+    - 'docs/**'
   pull_request:
     branches:
     - main
+    paths-ignore:
+    - '**.md'
+    - 'docs/**'
     types:
     - opened
     - reopened
@@ -15,12 +21,18 @@ on:
     - ready_for_review
 
 #
-# a new push to a branch cancels the run of its previous commit (never on main)
+# a new push to a branch cancels the run of its previous commit; on main, every commit has a group of its own,
+# so that a run is neither cancelled nor replaced while it waits for an earlier one
 #
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+#
+# the GNU job runs all the variants and tests of the local harness (tests/testall.sh), with the optimized and the
+# debug builds; the Intel job (debug build) and the NVIDIA job (optimized build, on the CPU) run the default variant
+# with the tests listed by default in run-compiler.yml, a subset
+#
 jobs:
   GNU:
     uses: ./.github/workflows/run-compiler.yml
@@ -28,7 +40,7 @@ jobs:
       compiler: "GNU"
       cpu_target: "x86-64"
       variants: '["default", "unbalanced", "hypre"]'
-      tests_default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "plic_unit", "plic_advection", "plic_momentum", "viscosity_limiter", "contact_angle", "rising_bubble-plic", "restart_two_fluid-plic", "rising_bubble-thincsplit", "restart_two_fluid-thincsplit", "zero_net_acceleration", "implicit_diffusion-plic", "implicit_diffusion-thincsplit", "marangoni_layer", "markers", "markers-plic", "markers-thincsplit", "marangoni_markers", "single_precision"]'
+      tests_default: '["lid_driven_cavity", "differentially_heated_cavity", "deforming_circle", "rising_bubble", "start_stop", "restart_two_fluid", "implicit_diffusion", "poisson", "taylor_green_vortex_2d", "navier_slip", "forced_hit", "deforming_circle-thinc", "rising_bubble-thinc", "restart_two_fluid-thinc", "implicit_diffusion-thinc", "plic_unit", "plic_advection", "plic_momentum", "viscosity_limiter", "contact_angle", "rising_bubble-plic", "restart_two_fluid-plic", "rising_bubble-thincsplit", "restart_two_fluid-thincsplit", "zero_net_acceleration", "implicit_diffusion-plic", "implicit_diffusion-thincsplit", "marangoni_layer", "markers", "markers-plic", "markers-thincsplit", "marangoni_markers", "single_precision", "single_fluid", "input_checks", "options", "forcing_targets", "forcing_targets-plic", "forcing_targets-thincsplit"]'
 
   INTEL:
     uses: ./.github/workflows/run-compiler.yml
@@ -36,6 +48,7 @@ jobs:
       compiler: "INTEL"
       test_modes: '["dbg"]'
       variants: '["default"]'
+      tests_in_one_job: true
 
   NVIDIA:
     uses: ./.github/workflows/run-compiler.yml
@@ -44,3 +57,4 @@ jobs:
       cpu_target: "px"
       test_modes: '["opt"]'
       variants: '["default"]'
+      tests_in_one_job: true

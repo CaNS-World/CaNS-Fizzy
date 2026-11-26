@@ -7,14 +7,16 @@
 module mod_initflow
   use mpi
   use mod_common_mpi, only: ierr,myid
+  use mod_mom       , only: cmpt_momentum
   use mod_param     , only: pi
+  use mod_two_fluid , only: bulk_mean_12_stag
   use mod_types
   implicit none
   private
-  public initflow,initscal,add_noise
+  public initflow,initscal,add_noise,set_bulk_velocity
   contains
   subroutine initflow(inivel,cbcvel,bcvel,ng,lo,nh_v,nh_p,nh_g,l,dl,zc,zf,dzc,dzf,rho,mu, &
-                      bforce,is_wallturb,time,u,v,w,p)
+                      is_forced,velf,bforce,is_wallturb,time,u,v,w,p,is_velf)
     !
     ! computes initial conditions for the velocity field
     !
@@ -27,11 +29,13 @@ module mod_initflow
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), intent(in), dimension(1-nh_g:) :: zc,zf,dzc,dzf
     real(rp), intent(in)               :: rho,mu
-    real(rp), intent(in), dimension(3) :: bforce
+    logical , intent(in), dimension(3) :: is_forced
+    real(rp), intent(in), dimension(3) :: velf,bforce
     logical , intent(in)               :: is_wallturb
     real(rp), intent(in)               :: time
     real(rp), target, dimension(1-nh_v:,1-nh_v:,1-nh_v:), intent(inout) :: u,v,w
     real(rp), target, dimension(1-nh_p:,1-nh_p:,1-nh_p:), intent(inout) :: p
+    logical , intent(out), dimension(3) :: is_velf
     real(rp), pointer, dimension(:,:,:) :: us,ut,un
     real(rp), allocatable, dimension(:) :: u1d_n,u1d_t,rn,rt,rs,rft,rfn
     character(len=len(inivel)) :: ini
@@ -93,6 +97,13 @@ module mod_initflow
     is_pair  = .false.
     uref  = 1.
     ubulk = uref
+    if(is_forced(idir_s)) ubulk = velf(idir_s) ! (bulk velocity of the profile along a forced direction, as in CaNS)
+    !
+    ! direction whose mean velocity is set from `velf`: the profile direction of a forced profile with a mean;
+    ! `set_bulk_velocity` then makes it the mass-averaged velocity
+    !
+    is_velf(:) = .false.
+    is_velf(idir_s) = is_forced(idir_s) .and. any(trim(ini) == ['poi','hcp','log','hcl'])
     select case(trim(ini))
     case('cou')
       call couette(   n(idir_n),rn/lprof,1._rp,u1d_n)
@@ -139,7 +150,7 @@ module mod_initflow
             u(i,j,k) =  sin(xf)*cos(yc)*cos(zcc)*uref
             v(i,j,k) = -cos(xc)*sin(yf)*cos(zcc)*uref
             w(i,j,k) = 0.
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -197,23 +208,20 @@ module mod_initflow
         reb   = (retau/.09)**(1./.88)
         ubulk = reb*visc/(2*lref)
       else                 ! laminar flow
-        ubulk = (bforce(idir_s)*lref**2/(3.*visc))
+        ubulk = (bforce(idir_s)*lref**2/(3.*mu))
       end if
       call poiseuille(n(idir_n),rn/lprof,ubulk,u1d_n)
       is_mean = .true.
     case('rot-z') ! solid body rotation around z
       do k=1,n(3)
-        zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
             u(i,j,k) = -2.*pi*yc
             v(i,j,k) =  2.*pi*xc
             w(i,j,k) = 0.
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -222,14 +230,11 @@ module mod_initflow
         zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
           do i=1,n(1)
-            xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
             u(i,j,k) =  0.
             v(i,j,k) = -2.*pi*zcc
             w(i,j,k) =  2.*pi*yc
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -237,21 +242,17 @@ module mod_initflow
       do k=1,n(3)
         zcc = zc(k)/l(3)-0.5
         do j=1,n(2)
-          yc = (j+lo(2)-1-.5)*dl(2)/l(2)-0.5
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)-0.5
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)-0.5
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)-0.5
             u(i,j,k) = -2.*pi*zcc
             v(i,j,k) =  0.
             w(i,j,k) =  2.*pi*xc
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
     case('vor-z') ! 2D serpentine vortex around z
       do k=1,n(3)
-        zcc = zc(k)/l(3)
         do j=1,n(2)
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)
           yf = (j+lo(2)-1-.0)*dl(2)/l(2)
@@ -261,7 +262,7 @@ module mod_initflow
             u(i,j,k) =  sin(pi*xf)**2*sin(2*pi*yc)*cos(pi*time/4.)
             v(i,j,k) = -sin(pi*yf)**2*sin(2*pi*xc)*cos(pi*time/4.)
             w(i,j,k) = 0.
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -270,15 +271,13 @@ module mod_initflow
         zcc = zc(k)/l(3)
         zff = zf(k)/l(3)
         do j=1,n(2)
-          yc = (j+lo(2)-1-.5)*dl(2)/l(2)
-          yf = (j+lo(2)-1-.0)*dl(2)/l(2)
           do i=1,n(1)
             xc = (i+lo(1)-1-.5)*dl(1)/l(1)
             xf = (i+lo(1)-1-.0)*dl(1)/l(1)
             u(i,j,k) =  sin(pi*xf )**2*sin(2*pi*zcc)*cos(pi*time/4.)
             v(i,j,k) = 0.
             w(i,j,k) = -sin(pi*zff)**2*sin(2*pi*xc )*cos(pi*time/4.)
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -290,12 +289,10 @@ module mod_initflow
           yc = (j+lo(2)-1-.5)*dl(2)/l(2)
           yf = (j+lo(2)-1-.0)*dl(2)/l(2)
           do i=1,n(1)
-            xc = (i+lo(1)-1-.5)*dl(1)/l(1)
-            xf = (i+lo(1)-1-.0)*dl(1)/l(1)
             u(i,j,k) = 0.
             v(i,j,k) =  sin(pi*yf )**2*sin(2*pi*zcc)*cos(pi*time/4.)
             w(i,j,k) = -sin(pi*zff)**2*sin(2*pi*yc )*cos(pi*time/4.)
-            p(i,j,k) = 0.!(cos(2.*xc)+cos(2.*yc))*(cos(2.*zcc)+2.)/16.*uref**2
+            p(i,j,k) = 0.
           end do
         end do
       end do
@@ -432,7 +429,64 @@ module mod_initflow
     end if
   end subroutine initflow
   !
-  subroutine initscal(inisca,bcsca,ng,lo,nh,nh_g,l,dl,zc,dzf,s)
+  subroutine set_bulk_velocity(n,nh_v,nh_psi,nh_g,is_velf,velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w)
+    !
+    ! along the direction whose mean velocity `initflow` set from `velf` (`is_velf`), scales the initial velocity
+    ! such that its mass-averaged value, total momentum over total mass (the quantity that the zero-net-acceleration
+    ! forcing keeps), is `velf`; it needs the phase indicator with its halo, hence it is called after `initflow`, once
+    ! the phase indicator is set; it scales the interior points, and the boundary conditions are imposed afterwards
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_psi,nh_g
+    logical , intent(in   ), dimension(3) :: is_velf
+    real(rp), intent(in   ), dimension(3) :: velf
+    real(rp), intent(in   ), dimension(1-nh_g:) :: grid_vol_ratio_c,grid_vol_ratio_f,wzc
+    real(rp), intent(in   ), dimension(2) :: rho12
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: u,v,w
+    real(rp), dimension(3) :: momentum
+    real(rp) :: mass
+    integer  :: idir
+    !
+    call cmpt_momentum(n,nh_v,nh_psi,nh_g,is_velf,grid_vol_ratio_c,grid_vol_ratio_f,wzc,rho12,psi,u,v,w,momentum)
+    do idir=1,3
+      if(.not.is_velf(idir) .or. abs(momentum(idir)) <= 0._rp) cycle
+      if(idir < 3) then
+        call bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio_f,wzc,psi,rho12,mass)
+      else
+        call bulk_mean_12_stag(n,nh_psi,nh_g,idir,grid_vol_ratio_c,wzc,psi,rho12,mass)
+      end if
+      select case(idir)
+      case(1)
+        call scale_field(n,nh_v,velf(idir)*mass/momentum(idir),u)
+      case(2)
+        call scale_field(n,nh_v,velf(idir)*mass/momentum(idir),v)
+      case(3)
+        call scale_field(n,nh_v,velf(idir)*mass/momentum(idir),w)
+      end select
+    end do
+  end subroutine set_bulk_velocity
+  !
+  subroutine scale_field(n,nh,factor,p)
+    implicit none
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh
+    real(rp), intent(in   )               :: factor
+    real(rp), intent(inout), dimension(1-nh:,1-nh:,1-nh:) :: p
+    integer :: i,j,k
+    !$acc parallel     loop collapse(3) default(present) async(1)
+    !$omp target teams loop collapse(3)
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          p(i,j,k) = p(i,j,k)*factor
+        end do
+      end do
+    end do
+  end subroutine scale_field
+  !
+  subroutine initscal(inisca,bcsca,ng,lo,nh,nh_g,l,dl,zc,dzf,is_sforced,scalf,s)
     !
     ! computes initial conditions for the scalar field
     !
@@ -443,12 +497,14 @@ module mod_initflow
     integer , intent(in)               :: nh,nh_g
     real(rp), intent(in), dimension(3) :: l,dl
     real(rp), intent(in), dimension(1-nh_g:) :: zc,dzf
+    logical , intent(in)               :: is_sforced
+    real(rp), intent(in)               :: scalf
     real(rp), dimension(1-nh:,1-nh:,1-nh:), intent(out) :: s
     real(rp), allocatable, dimension(:) :: s1d
     !real(rp), allocatable, dimension(:,:) :: u2d
     integer :: i,j,k
     logical :: is_noise,is_mean
-    real(rp) :: sref,lref
+    real(rp) :: sref
     integer, dimension(3) :: n
     integer  :: ii
     real(rp) :: xx
@@ -459,8 +515,8 @@ module mod_initflow
     allocate(s1d(n(3)))
     is_noise = .false.
     is_mean  = .false.
-    sref = 1.
     sref = 0.5*(bcsca(0,3)+bcsca(1,3))
+    if(is_sforced) sref = scalf ! (as in CaNS)
     !
     ! two-dimensional initial conditions lie in the x-z plane, or in the y-z plane with the suffix `-x`
     ! (direction normal to the plane; `-y` is the default)

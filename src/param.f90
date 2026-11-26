@@ -19,12 +19,10 @@ public
 ! parameters
 !
 real(rp), parameter :: pi = acos(-1._rp)
-#if !defined(_EPS_EXACT_ZERO) /* recommended */
 real(rp), parameter :: eps = epsilon(1._rp)
-#else
-real(rp), parameter :: eps = 0._rp
-#endif
 real(rp), parameter :: small = epsilon(1._rp)*10**(precision(1._rp)/2)
+real(rp), parameter :: psi_eps = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! cells with psi_eps < psi < 1-psi_eps hold an
+                                                                       ! interface (1.2e-4 in single precision)
 character(len=100), parameter :: datadir = 'data/'
 !
 ! variables to be determined from the input file
@@ -38,6 +36,8 @@ logical , protected :: is_solve_ns,is_track_interface
 !
 character(len=100), protected :: inivel
 logical, protected :: is_wallturb,is_forced_hit
+character(len=3), protected :: forced_hit_type ! 'tgv' (Taylor-Green) or 'abc' (Arnold-Beltrami-Childress)
+real(rp), protected :: forced_hit_amp
 !
 integer , protected :: nstep
 real(rp), protected :: time_max,tw_max
@@ -62,6 +62,7 @@ real(rp)        , protected, dimension(0:1,3)   ::   bcpre
 !
 real(rp), protected, dimension(3) :: bforce
 logical , protected, dimension(3) :: is_forced
+real(rp), protected, dimension(3) :: velf ! bulk (mass-averaged) velocity of the initial condition along a forced direction
 !
 real(rp), protected, dimension(3) :: dl,dli
 !
@@ -73,6 +74,8 @@ character(len=100), protected, allocatable, dimension(:)     :: iniscal
 character(len=1)  , protected, allocatable, dimension(:,:,:) :: cbcscal ! size (0:1,3,nscal)
 real(rp)          , protected, allocatable, dimension(:,:,:) ::  bcscal ! size (0:1,3,nscal)
 real(rp), protected, allocatable, dimension(:) :: ssource
+logical , protected, allocatable, dimension(:) :: is_sforced ! zero-net-heating forcing of each scalar
+real(rp), protected, allocatable, dimension(:) :: scalf      ! reference value of the initial scalar field, if forced
 logical , protected :: is_boussinesq_buoyancy = .false.
 !
 ! two-fluid input parameters
@@ -90,7 +93,9 @@ real(rp), protected               :: dsigma_ds,s_ref ! surface tension linear in
 real(rp), protected, dimension(2) :: rho12,mu12
 real(rp), protected, allocatable, dimension(:,:) :: ka12,cp12 ! size (2,nscal): conductivity and heat capacity of each scalar
 real(rp), protected, dimension(2) :: beta12
-real(rp), protected               :: acdi_gam_factor,acdi_gam_min,vof_thinc_beta
+real(rp), protected               :: vof_thinc_beta
+real(rp), parameter               :: acdi_gam_factor = 1._rp, acdi_gam_min = 1.e-12_rp ! regularization velocity of ACDI: factor
+                                                                                       ! of the largest velocity, and lower bound
 real(rp), protected               :: psi_thickness_factor
 !
 ! interface method, selected with three inputs; blank entries take the default of the reconstruction:
@@ -155,7 +160,7 @@ integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PF
                                      hypre_pfmg_num_pre_relax  = 1, &
                                      hypre_pfmg_num_post_relax = 1, &
                                      hypre_pfmg_max_levels = -1    ! 0: HYPRE's default, < 0: see `configure_pfmg`
-real(rp), protected, dimension(2) :: hypre_tol = 1.e-6
+real(rp), protected, dimension(2) :: hypre_tol = 1.e-6_rp
 !
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
 ! (one layer suffices for CaNS; extensions with wider stencils may increase them here); that of the phase
@@ -188,7 +193,7 @@ contains
                   cfl,dtmax,dt_f, &
                   is_solve_ns,is_track_interface, &
                   inivel, &
-                  is_wallturb,is_forced_hit, &
+                  is_wallturb,is_forced_hit,forced_hit_type,forced_hit_amp, &
                   nstep,time_max,tw_max, &
                   stop_type, &
                   restart,is_overwrite_save,nsaves_max, &
@@ -197,7 +202,7 @@ contains
                   cbcvel,cbcpre,bcvel,bcpre, &
                   slip_length, &
                   bforce, &
-                  is_forced, &
+                  is_forced,velf, &
                   gacc, &
                   nscal, &
                   dims,ipencil_axis
@@ -214,6 +219,7 @@ contains
                      iniscal, &
                      cbcscal,bcscal, &
                      ssource, &
+                     is_sforced,scalf, &
                      is_boussinesq_buoyancy
     namelist /two_fluid/ &
                         inipsi, &
@@ -246,10 +252,10 @@ contains
     ng(:) = [128,128,128]
     l(:)  = [1. ,1. ,1. ]
     gtype = 1; gr = 0.
-    cfl = 0.95; dtmax = 1.e9; dt_f = -1.
+    cfl = 0.95_rp; dtmax = 1.e9; dt_f = -1.
     is_solve_ns = .true.; is_track_interface = .true.
     inivel = 'zer'
-    is_wallturb = .false.; is_forced_hit = .false.
+    is_wallturb = .false.; is_forced_hit = .false.; forced_hit_type = 'tgv'; forced_hit_amp = 0.5
     nstep = 1000; time_max = 1.; tw_max = 0.5
     stop_type = [.true.,.false.,.false.]
     restart = .false.; is_overwrite_save = .true.; nsaves_max = 0
@@ -257,7 +263,7 @@ contains
     tout0d = 0.; tout1d = 0.; tout2d = 0.; tout3d = 0.; tsave = 0.
     cbcvel(:,:,:) = 'P'; cbcpre(:,:) = 'P'; bcvel(:,:,:) = 0.; bcpre(:,:) = 0.
     slip_length(:,:) = 0.
-    bforce(:) = 0.; is_forced(:) = .false.
+    bforce(:) = 0.; is_forced(:) = .false.; velf(:) = 1.
     gacc(:) = 0.
     nscal = 0
     dims(:) = 0
@@ -266,9 +272,9 @@ contains
     cbcpsi(:,:) = 'P'; cbcnor(:,:,:) = 'P'; bcpsi(:,:) = 0.; bcnor(:,:,:) = 0.
     cbccur(:,:) = 'P'; bccur(:,:) = 0.
     contact_angle(:,:) = 90.
-    sigma = 0.; dsigma_ds = 0.; s_ref = 0.; rho12(:) = 1.; mu12(:) = 0.01
+    sigma = 0.; dsigma_ds = 0.; s_ref = 0.; rho12(:) = 1.; mu12(:) = 0.01_rp
     beta12(:) = 1.
-    psi_thickness_factor = -1.; acdi_gam_factor = 1.; acdi_gam_min = 1.e-12 ! (thickness: default set below)
+    psi_thickness_factor = -1. ! (default set below)
     ifc_reconstruction = 'acdi'; ifc_advection = ''; ifc_transport = ''
     nmarker = 1
     is_sdf_normals = .true.; is_hf_normals = .false.
@@ -334,6 +340,8 @@ contains
       !
       ! defaults
       !
+      cudecomp_t_comm_backend      = 0
+      cudecomp_h_comm_backend      = 0
       cudecomp_is_t_comm_autotune  = .true.
       cudecomp_is_h_comm_autotune  = .true.
       cudecomp_is_t_enable_nccl    = .true.
@@ -342,7 +350,7 @@ contains
       cudecomp_is_h_enable_nvshmem = .true.
       rewind(iunit)
       read(iunit,nml=cudecomp,iostat=ierr,iomsg=c_iomsg)
-      if(ierr /= 0) then
+      if(ierr /= 0 .and. ierr /= iostat_end) then
         if(myid == 0) print*, 'ERROR: reading `cudecomp` namelist: ', trim(c_iomsg)
         if(myid == 0) print*, 'Aborting...'
         call MPI_FINALIZE(ierr)
@@ -410,7 +418,7 @@ contains
         !
         allocate(iniscal(nscal), &
                  cbcscal(0:1,3,nscal),bcscal(0:1,3,nscal), &
-                 ssource(nscal))
+                 ssource(nscal),is_sforced(nscal),scalf(nscal))
         !
         ! set default values
         !
@@ -418,6 +426,8 @@ contains
         cbcscal(:,:,:) = 'P'
         bcscal(:,:,:)  = 0.
         ssource(:)     = 0.
+        is_sforced(:)  = .false.
+        scalf(:)       = 0.
         !
         ! read `scalar` namelist
         !
@@ -446,11 +456,20 @@ contains
       ! allocated for one scalar if there is none, such that the input files may always set them)
       !
       allocate(ka12(2,max(nscal,1)),cp12(2,max(nscal,1)))
-      ka12(:,:) = 0.01; cp12(:,:) = 1.
+      ka12(:,:) = 0.01_rp; cp12(:,:) = 1.
       rewind(iunit)
       read(iunit,nml=two_fluid,iostat=ierr,iomsg=c_iomsg)
       if(ierr /= 0 .and. ierr /= iostat_end) then
         if(myid == 0) print*, 'ERROR: reading `two_fluid` namelist: ', trim(c_iomsg)
+        if(myid == 0) print*, 'Aborting...'
+        call MPI_FINALIZE(ierr)
+        close(iunit)
+        error stop
+      end if
+      if(any(rho12(:) <= 0.) .or. any(mu12(:) < 0.) .or. (nscal > 0 .and. any(cp12(:,:) <= 0.)) .or. &
+         psi_thickness_factor == 0.) then
+        if(myid == 0) print*, 'ERROR: reading the input file: `rho12` and, with `nscal > 0`, `cp12` must be positive, &
+                                     &`mu12` must not be negative, and `psi_thickness_factor` must not be zero.'
         if(myid == 0) print*, 'Aborting...'
         call MPI_FINALIZE(ierr)
         close(iunit)
@@ -467,7 +486,7 @@ contains
       if(ifc_transport == '') ifc_transport = merge('one-step','ab2     ',is_ifc_split)
       is_vof_sweep_transport = ifc_transport == 'sweeps'
       if(is_ifc_plic) is_sdf_normals = .false. ! no signed-distance function with the geometric reconstruction
-      if(psi_thickness_factor < 0.) psi_thickness_factor = merge(0.51,0.50,is_ifc_acdi) ! 0.25?
+      if(psi_thickness_factor < 0.) psi_thickness_factor = merge(0.51_rp,0.50_rp,is_ifc_acdi) ! 0.25?
       if(is_ifc_split) nh_psi = 4 ! nine-cell columns of the height functions (geometric reconstruction), and
                                   ! interface band of the transport along with the sweeps
       !
@@ -479,7 +498,7 @@ contains
       is_visc_limiter = is_ifc_plic
       !
       cbccur(:,:) = cbcpsi(:,:)
-      bccur(:,:) = bcpre(:,:)
+      bccur(:,:) = 0._rp
       !
       ! conditions of the interface normal, from those of the phase indicator: at a wall (zero gradient of
       ! the phase indicator) the interface is normal to it, i.e., the wall-normal component of the interface
@@ -589,4 +608,13 @@ contains
       end if
     close(iunit)
   end subroutine read_input
+  !
+  pure elemental logical function is_contact_angle(theta)
+    !
+    ! true for a contact angle (in degrees) other than 90 degrees, to the tolerance `psi_eps` on its cosine
+    !
+    implicit none
+    real(rp), intent(in) :: theta
+    is_contact_angle = abs(cos(theta*pi/180._rp)) > psi_eps
+  end function is_contact_angle
 end module mod_param

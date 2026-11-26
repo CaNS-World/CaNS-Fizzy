@@ -40,24 +40,24 @@ module mod_vof_split
   use, intrinsic :: iso_fortran_env, only: int8
   use mod_common_mpi, only: ierr
   use mod_bound     , only: boundp
+  use mod_param     , only: psi_eps,is_contact_angle ! (cells with psi_eps < f < 1-psi_eps are reconstructed)
   use mod_plic      , only: plic_alpha,plic_volume_box,plic_normal_myc,hf_curvature,hf_normal
   use mod_scal      , only: scalar
   use mod_thinc     , only: thinc_intercept,thinc_slab
   implicit none
   private
-  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_diagnostics, &
-         vof_split_contact_angle
+  public vof_split_init,vof_split_advance,vof_split_velocity,vof_split_curvature,vof_split_curvature_reset, &
+         vof_split_diagnostics,vof_split_contact_angle,markers_sum,vof_marker
   !
-  type, public :: vof_marker
+  type :: vof_marker
     real(rp), pointer, contiguous, dimension(:,:,:) :: psi => null() ! volume fraction of a marker (see `vof_split_advance`)
   end type vof_marker
   !
   real(rp), parameter :: cfl_max = 0.5_rp    ! maximum CFL number of a sweep
   !
-  ! (the two tolerances on the volume fraction sit above its round-off: their double-precision values, or a
-  ! multiple of the machine epsilon in single precision, 1.2e-4 and 1.2e-3)
+  ! (the two tolerances on the volume fraction, `psi_eps` of `mod_param` and `eps_hf`, sit above its round-off:
+  ! their double-precision values, or a multiple of the machine epsilon in single precision, 1.2e-4 and 1.2e-3)
   !
-  real(rp), parameter :: f_eps   = max(1.e-12_rp,1.e3_rp*epsilon(1._rp)) ! cells with f_eps < f < 1-f_eps are reconstructed
   integer , parameter :: nq_hf   = 4         ! half-length of the height-function columns (nine cells)
   real(rp), parameter :: eps_hf  = max(1.e-6_rp ,1.e4_rp*epsilon(1._rp)) ! tolerance for pure cells at the ends of the
                                                                          ! height-function columns
@@ -201,7 +201,7 @@ module mod_vof_split
     if(.not.is_thinc) then
       ca_cos(:,:) = cos(theta_c(:,:)*acos(-1._rp)/180._rp)
       ca_sin(:,:) = sin(theta_c(:,:)*acos(-1._rp)/180._rp)
-      is_ca(:,:)  = abs(ca_cos(:,:)) > f_eps
+      is_ca(:,:)  = is_contact_angle(theta_c(:,:))
       is_ca_any   = any(is_ca(:,:))
       if(is_ca_any) then
         allocate(ca_pl(0:3,1-nh_psi:maxval(n(:))+nh_psi,1-nh_psi:maxval(n(:))+nh_psi))
@@ -255,7 +255,7 @@ module mod_vof_split
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf,dzci,dzfi,wzc
     real(rp), intent(in   ) :: dt,dto
-    character(len=1), intent(in), dimension(0:1,3) :: cbcpsi
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbcpsi
     real(rp), intent(in   ), dimension(0:1,3) :: bcpsi
     integer , intent(in   ), dimension(0:1,3) :: nb
     logical , intent(in   ), dimension(0:1,3) :: is_bound
@@ -266,7 +266,7 @@ module mod_vof_split
     real(rp), intent(inout), dimension(1-nh_ifc:,1-nh_ifc:,1-nh_ifc:) :: psiflx_x,psiflx_y,psiflx_z
     real(rp), intent(inout), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: uo,vo,wo,ua,va,wa
     type(scalar), intent(inout), dimension(:), optional :: scalars
-    type(vof_marker), intent(in), dimension(:), optional :: psi_m
+    type(vof_marker), intent(in   ), dimension(:), optional :: psi_m
     integer , intent(in   ), optional :: nm_off
     character(len=1), dimension(0:1,3) :: cbc_tr
     logical , dimension(0:1,3) :: is_bound_tr,is_bound_phys
@@ -310,8 +310,8 @@ module mod_vof_split
         cbc_tr(0,:) = 'P'
         cbc_tr(1,:) = 'P'
       end where
-      is_bound_tr(  :,:) = is_bound(:,:).and.cbc_tr(:,:) == 'P'
-      is_bound_phys(:,:) = is_bound(:,:).and.cbc_tr(:,:) /= 'P'
+      is_bound_tr(  :,:) = is_bound(:,:) .and. cbc_tr(:,:) == 'P'
+      is_bound_phys(:,:) = is_bound(:,:) .and. cbc_tr(:,:) /= 'P'
       call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
       !
       ! the phase fluxes are not used: they are set to zero once
@@ -322,7 +322,6 @@ module mod_vof_split
         call set_zero(psiflx_z)
         is_psiflx_set = .true.
       end if
-      if(.not.is_track) call set_zero(fl)
     end if
     !
     ! advecting velocity, and CFL numbers along each direction
@@ -353,6 +352,7 @@ module mod_vof_split
       clip_stats(3) = -huge(1._rp)
       !$omp end target
       !$acc end serial
+      call vof_split_curvature_reset
     end if
     do isub=1,nsub
       if(nm == 0) then
@@ -383,21 +383,24 @@ module mod_vof_split
           if(is_sweep) then
             select case(idir)
             case(1)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,ua,psi)
+              call markers_total(1,n,nh_v,nh_psi,nm_off,dts,ua,psi)
             case(2)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,va,psi)
+              call markers_total(2,n,nh_v,nh_psi,nm_off,dts,va,psi)
             case(3)
-              call markers_total(n,nh_v,nh_psi,nm_off,dts,wa,psi)
+              call markers_total(3,n,nh_v,nh_psi,nm_off,dts,wa,psi)
             end select
           end if
         end if
         if(is_sweep) then
           select case(idir)
           case(1)
+            if(.not.is_track) call frozen_flux(1,n,nh_v,nh_psi,nh_g,wzc,dts,ua,psi)
             call transport_all(1,ua)
           case(2)
+            if(.not.is_track) call frozen_flux(2,n,nh_v,nh_psi,nh_g,wzc,dts,va,psi)
             call transport_all(2,va)
           case(3)
+            if(.not.is_track) call frozen_flux(3,n,nh_v,nh_psi,nh_g,wzc,dts,wa,psi)
             call transport_all(3,wa)
           end select
           call transport_halo(cbc_tr,n,nh_g,nb,is_bound_tr,dl,dzc)
@@ -635,23 +638,30 @@ module mod_vof_split
     end do
   end subroutine markers_dilatation
   !
-  subroutine markers_total(n,nh_v,nh_psi,nm_off,dt,vel,psi)
+  subroutine markers_total(idir,n,nh_v,nh_psi,nm_off,dt,vel,psi)
     !
     ! total volume fraction and face fluxes after the sweeps of all the markers along one direction, for the
     ! transport along with the sweeps, from the sums over the markers in psi and flt: the offset `nm_off` is
     ! subtracted (for the fluxes, times the volume of the donor region per unit area, vel*dt), and the total
-    ! volume fraction is clipped to [0,1] where markers overlap
+    ! volume fraction is clipped to [0,1] where markers overlap; the fluxes are those that a sweep along idir
+    ! computes (faces 0:n+1 along it, and 1:n+1 along the other directions): the other entries are left at
+    ! zero, since the offset term, added to entries that the sweeps of the markers do not overwrite, would be
+    ! summed over the markers again in every sweep, and grow without bound
     !
     implicit none
+    integer , intent(in   )               :: idir
     integer , intent(in   ), dimension(3) :: n
     integer , intent(in   )               :: nh_v,nh_psi,nm_off
     real(rp), intent(in   ) :: dt
     real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:) :: vel
     real(rp), intent(inout), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
     real(rp) :: offset
-    integer  :: i,j,k
+    integer  :: i,j,k,di,dj,dk
     !
     offset = nm_off
+    di = merge(1,0,idir == 1)
+    dj = merge(1,0,idir == 2)
+    dk = merge(1,0,idir == 3)
     !$acc parallel     loop collapse(3) default(present) async(1)
     !$omp target teams loop collapse(3)
     do k=1-nh_psi,n(3)+nh_psi
@@ -663,9 +673,9 @@ module mod_vof_split
     end do
     !$acc parallel     loop collapse(3) default(present) async(1)
     !$omp target teams loop collapse(3)
-    do k=0,n(3)+1
-      do j=0,n(2)+1
-        do i=0,n(1)+1
+    do k=1-dk,n(3)+1
+      do j=1-dj,n(2)+1
+        do i=1-di,n(1)+1
           fl(i,j,k) = flt(i,j,k) - offset*vel(i,j,k)*dt
         end do
       end do
@@ -791,8 +801,8 @@ module mod_vof_split
     nlist(1) = 0
     !$acc        update device(nlist) async(1)
     !$omp target update to(nlist)
-    !$acc parallel     loop collapse(3) default(present) private(il) async(1)
-    !$omp target teams distribute parallel do collapse(3)                  private(il)
+    !$acc parallel     loop collapse(3) default(present) private(il,ii,vp,vm,is_own_p,is_own_m,fc) async(1)
+    !$omp target teams distribute parallel do collapse(3)                  private(il,ii,vp,vm,is_own_p,is_own_m,fc)
     do k=klo,khi
       do j=jlo,jhi
         do i=ilo,ihi
@@ -807,7 +817,7 @@ module mod_vof_split
             fc = min(max(psi(i,j,k),0._rp),1._rp)
             if(is_own_p) fl(i,j,k) = fc*vp*dt
             if(is_own_m) fl(i-di,j-dj,k-dk) = fc*vm*dt
-            if(fc > f_eps .and. fc < 1._rp-f_eps) then
+            if(fc > psi_eps .and. fc < 1._rp-psi_eps) then
               !$acc atomic capture
               !$omp atomic capture
               nlist(1) = nlist(1)+1
@@ -829,8 +839,10 @@ module mod_vof_split
     ! (the number of listed cells is read from the device copy of nlist, without a host synchronization;
     ! with OpenMP, where the bounds of a loop are those of the host, it is copied to the host above)
     !
-    !$acc parallel     loop default(present) private(c,dz3,act) async(1)
-    !$omp target teams distribute parallel do                  private(c,dz3,act)
+    !$acc parallel loop default(present) &
+    !$acc private(c,dz3,act,lin,i,j,k,ii,h,vp,vm,is_own_p,is_own_m,fc,cfl_p,cfl_m,mx,my,mz,frac_p,frac_m) async(1)
+    !$omp target teams distribute parallel do &
+    !$omp private(c,dz3,act,lin,i,j,k,ii,h,vp,vm,is_own_p,is_own_m,fc,cfl_p,cfl_m,mx,my,mz,frac_p,frac_m)
     do il=1,nlist(1)
       lin = ilist(il)
       i = ilo+mod(lin,ni)
@@ -874,8 +886,8 @@ module mod_vof_split
     clip_sweep(3) = 1._rp
     !$omp end target
     !$acc end serial
-    !$acc parallel     loop collapse(3) default(present) async(1)
-    !$omp target teams loop collapse(3)
+    !$acc parallel     loop collapse(3) default(present) private(ii,rh,fnew,fcl) async(1)
+    !$omp target teams loop collapse(3)                  private(ii,rh,fnew,fcl)
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -945,8 +957,8 @@ module mod_vof_split
   subroutine transport_prepare(n,nh_psi,psi)
     !
     ! volume fraction before a sweep, and interface band: cells whose 3x3x3 neighbourhood contains
-    ! interfacial cells, or both full and empty cells, i.e., cells with phase 1 (f > f_eps) and cells with
-    ! phase 2 (f < 1-f_eps); the presence of the two phases is first stored as one-byte flags (bits 0 and 1)
+    ! interfacial cells, or both full and empty cells, i.e., cells with phase 1 (f > psi_eps) and cells with
+    ! phase 2 (f < 1-psi_eps); the presence of the two phases is first stored as one-byte flags (bits 0 and 1)
     !
     implicit none
     integer , intent(in), dimension(3) :: n
@@ -960,7 +972,7 @@ module mod_vof_split
     do k=-1,n(3)+3
       do j=-1,n(2)+3
         do i=-1,n(1)+3
-          bflag(i,j,k) = merge(1_int8,0_int8,psi(i,j,k) > f_eps)+merge(2_int8,0_int8,psi(i,j,k) < 1._rp-f_eps)
+          bflag(i,j,k) = merge(1_int8,0_int8,psi(i,j,k) > psi_eps)+merge(2_int8,0_int8,psi(i,j,k) < 1._rp-psi_eps)
           f_prev(i,j,k) = psi(i,j,k)
         end do
       end do
@@ -1014,20 +1026,20 @@ module mod_vof_split
     ! is kept
     !
     implicit none
-    integer , intent(in ) :: idir
-    integer , intent(in ), dimension(3) :: n
-    integer , intent(in )               :: nh_v,nh_s,nh_psi,nh_g
-    real(rp), intent(in ), dimension(3) :: dl
-    real(rp), intent(in ), dimension(1-nh_g:) :: dzf,dzci,dzfi,wzc
-    real(rp), intent(in ) :: dt,tc
-    real(rp), intent(in ), dimension(2) :: rho12,rhocp12
-    logical , intent(in ), dimension(0:1,3) :: is_bound_phys
-    real(rp), intent(in ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel,u,v,w
-    real(rp), intent(in ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
-    integer , intent(in ) :: iq_lo,iq_hi
+    integer , intent(in   ) :: idir
+    integer , intent(in   ), dimension(3) :: n
+    integer , intent(in   )               :: nh_v,nh_s,nh_psi,nh_g
+    real(rp), intent(in   ), dimension(3) :: dl
+    real(rp), intent(in   ), dimension(1-nh_g:) :: dzf,dzci,dzfi,wzc
+    real(rp), intent(in   ) :: dt,tc
+    real(rp), intent(in   ), dimension(2) :: rho12,rhocp12
+    logical , intent(in   ), dimension(0:1,3) :: is_bound_phys
+    real(rp), intent(in   ), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel,u,v,w
+    real(rp), intent(in   ), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    integer , intent(in   ) :: iq_lo,iq_hi
     real(rp), intent(inout), dimension(1-nh_mom:,1-nh_mom:,1-nh_mom:) :: sbq
     real(rp), intent(in   ), dimension(0:,0:,0:) :: asq
-    real(rp), intent(in ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
+    real(rp), intent(in   ), dimension(1-nh_s:,1-nh_s:,1-nh_s:), optional :: s
     real(rp) :: c2,dc,c2m,dcm,c2s,dcs,dl_d,dli_d,w1,w2,w1d,rext,ext_d,mf,mass,dil1,dil1m,dil1s,dil2,rh1,rh2, &
                 rho_o,rho_n,qm,q0,qp,qa,qn
     integer  :: i,j,k,iq,di,dj,dk,qi,qj,qk,off,id,jd,kd,dd,nd,n1,n2,n3
@@ -1257,7 +1269,7 @@ module mod_vof_split
     integer , intent(in   )               :: nh_psi,nh_g
     real(rp), intent(in   ), dimension(3) :: dl
     real(rp), intent(in   ), dimension(1-nh_g:) :: dzc,dzf
-    character(len=1), intent(in), dimension(0:1,3) :: cbcpsi
+    character(len=1), intent(in   ), dimension(0:1,3) :: cbcpsi
     real(rp), intent(in   ), dimension(0:1,3) :: bcpsi
     integer , intent(in   ), dimension(0:1,3) :: nb
     logical , intent(in   ), dimension(0:1,3) :: is_bound
@@ -1279,7 +1291,7 @@ module mod_vof_split
     is_act3 = is_active(3)
     do id=1,3
       do is=0,1
-        if(.not.(is_ca(is,id).and.is_bound(is,id))) cycle
+        if(.not.(is_ca(is,id) .and. is_bound(is,id))) cycle
         da = merge(2,1,id == 1) ! directions along the wall (da < db)
         db = merge(2,3,id == 3)
         na = n(da)
@@ -1291,8 +1303,8 @@ module mod_vof_split
         !
         ! planes of the wall cells with an interface
         !
-        !$acc parallel     loop gang vector collapse(2) default(present) private(c3,dz3,m,act) async(1)
-        !$omp target teams distribute parallel do collapse(2)                  private(c3,dz3,m,act)
+        !$acc parallel     loop gang vector collapse(2) default(present) private(c3,dz3,m,act,i,j,k,fw,dz,n1,n2,n3,tn) async(1)
+        !$omp target teams distribute parallel do collapse(2)                  private(c3,dz3,m,act,i,j,k,fw,dz,n1,n2,n3,tn)
         do ib=2-nh_psi,nb_+nh_psi-1
           do ia=2-nh_psi,na+nh_psi-1
             i = merge(iw,ia,id == 1)
@@ -1303,7 +1315,7 @@ module mod_vof_split
             ca_pl(1,ia,ib) = 0._rp
             ca_pl(2,ia,ib) = 0._rp
             ca_pl(3,ia,ib) = 0._rp
-            if(fw > f_eps .and. fw < 1._rp-f_eps) then
+            if(fw > psi_eps .and. fw < 1._rp-psi_eps) then
               act(:) = [is_act1,is_act2,is_act3]
               do kc=-1,1
                 do jc=-1,1
@@ -1334,14 +1346,18 @@ module mod_vof_split
         !
         ! ghost cells: volume fraction of the plane of the nearest wall cell with an interface
         !
-        !$acc parallel     loop collapse(3) default(present) async(1)
-        !$omp target teams distribute parallel do collapse(3)
+        !$acc parallel loop gang vector collapse(3) default(present) &
+        !$acc private(ipb,iqb,d2b,d2,ig,gi,gj,gk,pi,pj,pk,o3,s3) async(1)
+        !$omp target teams distribute parallel do collapse(3) &
+        !$omp private(ipb,iqb,d2b,d2,ig,gi,gj,gk,pi,pj,pk,o3,s3)
         do l=1,nh_psi
           do ib=1,nb_
             do ia=1,na
               ipb = 0; iqb = 0
               d2b = huge(1._rp)
+              !$acc loop seq
               do iq=-nr_ca,nr_ca
+                !$acc loop seq
                 do ip=-nr_ca,nr_ca
                   d2 = real(ip**2+iq**2,rp)
                   if(d2 < d2b .and. abs(ca_pl(1,ia+ip,ib+iq))+abs(ca_pl(2,ia+ip,ib+iq))+abs(ca_pl(3,ia+ip,ib+iq)) > 0._rp) then
@@ -1364,6 +1380,7 @@ module mod_vof_split
                 ! box of the ghost cell in the cell-scaled coordinates of the wall cell (non-uniform along z)
                 !
                 o3 = 0._rp
+                !$acc loop seq
                 do kk=min(gk,pk),max(gk,pk)-1
                   o3 = o3+dzf(kk)
                 end do
@@ -1404,7 +1421,7 @@ module mod_vof_split
     real(rp), intent(in ) :: beta
     real(rp), intent(in ) :: cfl_p,cfl_m
     real(rp), intent(out) :: frac_p,frac_m
-    real(rp), parameter :: a_min = f_eps
+    real(rp), parameter :: a_min = psi_eps
     real(rp), dimension(3) :: o,s
     real(rp) :: alpha,a,d
     !$acc routine seq
@@ -1440,6 +1457,21 @@ module mod_vof_split
     end if
   end subroutine donor_fractions
   !
+  subroutine vof_split_curvature_reset
+    !
+    ! resets the counts of the curvature estimates (see `vof_split_curvature`), which are accumulated over
+    ! the calls that follow: one per time step, or one per marker
+    !
+    implicit none
+    !$acc serial default(present) async(1)
+    !$omp target
+    kappa_stats(1) = 0._rp
+    kappa_stats(2) = 0._rp
+    kappa_stats(3) = 0._rp
+    !$omp end target
+    !$acc end serial
+  end subroutine vof_split_curvature_reset
+  !
   subroutine vof_split_curvature(istage,n,nh_psi,nh_ifc,nh_g,dl,dzf,psi,kappa)
     !
     ! interface curvature (sign convention of Fizzy: kappa = -div(n), n pointing into phase 1), in stages
@@ -1470,19 +1502,14 @@ module mod_vof_split
       nlist(1) = 0
       !$acc        update device(nlist) async(1)
       !$omp target update to(nlist)
-      !$acc serial default(present) async(1)
-      !$omp target
-      kappa_stats(1) = 0._rp
-      !$omp end target
-      !$acc end serial
-      !$acc parallel     loop collapse(3) default(present) private(il) async(1)
-      !$omp target teams loop collapse(3)                  private(il)
+      !$acc parallel     loop collapse(3) default(present) private(il,fc) async(1)
+      !$omp target teams loop collapse(3)                  private(il,fc)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
             kappa(i,j,k) = 0._rp
             fc = psi(i,j,k)
-            if(fc > f_eps .and. fc < 1._rp-f_eps) then
+            if(fc > psi_eps .and. fc < 1._rp-psi_eps) then
               !$acc atomic capture
               !$omp atomic capture
               nlist(1) = nlist(1)+1
@@ -1503,14 +1530,8 @@ module mod_vof_split
       !
       n1 = n(1)
       n2 = n(2)
-      !$acc serial default(present) async(1)
-      !$omp target
-      kappa_stats(2) = 0._rp
-      kappa_stats(3) = 0._rp
-      !$omp end target
-      !$acc end serial
-      !$acc parallel     loop default(present) async(1)
-      !$omp target teams loop
+      !$acc parallel     loop default(present) private(lin,i,j,k,ksum,kcnt,fc) async(1)
+      !$omp target teams loop                  private(lin,i,j,k,ksum,kcnt,fc)
       do il=1,nlist(1)
         lin = ilist(il)
         i = 1+mod(lin,n1)
@@ -1523,7 +1544,7 @@ module mod_vof_split
             do jj=-1,1
               do ii=-1,1
                 fc = psi(i+ii,j+jj,k+kk)
-                if(fc > f_eps .and. fc < 1._rp-f_eps .and. kappa(i+ii,j+jj,k+kk) /= kappa_undef) then
+                if(fc > psi_eps .and. fc < 1._rp-psi_eps .and. kappa(i+ii,j+jj,k+kk) /= kappa_undef) then
                   ksum = ksum + kappa(i+ii,j+jj,k+kk)
                   kcnt = kcnt + 1._rp
                 end if
@@ -1545,8 +1566,8 @@ module mod_vof_split
           kap(i,j,k) = kappa(i,j,k)
         end if
       end do
-      !$acc parallel     loop default(present) async(1)
-      !$omp target teams loop
+      !$acc parallel     loop default(present) private(lin,i,j,k) async(1)
+      !$omp target teams loop                  private(lin,i,j,k)
       do il=1,nlist(1)
         lin = ilist(il)
         i = 1+mod(lin,n1)
@@ -1559,13 +1580,13 @@ module mod_vof_split
       ! (in place: only the curvature of interfacial cells is read, and only that of the other cells, zero
       ! since the first stage, is written)
       !
-      !$acc parallel     loop collapse(3) default(present) async(1)
-      !$omp target teams loop collapse(3)
+      !$acc parallel     loop collapse(3) default(present) private(fc,ksum,kcnt,ii,jj,kk) async(1)
+      !$omp target teams loop collapse(3)                  private(fc,ksum,kcnt,ii,jj,kk)
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
             fc = psi(i,j,k)
-            if(.not.(fc > f_eps .and. fc < 1._rp-f_eps)) then
+            if(.not.(fc > psi_eps .and. fc < 1._rp-psi_eps)) then
               ksum = 0._rp
               kcnt = 0._rp
               do q=1,6
@@ -1573,7 +1594,7 @@ module mod_vof_split
                 jj = merge(merge(-1,1,q == 3),0,q == 3 .or. q == 4)
                 kk = merge(merge(-1,1,q == 5),0,q >= 5)
                 fc = psi(i+ii,j+jj,k+kk)
-                if(fc > f_eps .and. fc < 1._rp-f_eps) then
+                if(fc > psi_eps .and. fc < 1._rp-psi_eps) then
                   ksum = ksum + kappa(i+ii,j+jj,k+kk)
                   kcnt = kcnt + 1._rp
                 end if
@@ -1623,8 +1644,12 @@ module mod_vof_split
     is_act1 = is_active(1)
     is_act2 = is_active(2)
     is_act3 = is_active(3)
-    !$acc parallel     loop default(present) private(m,act,c3,dz3,hgt,dm,dp,h,nrm) async(1)
-    !$omp target teams distribute parallel do                  private(m,act,c3,dz3,hgt,dm,dp,h,nrm)
+    !$acc parallel loop default(present) &
+    !$acc private(m,act,c3,dz3,hgt,dm,dp,h,nrm,lin,i,j,k,kap_c,is_valid,d1,d2,d3,itmp,d,ia,ib,lo,hi,f0,f1,sgn,vol,fq,dqq) &
+    !$acc private(na,nb,nq,s) async(1)
+    !$omp target teams distribute parallel do &
+    !$omp private(m,act,c3,dz3,hgt,dm,dp,h,nrm,lin,i,j,k,kap_c,is_valid,d1,d2,d3,itmp,d,ia,ib,lo,hi,f0,f1,sgn,vol,fq,dqq) &
+    !$omp private(na,nb,nq,s)
     do il=1,nlist(1)
       lin = ilist(il)
       i = ilo+mod(lin,ni)
@@ -1732,6 +1757,38 @@ module mod_vof_split
       end if
     end do
   end subroutine hf_list
+  !
+  subroutine frozen_flux(idir,n,nh_v,nh_psi,nh_g,wzc,dt,vel,psi)
+    !
+    ! face fluxes of a sweep along direction idir for a volume fraction that is not advanced: its value at
+    ! each face, interpolated with the weights of the density of the staggered control volumes, times the
+    ! volume swept by the face (see `frozen_fluxes` of `mod_interface_capturing`)
+    !
+    implicit none
+    integer , intent(in), dimension(3) :: n
+    integer , intent(in)               :: idir,nh_v,nh_psi,nh_g
+    real(rp), intent(in), dimension(1-nh_g:) :: wzc
+    real(rp), intent(in) :: dt
+    real(rp), intent(in), dimension(1-nh_v:,1-nh_v:,1-nh_v:)       :: vel
+    real(rp), intent(in), dimension(1-nh_psi:,1-nh_psi:,1-nh_psi:) :: psi
+    real(rp) :: w1
+    integer  :: i,j,k,di,dj,dk
+    !
+    di = merge(1,0,idir == 1)
+    dj = merge(1,0,idir == 2)
+    dk = merge(1,0,idir == 3)
+    !$acc parallel     loop collapse(3) default(present) private(w1) async(1)
+    !$omp target teams loop collapse(3)                  private(w1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
+          w1 = 0.5_rp
+          if(idir == 3) w1 = wzc(k)
+          fl(i,j,k) = (w1*psi(i,j,k)+(1._rp-w1)*psi(i+di,j+dj,k+dk))*vel(i,j,k)*dt
+        end do
+      end do
+    end do
+  end subroutine frozen_flux
   !
   subroutine set_zero(p)
     implicit none
