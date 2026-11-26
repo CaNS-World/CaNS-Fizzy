@@ -176,7 +176,8 @@ module mod_sanity
     !
     ! checks the inputs of the HYPRE solver of the variable-coefficient Poisson equation and of the implicit diffusion
     !
-    use mod_param, only: hypre_solver_i,hypre_tol,hypre_maxiter,hypre_precond_i,hypre_precond_maxiter
+    use mod_param, only: hypre_solver_i,hypre_tol,hypre_maxiter,hypre_precond_i,hypre_precond_maxiter, &
+                         hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax
     implicit none
     integer         , intent(in ), dimension(3)     :: ng
     character(len=1), intent(in ), dimension(0:1,3) :: cbcpre
@@ -200,8 +201,8 @@ module mod_sanity
     nq = 1
     if(is_impdiff .and. .not.is_impdiff_1d) nq = 2
     do iq=1,nq
-      if(hypre_solver_i(iq) < 1 .or. hypre_solver_i(iq) > 5) then
-        if(myid == 0) print*, 'ERROR: invalid `hypre_solver_i` (1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES).'
+      if(hypre_solver_i(iq) < 1 .or. hypre_solver_i(iq) > 6) then
+        if(myid == 0) print*, 'ERROR: invalid `hypre_solver_i` (1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES, 6: PCG).'
         passed = .false.
       end if
       if(.not.any(hypre_precond_i(iq) == [0,1,9])) then
@@ -211,6 +212,19 @@ module mod_sanity
       if(hypre_tol(iq) <= 0._rp .or. hypre_maxiter(iq) < 1 .or. hypre_precond_maxiter(iq) < 1) then
         if(myid == 0) print*, 'ERROR: `hypre_tol`, `hypre_maxiter` and `hypre_precond_maxiter` must be positive.'
         passed = .false.
+      end if
+      !
+      ! PCG needs a symmetric preconditioner; with PFMG, red/black Gauss-Seidel has stalled it (e.g., with a periodic
+      ! direction of a few grid cells), while weighted Jacobi, its default with PCG, has not
+      !
+      if(hypre_solver_i(iq) == 6 .and. hypre_precond_i(iq) == 1) then
+        if(any(hypre_pfmg_relax_type(iq) == [2,3])) then
+          if(myid == 0) print*, 'WARNING: PCG with red/black Gauss-Seidel in PFMG (`hypre_pfmg_relax_type`) may stall; &
+                                &weighted Jacobi (1, the default with PCG) is safer.'
+        end if
+        if(hypre_pfmg_num_pre_relax(iq) /= hypre_pfmg_num_post_relax(iq)) then
+          if(myid == 0) print*, 'WARNING: PCG needs a symmetric preconditioner: as many PFMG pre- as post-relaxation sweeps.'
+        end if
       end if
     end do
   end subroutine chk_hypre

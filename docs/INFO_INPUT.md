@@ -678,6 +678,8 @@ hypre_tol(1:2)       = 1.e-6, 1.e-6
 hypre_maxiter(1:2)   = 50, 50
 hypre_precond_i(1:2) = 1, 1
 hypre_precond_maxiter(1:2) = 1, 1
+hypre_is_symmetric(1:2) = F, F
+hypre_print_level(1:2)  = 0, 0
 /
 ```
 
@@ -688,16 +690,21 @@ hypre_precond_maxiter(1:2) = 1, 1
 * `3`: GMRES
 * `4`: BiCGSTAB
 * `5`: Flexible GMRES (default)
+* `6`: PCG (conjugate gradient), which takes less memory than Flexible GMRES
 
 `hypre_tol` is the **relative tolerance** on the residual, and `hypre_maxiter` the **maximum number of iterations**; a warning is printed whenever the solver does not converge within it.
 
-`hypre_precond_i` selects the **preconditioner** of the Krylov solvers (`3`, `4` and `5`), which is applied `hypre_precond_maxiter` times per iteration:
+`hypre_precond_i` selects the **preconditioner** of the Krylov solvers (`3` to `6`), which is applied `hypre_precond_maxiter` times per iteration:
 
 * `0`: SMG
 * `1`: PFMG (default)
 * `9`: none
 
-The defaults were chosen from tests with three- and two-dimensional rising bubbles at density ratios up to 1000, with walls, periodic directions, stretched grids and an outflow. For a problem without a Dirichlet pressure boundary, the pressure is defined up to a constant, and the mean of the solution is set to zero; for such a problem, PFMG stops coarsening one level short of a single grid cell, where the operator would vanish and spoil the convergence. The same defaults suit the systems of the implicit diffusion, which are not singular and converge in a few iterations.
+The defaults were chosen from tests with three- and two-dimensional rising bubbles at density ratios up to 1000, with walls, periodic directions, stretched grids and an outflow. For a problem without a Dirichlet pressure boundary, the pressure is defined up to a constant, and the mean of the solution is set to zero; for such a problem, PFMG stops coarsening one level short of a single grid cell, where the operator would vanish and spoil the convergence. The same defaults suit the systems of the implicit diffusion, which are not singular and converge in a few iterations. The relaxation of PFMG is red/black Gauss-Seidel, except on GPUs and with PCG, where it is weighted Jacobi.
+
+`hypre_is_symmetric`, if true, stores the matrices as **symmetric**, i.e., only their diagonal and lower neighbours, which saves memory and usually time; the results agree with those of the full storage to round-off.
+
+`hypre_print_level`, if positive, **prints the convergence** of every solve: the printout of the HYPRE solver at this level, and a line with the number of iterations and the final relative residual.
 
 With an iterative solver, the **velocity divergence** follows the tolerance rather than the machine precision: with the default tolerance its maximum is typically `1.e-7` or smaller, and each factor of ten in `hypre_tol` lowers it by about as much, at a moderate cost (the solver gains roughly one digit per iteration). For this reason, the threshold test of the divergence check is skipped by default in these builds (`is_mask_divergence_check = T` under `&other_options`); it can be enforced again by setting it to false together with a tighter tolerance.
 
