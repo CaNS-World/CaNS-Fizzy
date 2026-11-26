@@ -11,7 +11,7 @@ module mod_solver_vc
   use mod_param     , only: hypre_solver_i,hypre_tol,hypre_maxiter, &
                             hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
                             hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
-                            hypre_pfmg_max_levels, &
+                            hypre_pfmg_max_levels,hypre_is_symmetric, &
                             is_impdiff,is_impdiff_1d
   use mod_types
   use, intrinsic :: iso_c_binding, only: C_PTR,C_NULL_PTR,C_INT,C_SIZE_T,C_ASSOCIATED
@@ -36,11 +36,16 @@ module mod_solver_vc
   type hypre_solver
     type(C_PTR) :: grid,stencil,precond,solver,mat,rhs,sol
     integer     :: stype,ptype,comm_hypre
-    integer     :: ndim       ! number of directions of the problem (those with more than one grid cell)
-    integer     :: idirs(3)   ! and which ones
-    integer     :: ipos(3)    ! position of each direction in the problem (0: left out)
+    integer     :: ndim         ! number of directions of the problem (those with more than one grid cell)
+    integer     :: idirs(3)     ! and which ones
     integer     :: nstencil
-    integer     :: nlevels    ! number of multigrid levels down to a single grid cell
+    logical     :: is_symmetric ! symmetric storage: HYPRE stores the diagonal and the lower neighbours only
+    integer     :: nvalues      ! number of values per grid cell passed to HYPRE in `matvalues`
+    integer     :: ientries(7)  ! and their stencil entries
+    integer     :: ival(0:1,3)  ! position among them of the lower (0) and upper (1) neighbour along each
+                                ! direction (0: not passed, i.e., direction left out, or upper neighbour
+                                ! with symmetric storage)
+    integer     :: nlevels      ! number of multigrid levels down to a single grid cell
     logical     :: is_singular
   end type hypre_solver
   type(hypre_solver), save :: asolver_p,asolver_d
@@ -94,7 +99,7 @@ module mod_solver_vc
     integer, parameter :: iq = HYPREProblemPressure
     !
     if(.not.is_init_p) then
-      call init_matrix(ng,lo,hi,cbc,asolver_p)
+      call init_matrix(ng,lo,hi,cbc,hypre_is_symmetric(iq),asolver_p)
       is_init_p = .true.
     end if
     call fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzf,wzc,is_bound,alpha12,psi,p,asolver_p)
@@ -125,21 +130,25 @@ module mod_solver_vc
     real(rp), dimension(lo(3):hi(3)) :: dzf
     integer, parameter :: iq = HYPREProblemDiffusion
     real(rp) :: cc
-    integer :: i,j,k,q,qq,ndim,nstencil,nx,ny,px,py,pz
+    integer  :: mxm,mxp,mym,myp,mzm,mzp ! positions of the coefficients among the values of a grid cell
+    integer  :: i,j,k,q,qq,ndim,nstencil,nvalues,nx,ny
     !
     if(.not.is_init_d) then
-      call init_matrix(ng,lo,hi,cbc,asolver_d)
+      call init_matrix(ng,lo,hi,cbc,hypre_is_symmetric(iq),asolver_d)
       asolver_d%is_singular = .false.
       is_init_d = .true.
       allocate(po_d(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)))
       !$acc enter data create(po_d)
     end if
-    ndim = asolver_d%ndim; nstencil = asolver_d%nstencil
-    px = asolver_d%ipos(1); py = asolver_d%ipos(2); pz = asolver_d%ipos(3)
+    ndim = asolver_d%ndim; nstencil = asolver_d%nstencil; nvalues = asolver_d%nvalues
+    mxm = asolver_d%ival(0,1); mxp = asolver_d%ival(1,1)
+    mym = asolver_d%ival(0,2); myp = asolver_d%ival(1,2)
+    mzm = asolver_d%ival(0,3); mzp = asolver_d%ival(1,3)
     nx = hi(1)-lo(1)+1; ny = hi(2)-lo(2)+1
     if(ndim == 3) then
       !
       ! the entries of `coeffs` are those of the stencil of HYPRE, in the same order
+      ! (with symmetric storage HYPRE ignores the upper neighbours)
       !
       !$acc parallel loop collapse(3) default(present) async(1)
       do k=lo(3),hi(3)
@@ -154,40 +163,36 @@ module mod_solver_vc
       call HYPRE_StructMatrixSetBoxValues(asolver_d%mat,lo,hi,nstencil,[(q,q=0,nstencil-1)],coeffs,ierr)
       !$acc end host_data
     else
+      call alloc_matvalues(product(hi(:)-lo(:)+1)*nvalues)
       !$acc parallel loop collapse(3) default(present) private(q,qq,cc) async(1)
       do k=lo(3),hi(3)
         do j=lo(2),hi(2)
           do i=lo(1),hi(1)
             q = 1 + (i-lo(1)) + nx*((j-lo(2)) + ny*(k-lo(3)))
-            qq = (q-1)*nstencil
+            qq = (q-1)*nvalues
             !
-            ! a direction left out of the problem has a single periodic cell, whose neighbours are the cell itself
+            ! a direction left out of the problem (no lower neighbour, e.g. mxm = 0) has a single periodic cell,
+            ! whose neighbours are the cell itself
             !
             cc = coeffs(0,i,j,k)
-            if(px == 0) cc = cc + coeffs(1,i,j,k) + coeffs(2,i,j,k)
-            if(py == 0) cc = cc + coeffs(3,i,j,k) + coeffs(4,i,j,k)
-            if(pz == 0) cc = cc + coeffs(5,i,j,k) + coeffs(6,i,j,k)
+            if(mxm == 0) cc = cc + coeffs(1,i,j,k) + coeffs(2,i,j,k)
+            if(mym == 0) cc = cc + coeffs(3,i,j,k) + coeffs(4,i,j,k)
+            if(mzm == 0) cc = cc + coeffs(5,i,j,k) + coeffs(6,i,j,k)
             matvalues(qq+1) = cc
-            if(px > 0) then
-              matvalues(qq+2*px  ) = coeffs(1,i,j,k)
-              matvalues(qq+2*px+1) = coeffs(2,i,j,k)
-            end if
-            if(py > 0) then
-              matvalues(qq+2*py  ) = coeffs(3,i,j,k)
-              matvalues(qq+2*py+1) = coeffs(4,i,j,k)
-            end if
-            if(pz > 0) then
-              matvalues(qq+2*pz  ) = coeffs(5,i,j,k)
-              matvalues(qq+2*pz+1) = coeffs(6,i,j,k)
-            end if
+            if(mxm > 0) matvalues(qq+mxm) = coeffs(1,i,j,k)
+            if(mxp > 0) matvalues(qq+mxp) = coeffs(2,i,j,k)
+            if(mym > 0) matvalues(qq+mym) = coeffs(3,i,j,k)
+            if(myp > 0) matvalues(qq+myp) = coeffs(4,i,j,k)
+            if(mzm > 0) matvalues(qq+mzm) = coeffs(5,i,j,k)
+            if(mzp > 0) matvalues(qq+mzp) = coeffs(6,i,j,k)
             po_d(i,j,k) = 0._rp
           end do
         end do
       end do
       !$acc wait(1)
       !$acc host_data use_device(matvalues)
-      call HYPRE_StructMatrixSetBoxValues(asolver_d%mat,lo(asolver_d%idirs(1:ndim)),hi(asolver_d%idirs(1:ndim)),nstencil, &
-                                          [(q,q=0,nstencil-1)],matvalues,ierr)
+      call HYPRE_StructMatrixSetBoxValues(asolver_d%mat,lo(asolver_d%idirs(1:ndim)),hi(asolver_d%idirs(1:ndim)),nvalues, &
+                                          asolver_d%ientries(1:nvalues),matvalues,ierr)
       !$acc end host_data
     end if
     call HYPRE_StructMatrixAssemble(asolver_d%mat,ierr)
@@ -247,21 +252,31 @@ module mod_solver_vc
       deallocate(po_d)
     end if
     if(allocated(matvalues)) then
-      !$acc exit data delete(matvalues,rhsvalues,solvalues)
-      deallocate(matvalues,rhsvalues,solvalues)
+      !$acc exit data delete(matvalues)
+      deallocate(matvalues)
+    end if
+    if(allocated(rhsvalues)) then
+      !$acc exit data delete(rhsvalues,solvalues)
+      deallocate(rhsvalues,solvalues)
     end if
     call HYPRE_Finalize(ierr)
   end subroutine solver_vc_end
   !
-  subroutine init_matrix(ng,lo,hi,cbc,asolver)
+  subroutine init_matrix(ng,lo,hi,cbc,is_symmetric,asolver)
     !
     ! creates the grid, the stencil, the matrix and the vectors of the problem;
     ! a periodic direction with a single grid cell is left out, i.e., a 2D run is a 2D problem,
     ! since the multigrid solvers cannot coarsen such a direction
     !
+    ! with symmetric storage (`is_symmetric`; both matrices of this module are symmetric, see `fill_matrix`
+    ! and `mod_impdiff`), HYPRE stores the diagonal and the coefficients of the lower neighbours only, and
+    ! takes the coefficient of an upper neighbour from the lower one of the next cell; values given for
+    ! the upper neighbours are ignored
+    !
     implicit none
     integer             , intent(in ), dimension(3)     :: ng,lo,hi
     character(len=1)    , intent(in ), dimension(0:1,3) :: cbc
+    logical             , intent(in )                   :: is_symmetric
     type(hypre_solver)  , intent(out)                   :: asolver
     integer, dimension(3,7) :: offsets
     integer, dimension(3) :: periods
@@ -282,6 +297,15 @@ module mod_solver_vc
       ndim = 1; idirs(1) = 3
     end if
     nstencil = 1+2*ndim
+    !
+    ! no symmetric storage for a problem with a direction with a single grid cell, whose couplings all
+    ! vanish: PFMG has failed on such a problem with symmetric storage (HYPRE issue #1510)
+    !
+    asolver%is_symmetric = is_symmetric
+    if(is_symmetric .and. any(ng(idirs(1:ndim)) == 1)) then
+      asolver%is_symmetric = .false.
+      if(myid == 0) print*, 'WARNING: symmetric storage of a HYPRE matrix not used: a direction has a single grid cell.'
+    end if
     periods(:) = 0
     do q=1,ndim
       idir = idirs(q)
@@ -310,6 +334,7 @@ module mod_solver_vc
     ! create coefficient matrix, and solution & right-hand-side vectors
     !
     call HYPRE_StructMatrixCreate(comm_hypre,grid,stencil,mat,ierr)
+    if(asolver%is_symmetric) call HYPRE_StructMatrixSetSymmetric(mat,1,ierr)
     call HYPRE_StructMatrixInitialize(mat,ierr)
     call HYPRE_StructVectorCreate(comm_hypre,grid,sol,ierr)
     call HYPRE_StructVectorInitialize(sol,ierr)
@@ -325,9 +350,26 @@ module mod_solver_vc
     asolver%comm_hypre = comm_hypre
     asolver%ndim       = ndim
     asolver%idirs(:)   = idirs(:)
-    asolver%ipos(:)    = 0
-    asolver%ipos(idirs(1:ndim)) = [(q,q=1,ndim)]
     asolver%nstencil   = nstencil
+    !
+    ! values per grid cell passed to HYPRE: the diagonal, and the lower and upper neighbours along each
+    ! direction of the problem (stencil entries 0, 2*q-1 and 2*q), or the lower ones only (symmetric storage)
+    !
+    asolver%ival(:,:) = 0
+    if(.not.asolver%is_symmetric) then
+      asolver%nvalues = nstencil
+      asolver%ientries(1:nstencil) = [(q,q=0,nstencil-1)]
+      do q=1,ndim
+        asolver%ival(0,idirs(q)) = 2*q
+        asolver%ival(1,idirs(q)) = 2*q+1
+      end do
+    else
+      asolver%nvalues = 1+ndim
+      asolver%ientries(1:1+ndim) = [0,(2*q-1,q=1,ndim)]
+      do q=1,ndim
+        asolver%ival(0,idirs(q)) = 1+q
+      end do
+    end if
     !
     ! without a Dirichlet boundary the solution is defined up to a constant
     !
@@ -344,15 +386,30 @@ module mod_solver_vc
       end do
     end do
     !
-    ! work arrays of the values passed to HYPRE
+    ! work vectors of the values passed to HYPRE (see `alloc_matvalues` for the matrix)
     !
-    if(.not.allocated(matvalues)) then
-      allocate(matvalues(product(hi(:)-lo(:)+1)*nstencil), &
-               rhsvalues(product(hi(:)-lo(:)+1)), &
+    if(.not.allocated(rhsvalues)) then
+      allocate(rhsvalues(product(hi(:)-lo(:)+1)), &
                solvalues(product(hi(:)-lo(:)+1)))
-      !$acc enter data create(matvalues,rhsvalues,solvalues)
+      !$acc enter data create(rhsvalues,solvalues)
     end if
   end subroutine init_matrix
+  !
+  subroutine alloc_matvalues(n)
+    !
+    ! allocates `matvalues` with at least `n` entries; the two problems may pass different numbers of
+    ! values per grid cell, and a 3D diffusion problem passes its matrix directly
+    !
+    implicit none
+    integer, intent(in) :: n
+    if(allocated(matvalues)) then
+      if(size(matvalues) >= n) return
+      !$acc exit data delete(matvalues)
+      deallocate(matvalues)
+    end if
+    allocate(matvalues(n))
+    !$acc enter data create(matvalues)
+  end subroutine alloc_matvalues
   !
   subroutine fill_matrix(ng,lo,hi,nh_p,nh_psi,nh_g,cbc,bc,dli,dzci,dzf,wzc,is_bound,alpha12,psi,p,asolver)
     !
@@ -380,9 +437,10 @@ module mod_solver_vc
     real(rp) :: cxm,cxp,cym,cyp,czm,czp ! coefficients of the lower and upper neighbours along each direction
     real(rp) :: sxm,sxp,sym,syp,szm,szp,fxm,fxp,fym,fyp,fzm,fzp
     logical  :: is_xm,is_xp,is_ym,is_yp,is_zm,is_zp
-    integer  :: i,j,k,q,qq,ndim,nstencil,nx,ny,px,py,pz
+    integer  :: mxm,mxp,mym,myp,mzm,mzp ! positions of the coefficients among the values of a grid cell
+    integer  :: i,j,k,q,qq,ndim,nvalues,nx,ny
     !
-    ndim = asolver%ndim; nstencil = asolver%nstencil
+    ndim = asolver%ndim; nvalues = asolver%nvalues
     is_per(:) = cbc(0,:)//cbc(1,:) == 'PP'
     sgn(:,:)    = 0._rp
     factor(:,:) = 0._rp
@@ -414,7 +472,10 @@ module mod_solver_vc
     alpha = alpha12(2); dalpha = alpha12(1)-alpha12(2)
     nx = hi(1)-lo(1)+1; ny = hi(2)-lo(2)+1
     dxi = dli(1); dyi = dli(2)
-    px = asolver%ipos(1); py = asolver%ipos(2); pz = asolver%ipos(3)
+    mxm = asolver%ival(0,1); mxp = asolver%ival(1,1)
+    mym = asolver%ival(0,2); myp = asolver%ival(1,2)
+    mzm = asolver%ival(0,3); mzp = asolver%ival(1,3)
+    call alloc_matvalues(product(hi(:)-lo(:)+1)*nvalues)
     !
     ! boundary condition of each face of the domain on this task, as scalars
     !
@@ -444,47 +505,42 @@ module mod_solver_vc
           czm = czm*dzci(k-1)
           czp = czp*dzci(k  )
           !
-          ! a direction left out of the problem has a single periodic cell, whose neighbours are the cell itself
+          ! a direction left out of the problem (no lower neighbour, e.g. mxm = 0) has a single periodic cell,
+          ! whose neighbours are the cell itself
           !
           cc   = 0._rp
           rhsb = 0._rp
-          if(px > 0) then
+          if(mxm > 0) then
             cc = cc - (cxm+cxp)
             call bc_diag_rhs(is_xm .and. i == lo(1),sxm,fxm,cxm,cc,rhsb)
             call bc_diag_rhs(is_xp .and. i == hi(1),sxp,fxp,cxp,cc,rhsb)
           end if
-          if(py > 0) then
+          if(mym > 0) then
             cc = cc - (cym+cyp)
             call bc_diag_rhs(is_ym .and. j == lo(2),sym,fym,cym,cc,rhsb)
             call bc_diag_rhs(is_yp .and. j == hi(2),syp,fyp,cyp,cc,rhsb)
           end if
-          if(pz > 0) then
+          if(mzm > 0) then
             cc = cc - (czm+czp)
             call bc_diag_rhs(is_zm .and. k == lo(3),szm,fzm,czm,cc,rhsb)
             call bc_diag_rhs(is_zp .and. k == hi(3),szp,fzp,czp,cc,rhsb)
           end if
           p(i,j,k) = sgn_op*(p(i,j,k)*vol + rhsb)
-          qq = (q-1)*nstencil
+          qq = (q-1)*nvalues
           matvalues(qq+1) = sgn_op*cc
-          if(px > 0) then
-            matvalues(qq+2*px  ) = sgn_op*cxm
-            matvalues(qq+2*px+1) = sgn_op*cxp
-          end if
-          if(py > 0) then
-            matvalues(qq+2*py  ) = sgn_op*cym
-            matvalues(qq+2*py+1) = sgn_op*cyp
-          end if
-          if(pz > 0) then
-            matvalues(qq+2*pz  ) = sgn_op*czm
-            matvalues(qq+2*pz+1) = sgn_op*czp
-          end if
+          if(mxm > 0) matvalues(qq+mxm) = sgn_op*cxm
+          if(mxp > 0) matvalues(qq+mxp) = sgn_op*cxp
+          if(mym > 0) matvalues(qq+mym) = sgn_op*cym
+          if(myp > 0) matvalues(qq+myp) = sgn_op*cyp
+          if(mzm > 0) matvalues(qq+mzm) = sgn_op*czm
+          if(mzp > 0) matvalues(qq+mzp) = sgn_op*czp
         end do
       end do
     end do
     !$acc wait(1)
     !$acc host_data use_device(matvalues)
-    call HYPRE_StructMatrixSetBoxValues(asolver%mat,lo(asolver%idirs(1:ndim)),hi(asolver%idirs(1:ndim)),nstencil, &
-                                        [(q,q=0,nstencil-1)],matvalues,ierr)
+    call HYPRE_StructMatrixSetBoxValues(asolver%mat,lo(asolver%idirs(1:ndim)),hi(asolver%idirs(1:ndim)),nvalues, &
+                                        asolver%ientries(1:nvalues),matvalues,ierr)
     !$acc end host_data
     call HYPRE_StructMatrixAssemble(asolver%mat,ierr)
   end subroutine fill_matrix

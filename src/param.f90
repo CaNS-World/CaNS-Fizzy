@@ -161,6 +161,7 @@ integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PF
                                      hypre_pfmg_num_post_relax = 1, &
                                      hypre_pfmg_max_levels = -1    ! 0: HYPRE's default, < 0: see `configure_pfmg`
 real(rp), protected, dimension(2) :: hypre_tol = 1.e-6_rp
+logical , protected, dimension(2) :: hypre_is_symmetric = .false. ! symmetric storage of the matrix (see `init_matrix`)
 !
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
 ! (one layer suffices for CaNS; extensions with wider stencils may increase them here); that of the phase
@@ -241,7 +242,7 @@ contains
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
                     hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
                     hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
-                    hypre_pfmg_max_levels
+                    hypre_pfmg_max_levels,hypre_is_symmetric
     namelist /other_options/ &
                             is_debug,is_debug_poisson, &
                             is_timing, &
