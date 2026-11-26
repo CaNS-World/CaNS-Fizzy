@@ -45,7 +45,7 @@ Some features are:
  * Surface tension with a balanced pressure splitting, static contact angles at walls, and Marangoni stresses (surface tension that varies with a scalar)
  * Transport of an arbitrary number of scalars (e.g., temperature), with Boussinesq buoyancy
  * Optional implicit integration of the diffusion terms, along one or all directions
- * Optional variable-coefficient pressure solver based on the HYPRE library (CPUs)
+ * Optional variable-coefficient pressure solver based on the HYPRE library
  * Navier slip at walls, and a forcing that keeps the net acceleration of the two-fluid mixture at zero
  * Two-dimensional runs with a single grid cell along the homogeneous direction
  * Checkpoints that restart the time integration exactly
@@ -81,7 +81,7 @@ The prerequisites for compiling Fizzy are the following:
  * The `nvfortran` compiler (for GPU runs)
  * CMake for compiling the cuDecomp library (for GPU runs)
  * NCCL and NVSHMEM (optional, may be exploited by the cuDecomp library)
- * HYPRE library in case the variable-coefficients Poisson equation is solved without the pressure splitting technique (only available for CPU runs)
+ * HYPRE library in case the variable-coefficients Poisson equation is solved without the pressure splitting technique (built with CUDA for GPU runs)
 
 #### In short
 For most systems, Fizzy can be compiled from the root directory with the following commands `make libs && make`, which will compile the 2DECOMP&FFT/cuDecomp libraries, and Fizzy.

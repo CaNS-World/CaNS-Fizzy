@@ -151,16 +151,18 @@ logical, protected :: is_impdiff = .false., is_impdiff_1d = .false., &
 ! HYPRE solver options for the variable-coefficient problems; each input has two entries:
 ! the first for the pressure, the second for the (implicit) diffusion
 !
-integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES
+integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PFMG, 3: GMRES, 4: BiCGSTAB, 5: FlexGMRES, 6: PCG
                                      hypre_maxiter   = 50, &
                                      hypre_precond_i = 1, &      ! 0: SMG, 1: PFMG, 9: none
                                      hypre_precond_maxiter = 1, &
                                      hypre_gmres_k_dim     = 0, & ! 0: HYPRE's default
-                                     hypre_pfmg_relax_type = -1, & ! < 0: red/black Gauss-Seidel
+                                     hypre_pfmg_relax_type = -1, & ! < 0: red/black Gauss-Seidel (Jacobi on GPUs and with PCG)
                                      hypre_pfmg_num_pre_relax  = 1, &
                                      hypre_pfmg_num_post_relax = 1, &
-                                     hypre_pfmg_max_levels = -1    ! 0: HYPRE's default, < 0: see `configure_pfmg`
+                                     hypre_pfmg_max_levels = -1, & ! 0: HYPRE's default, < 0: see `configure_pfmg`
+                                     hypre_print_level     = 0     ! > 0: printout of the solver, see `create_solver`
 real(rp), protected, dimension(2) :: hypre_tol = 1.e-6_rp
+logical , protected, dimension(2) :: hypre_is_symmetric = .false. ! symmetric storage of the matrix (see `init_matrix`)
 !
 ! halo widths of the velocity, pressure, scalar, and interface fields; the grid arrays take the largest
 ! (one layer suffices for CaNS; extensions with wider stencils may increase them here); that of the phase
@@ -241,7 +243,7 @@ contains
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
                     hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
                     hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
-                    hypre_pfmg_max_levels
+                    hypre_pfmg_max_levels,hypre_is_symmetric,hypre_print_level
     namelist /other_options/ &
                             is_debug,is_debug_poisson, &
                             is_timing, &
