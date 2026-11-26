@@ -37,12 +37,14 @@ In this file, `FCOMP` can be one of `GNU` (`gfortran`), `INTEL` (`ifx`), `NVIDIA
 
 and the following ones select the two-fluid method (the interface-capturing method itself, ACDI, THINC/QQ or geometric volume of fluid, is selected at run time: see `ifc_reconstruction` in [`INFO_INPUT.md`](INFO_INPUT.md)):
 
- * `CONSTANT_COEFFS_POISSON`          : uses the direct FFT-based solver for the pressure Poisson equation, with a pressure-splitting method (default); if set to `0`, the variable-coefficient Poisson equation is solved with an iterative multigrid solver of the HYPRE library (CPU builds only; see below)
+ * `CONSTANT_COEFFS_POISSON`          : uses the direct FFT-based solver for the pressure Poisson equation, with a pressure-splitting method (default); if set to `0`, the variable-coefficient Poisson equation is solved with an iterative multigrid solver of the HYPRE library (see below)
  * `BALANCED_CAPILLARY_PRESSURE_SPLIT`: extrapolates the balanced residual between the pressure gradient and surface-tension force in the pressure-splitting method, instead of the pressure gradient alone, which jumps across the interface (see P. Cifani, *Journal of Computational Physics* 398 (2019): 108904); it is used by default with `CONSTANT_COEFFS_POISSON=1` (set it to `0` to extrapolate the pressure gradient alone), and has no role with `CONSTANT_COEFFS_POISSON=0`
 
 The transport of a scalar and the Boussinesq buoyancy term are selected in the input file (`nscal` and `is_boussinesq_buoyancy`; see [`INFO_INPUT.md`](INFO_INPUT.md)), and so are the pencil orientation, the debugging checks and the timing of each step.
 
 A build with `CONSTANT_COEFFS_POISSON=0` links to HYPRE, whose location is set with `HYPRE_HOME` (default: `${HOME}/software/hypre`), e.g., `make CONSTANT_COEFFS_POISSON=0 HYPRE_HOME=[PATH_TO_HYPRE]`. The solver is chosen and tuned at run time, with the `&hypre` namelist (see [`INFO_INPUT.md`](INFO_INPUT.md)). Two-dimensional cases should use a single grid cell along the homogeneous direction, which is then left out of the linear system; otherwise, a periodic direction must have an even number of grid cells.
+
+In GPU builds (`GPU=1`, with OpenACC), the HYPRE solver runs on the device: HYPRE must be built with CUDA, with the same MPI library, and for the compute capability of the GPU, e.g., with CMake: `-DHYPRE_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89 -DHYPRE_ENABLE_GPU_AWARE_MPI=ON -DHYPRE_BUILD_UMPIRE=ON`. GPU-aware MPI and the Umpire memory pool are recommended (the latter is used when its library is found under `HYPRE_HOME`). Several MPI tasks per GPU require the CUDA Multi-Process Service (MPS).
 
 Multi-threading on the host with OpenMP (`OPENMP=1` in CaNS) is not supported at present: the files shared with CaNS keep their OpenMP directives, but the two-fluid kernels have none.
 
