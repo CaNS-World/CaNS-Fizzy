@@ -159,7 +159,8 @@ integer , protected, dimension(2) :: hypre_solver_i  = 5, &      ! 1: SMG, 2: PF
                                      hypre_pfmg_relax_type = -1, & ! < 0: red/black Gauss-Seidel (Jacobi on GPUs and with PCG)
                                      hypre_pfmg_num_pre_relax  = 1, &
                                      hypre_pfmg_num_post_relax = 1, &
-                                     hypre_pfmg_max_levels = -1    ! 0: HYPRE's default, < 0: see `configure_pfmg`
+                                     hypre_pfmg_max_levels = -1, & ! 0: HYPRE's default, < 0: see `configure_pfmg`
+                                     hypre_print_level     = 0     ! > 0: printout of the solver, see `create_solver`
 real(rp), protected, dimension(2) :: hypre_tol = 1.e-6_rp
 logical , protected, dimension(2) :: hypre_is_symmetric = .false. ! symmetric storage of the matrix (see `init_matrix`)
 !
@@ -242,7 +243,7 @@ contains
                     hypre_solver_i,hypre_tol,hypre_maxiter, &
                     hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
                     hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
-                    hypre_pfmg_max_levels,hypre_is_symmetric
+                    hypre_pfmg_max_levels,hypre_is_symmetric,hypre_print_level
     namelist /other_options/ &
                             is_debug,is_debug_poisson, &
                             is_timing, &

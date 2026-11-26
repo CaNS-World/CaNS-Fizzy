@@ -11,7 +11,7 @@ module mod_solver_vc
   use mod_param     , only: hypre_solver_i,hypre_tol,hypre_maxiter, &
                             hypre_precond_i,hypre_precond_maxiter,hypre_gmres_k_dim, &
                             hypre_pfmg_relax_type,hypre_pfmg_num_pre_relax,hypre_pfmg_num_post_relax, &
-                            hypre_pfmg_max_levels,hypre_is_symmetric, &
+                            hypre_pfmg_max_levels,hypre_is_symmetric,hypre_print_level, &
                             is_impdiff,is_impdiff_1d
   use mod_types
   use, intrinsic :: iso_c_binding, only: C_PTR,C_NULL_PTR,C_INT,C_SIZE_T,C_ASSOCIATED
@@ -685,11 +685,75 @@ module mod_solver_vc
         call HYPRE_StructPCGSetPrecond(solver,precond_id,precond,ierr)
       end if
     end if
+    if(hypre_print_level(iq) > 0) call set_print_level(stype,solver,hypre_print_level(iq))
     asolver%precond = precond
     asolver%solver  = solver
     asolver%stype   = stype
     asolver%ptype   = precond_id
   end subroutine create_solver
+  !
+  subroutine set_print_level(stype,solver,print_level)
+    !
+    ! printout of HYPRE for a solver (on the first task), e.g., to follow its convergence:
+    !   1: SMG and PFMG print the residual norm of each iteration at the end of a solve, and the Krylov
+    !      solvers a summary of the solve
+    !   2: the Krylov solvers print the residual norm at each iteration
+    ! the logging of the solver is turned on, which SMG and PFMG need for their printout; the preconditioner
+    ! stays silent
+    !
+    implicit none
+    integer    , intent(in) :: stype,print_level
+    type(C_PTR), intent(in) :: solver
+    select case(stype)
+    case(HYPRESolverSMG)
+      call HYPRE_StructSMGSetPrintLevel(solver,print_level,ierr)
+      call HYPRE_StructSMGSetLogging(solver,1,ierr)
+    case(HYPRESolverPFMG)
+      call HYPRE_StructPFMGSetPrintLevel(solver,print_level,ierr)
+      call HYPRE_StructPFMGSetLogging(solver,1,ierr)
+    case(HYPRESolverGMRES)
+      call HYPRE_StructGMRESSetPrintLevel(solver,print_level,ierr)
+      call HYPRE_StructGMRESSetLogging(solver,1,ierr)
+    case(HYPRESolverBiCGSTAB)
+      call HYPRE_StructBiCGSTABSetPrintLev(solver,print_level,ierr)
+      call HYPRE_StructBiCGSTABSetLogging(solver,1,ierr)
+    case(HYPRESolverFlexGMRES)
+      call HYPRE_StructFGMRESSetPrintLevel(solver,print_level,ierr)
+      call HYPRE_StructFGMRESSetLogging(solver,1,ierr)
+    case(HYPRESolverPCG)
+      call HYPRE_StructPCGSetPrintLevel(solver,print_level,ierr)
+      call HYPRE_StructPCGSetLogging(solver,1,ierr)
+    end select
+  end subroutine set_print_level
+  !
+  subroutine print_solve(iq,stype,solver,niter)
+    !
+    ! one line per solve with `hypre_print_level` > 0, the same for all solvers and versions of HYPRE
+    ! (HYPRE 2 keeps the residual norms of SMG and PFMG, but does not print them): the problem, the
+    ! number of iterations, and the final relative residual
+    !
+    implicit none
+    integer    , intent(in) :: iq,stype,niter
+    type(C_PTR), intent(in) :: solver
+    real(rp) :: res
+    res = 0._rp
+    select case(stype)
+    case(HYPRESolverSMG)
+      call HYPRE_StructSMGGetFinalRelative(solver,res,ierr)
+    case(HYPRESolverPFMG)
+      call HYPRE_StructPFMGGetFinalRelativ(solver,res,ierr)
+    case(HYPRESolverGMRES)
+      call HYPRE_StructGMRESGetFinalRelati(solver,res,ierr)
+    case(HYPRESolverBiCGSTAB)
+      call HYPRE_StructBiCGSTABGetFinalRel(solver,res,ierr)
+    case(HYPRESolverFlexGMRES)
+      call HYPRE_StructFGMRESGetFinalRel(solver,res,ierr)
+    case(HYPRESolverPCG)
+      call HYPRE_StructPCGGetFinalRelative(solver,res,ierr)
+    end select
+    if(myid == 0) print '(A,I0,A,ES10.3)', ' HYPRE '//trim(merge('pressure ','diffusion',iq == HYPREProblemPressure))// &
+                                          ' solve: ',niter,' iterations, final relative residual ',res
+  end subroutine print_solve
   !
   subroutine setup_solver(asolver)
     implicit none
@@ -806,6 +870,7 @@ module mod_solver_vc
       call HYPRE_StructPCGSolve(solver,mat,rhs,sol,ierr)
       call HYPRE_StructPCGGetNumIterations(solver,niter,ierr)
     end if ! stype
+    if(hypre_print_level(iq) > 0) call print_solve(iq,stype,solver,niter)
     if(niter >= hypre_maxiter(iq)) then
       if(myid == 0) print*, 'WARNING: HYPRE solver not converged after ',niter,' iterations (maximum: `hypre_maxiter`).'
     end if
