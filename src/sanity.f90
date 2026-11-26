@@ -548,13 +548,13 @@ module mod_sanity
       call add_noise(ng,lo,456,.5_rp,v(1:n(1),1:n(2),1:n(3)))
       call add_noise(ng,lo,789,.5_rp,w(1:n(1),1:n(2),1:n(3)))
       !$acc        update device(u,v,w)
-      !$omp target update to(u,v,w)
-      !$acc        enter data create(bb)
+      !$omp target update to(    u,v,w)
+      !$acc        enter data create(   bb)
       !$omp target enter data map(alloc:bb)
       call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,1),bcvel(:,:,1), &
                       lambdaxy,['f','c','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
       !$acc        update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-      !$omp target update to(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+      !$omp target update to(    lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
 #if defined(_OPENACC) || defined(_OPENMP)
       call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
 #endif
@@ -588,7 +588,7 @@ module mod_sanity
       call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,2),bcvel(:,:,2), &
                       lambdaxy,['c','f','c'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
       !$acc        update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-      !$omp target update to(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+      !$omp target update to(    lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
 #if defined(_OPENACC) || defined(_OPENMP)
       call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
 #endif
@@ -622,7 +622,7 @@ module mod_sanity
       call initsolver(ng,nh_g,n_x_fft,n_y_fft,lo_z,hi_z,dli,dzci_g,dzfi_g,cbcvel(:,:,3),bcvel(:,:,3), &
                       lambdaxy,['c','c','f'],a,b,c,arrplan,normfft,rhsbx,rhsby,rhsbz)
       !$acc        update device(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
-      !$omp target update to(lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+      !$omp target update to(    lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
 #if defined(_OPENACC) || defined(_OPENMP)
       call set_cufft_wspace(pack(arrplan,.true.),istream_acc_queue_1)
 #endif
@@ -652,10 +652,10 @@ module mod_sanity
       if(myid == 0.and.(.not.passed_loc)) &
       print*, 'ERROR: wrong solution of Helmholtz equation in z direction.'
       passed = passed.and.passed_loc
-      !$acc        exit data delete(bb)
+      !$acc        exit data delete(    bb)
       !$omp target exit data map(delete:bb)
     end if
-    !$acc        exit data delete(u,v,w,p,lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
+    !$acc        exit data delete(    u,v,w,p,lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
     !$omp target exit data map(delete:u,v,w,p,lambdaxy,a,b,c,rhsbx,rhsby,rhsbz)
     if(.not.passed) then
       call decomp_2d_finalize

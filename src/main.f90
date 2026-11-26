@@ -393,7 +393,7 @@ program cans
   !$omp target enter data map(to:rho12,mu12,ka12,cp12,beta12)
   !$acc        enter data copyin(zc_g,zf_g,dzc_g,dzf_g) async
   !$omp target enter data map(to:zc_g,zf_g,dzc_g,dzf_g)
-  !$acc        enter data create(zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g) async
+  !$acc        enter data create(   zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g) async
   !$omp target enter data map(alloc:zc,zf,dzc,dzf,dzci,dzfi,dzci_g,dzfi_g)
   !
   !$acc parallel     loop default(present) private(k) async
@@ -407,7 +407,7 @@ program cans
     dzci(k) = dzc(k)**(-1)
     dzfi(k) = dzf(k)**(-1)
   end do
-  !$acc        data copy(ng) async
+  !$acc        data copy(      ng) async
   !$omp target data map(tofrom:ng)
   !$acc parallel     loop default(present) async
   !$omp target teams loop
@@ -417,7 +417,7 @@ program cans
   end do
   !$omp end target data
   !$acc end        data
-  !$acc        enter data create(grid_vol_ratio_c,grid_vol_ratio_f) async
+  !$acc        enter data create(   grid_vol_ratio_c,grid_vol_ratio_f) async
   !$omp target enter data map(alloc:grid_vol_ratio_c,grid_vol_ratio_f)
   !$acc parallel     loop default(present) async
   !$omp target teams loop
@@ -429,7 +429,7 @@ program cans
   ! weight of cell `k` in the volume average of a cell-centered field at the face between cells `k` and `k+1`
   ! (the control volume of the vertical velocity), which is the average that conserves mass
   !
-  !$acc        enter data create(wzc) async
+  !$acc        enter data create(   wzc) async
   !$omp target enter data map(alloc:wzc)
   !$acc parallel     loop default(present) async
   !$omp target teams loop
@@ -439,7 +439,7 @@ program cans
   end do
   !$acc        update self(zc,zf,dzc,dzf,dzci,dzfi) async
   !$omp target update from(zc,zf,dzc,dzf,dzci,dzfi)
-  !$acc        exit data copyout(zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
+  !$acc        exit data copyout( zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g) async ! not needed on the device
   !$omp target exit data map(from:zc_g,zf_g,dzc_g,dzf_g,dzci_g,dzfi_g)
   !$acc wait
   !
@@ -481,7 +481,7 @@ program cans
     end do
   end if
   if(is_poisson_dtdma) then
-    !$acc        enter data create(ap_d,cp_d) async
+    !$acc        enter data create(   ap_d,cp_d) async
     !$omp target enter data map(alloc:ap_d,cp_d)
   end if
   !$acc wait
@@ -796,14 +796,14 @@ program cans
   !$acc        enter data copyin(psi) create(kappa) async(1)
   !$omp target enter data map(to:psi) map(alloc:kappa)
   if(.not.is_ifc_plic) then
-    !$acc        enter data create(normx,normy,normz) async(1)
+    !$acc        enter data create(   normx,normy,normz) async(1)
     !$omp target enter data map(alloc:normx,normy,normz)
   end if
   if(is_sdf_normals) then
-    !$acc        enter data create(phi) async(1)
+    !$acc        enter data create(   phi) async(1)
     !$omp target enter data map(alloc:phi)
   end if
-  !$acc        enter data create(psio,psiflx_x,psiflx_y,psiflx_z) async(1)
+  !$acc        enter data create(   psio,psiflx_x,psiflx_y,psiflx_z) async(1)
   !$omp target enter data map(alloc:psio,psiflx_x,psiflx_y,psiflx_z)
   if(.not.restart .and. is_solve_ns) then
     if(any(is_velf(:))) then
@@ -828,15 +828,15 @@ program cans
         !$omp target enter data map(to:markers(imark)%dpsidtrko)
       end if
       if(.not.is_ifc_plic) then
-        !$acc        enter data create(markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
+        !$acc        enter data create(   markers(imark)%normx,markers(imark)%normy,markers(imark)%normz) async(1)
         !$omp target enter data map(alloc:markers(imark)%normx,markers(imark)%normy,markers(imark)%normz)
       end if
       if(is_sdf_normals) then
-        !$acc        enter data create(markers(imark)%phi) async(1)
+        !$acc        enter data create(   markers(imark)%phi) async(1)
         !$omp target enter data map(alloc:markers(imark)%phi)
       end if
     end do
-    !$acc        enter data create(fsx,fsy,fsz) async(1)
+    !$acc        enter data create(   fsx,fsy,fsz) async(1)
     !$omp target enter data map(alloc:fsx,fsy,fsz)
     call ifc_markers_init(n,nh_v,nh_psi,nh_ifc,nh_g,dl,dli,dzc,dzf,dzci,dzfi,seps,restart,markers,psi)
   end if
@@ -990,7 +990,7 @@ program cans
                     is_forced,velf,bforce,is_wallturb,time,u,v,w,p,is_velf)
       !$acc wait(1)
       !$acc        update device(u,v,w,p) async(1)
-      !$omp target update to(u,v,w,p)
+      !$omp target update to(    u,v,w,p)
       call bounduvw(cbcvel_halo,n,nh_v,nh_g,bcvel_halo,nb,is_bound,dl,dzc,dzf,u,v,w)
     else
       !

@@ -288,7 +288,7 @@ module mod_interface_capturing
     integer  :: i,j,k
     !
     psis = 0._rp
-    !$acc        data copy(psis) async(1)
+    !$acc        data copy(      psis) async(1)
     !$omp target data map(tofrom:psis)
     !$acc parallel     loop collapse(3) default(present) reduction(+:psis) async(1)
     !$omp target teams loop collapse(3)                  reduction(+:psis)
@@ -335,7 +335,7 @@ module mod_interface_capturing
     if(.not.is_ifc_split) then
       if(.not.allocated(wflx_x)) then
         allocate(wflx_x,wflx_y,wflx_z,mold=psiflx_x)
-        !$acc        enter data create(wflx_x,wflx_y,wflx_z)
+        !$acc        enter data create(   wflx_x,wflx_y,wflx_z)
         !$omp target enter data map(alloc:wflx_x,wflx_y,wflx_z)
       end if
       do m=1,nm

@@ -61,7 +61,7 @@ module mod_impdiff
     !
     if(.not.allocated(dud)) then
       allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
-      !$acc        enter data create(dud,dvd,dwd) async(1)
+      !$acc        enter data create(   dud,dvd,dwd) async(1)
       !$omp target enter data map(alloc:dud,dvd,dwd)
     end if
     call visc_coeffs(mu12,mu,dmu,is_harm)
@@ -111,7 +111,7 @@ module mod_impdiff
     !
     if(.not.allocated(cw)) then
       allocate(cw(n(1),n(2),n(3)))
-      !$acc        enter data create(cw) async(1)
+      !$acc        enter data create(   cw) async(1)
       !$omp target enter data map(alloc:cw)
     end if
     call solve_lines_c(n,nh_v,nh_psi,nh_g,1,0,cbc(:,3,1),bc(:,3,1),dzc,dzci,dzfi,theta,rho12,mu12,psi,dud,cw,u)
@@ -146,7 +146,7 @@ module mod_impdiff
     !
     if(.not.allocated(dud)) then
       allocate(dud(n(1),n(2),n(3)),dvd(n(1),n(2),n(3)),dwd(n(1),n(2),n(3)))
-      !$acc        enter data create(dud,dvd,dwd) async(1)
+      !$acc        enter data create(   dud,dvd,dwd) async(1)
       !$omp target enter data map(alloc:dud,dvd,dwd)
     end if
     rho = rho12(2); drho = rho12(1)-rho12(2)
@@ -222,7 +222,7 @@ module mod_impdiff
     !
     if(.not.allocated(dsd)) then
       allocate(dsd(n(1),n(2),n(3)))
-      !$acc        enter data create(dsd) async(1)
+      !$acc        enter data create(   dsd) async(1)
       !$omp target enter data map(alloc:dsd)
     end if
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
@@ -717,7 +717,7 @@ module mod_impdiff
     rho = rho12(2); drho = rho12(1)-rho12(2)
     fx = 0._rp; fy = 0._rp; fz = 0._rp
     gx = 0._rp; gy = 0._rp; gz = 0._rp
-    !$acc        data copy(fx,fy,fz,gx,gy,gz) async(1)
+    !$acc        data copy(      fx,fy,fz,gx,gy,gz) async(1)
     !$omp target data map(tofrom:fx,fy,fz,gx,gy,gz)
     if(.not.is_cc) then
       !$acc parallel     loop collapse(3) default(present) reduction(+:fx,fy,fz) async(1)
@@ -824,7 +824,7 @@ module mod_impdiff
 #endif
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     fs = 0._rp; gs = 0._rp
-    !$acc        data copy(fs,gs) async(1)
+    !$acc        data copy(      fs,gs) async(1)
     !$omp target data map(tofrom:fs,gs)
     if(.not.is_cc) then
       !$acc parallel     loop collapse(3) default(present) reduction(+:fs) async(1)
@@ -905,7 +905,7 @@ module mod_impdiff
     !
     if(.not.allocated(dsd)) then
       allocate(dsd(n(1),n(2),n(3)))
-      !$acc        enter data create(dsd) async(1)
+      !$acc        enter data create(   dsd) async(1)
       !$omp target enter data map(alloc:dsd)
     end if
     call visc_coeffs(ka12,ka,dka,is_harm)
@@ -943,7 +943,7 @@ module mod_impdiff
     !
     if(.not.allocated(cw)) then
       allocate(cw(n(1),n(2),n(3)))
-      !$acc        enter data create(cw) async(1)
+      !$acc        enter data create(   cw) async(1)
       !$omp target enter data map(alloc:cw)
     end if
     call solve_lines_c(n,nh_s,nh_psi,nh_g,0,0,cbc(:,3),bc(:,3),dzc,dzci,dzfi,theta,rhocp12,ka12,psi,dsd,cw,s)

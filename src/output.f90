@@ -895,7 +895,7 @@ module mod_output
     !
     mass1 = 0._rp
     mass2 = 0._rp
-    !$acc        data copy(mass1,mass2) async(1)
+    !$acc        data copy(      mass1,mass2) async(1)
     !$omp target data map(tofrom:mass1,mass2)
     !$acc parallel     loop collapse(3) default(present) reduction(+:mass1,mass2) private(vcell) async(1)
     !$omp target teams loop collapse(3)                  reduction(+:mass1,mass2) private(vcell)
@@ -933,7 +933,7 @@ module mod_output
     !
     en1 = 0._rp
     en2 = 0._rp
-    !$acc        data copy(en1,en2) async(1)
+    !$acc        data copy(      en1,en2) async(1)
     !$omp target data map(tofrom:en1,en2)
     !$acc parallel     loop collapse(3) default(present) reduction(+:en1,en2) private(vcell,ecell) async(1)
     !$omp target teams loop collapse(3)                  reduction(+:en1,en2) private(vcell,ecell)

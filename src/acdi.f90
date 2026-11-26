@@ -44,7 +44,7 @@ module mod_acdi
     integer :: i,j,k
     !
     velmax = 0.
-    !$acc        data copy(velmax) async(1)
+    !$acc        data copy(      velmax) async(1)
     !$omp target data map(tofrom:velmax)
     !$acc parallel     loop collapse(3) default(present) private(uc,vc,wc,vel) reduction(max:velmax) async(1)
     !$omp target teams loop collapse(3)                  private(uc,vc,wc,vel) reduction(max:velmax)

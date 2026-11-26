@@ -79,7 +79,7 @@ module mod_thinc
     !
     is_sdf = is_sdf_normals
     d_full = 1.e3_rp/beta
-    !$acc parallel loop collapse(3) default(present) &
+    !$acc parallel     loop collapse(3) default(present) &
     !$acc private(vel_x,vel_y,vel_z,ii,xx,jj,yy,kk,zz,lnormx_x,lnormy_y,lnormz_z,d_x,d_y,d_z,lpsi_x,lpsi_y,lpsi_z,arg_x) &
     !$acc private(arg_y,arg_z,lflux_x,lflux_y,lflux_z) async(1)
     !$omp target teams loop collapse(3) &

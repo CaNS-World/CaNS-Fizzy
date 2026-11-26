@@ -66,7 +66,7 @@ module mod_scal
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     dxi = dli(1); dyi = dli(2)
     !
-    !$acc parallel loop collapse(3) default(present) &
+    !$acc parallel     loop collapse(3) default(present) &
     !$acc private(usip,usim,vsjp,vsjm,wskp,wskm,psixp,psixm,psiyp,psiym,psizp,psizm,kaxp,kaxm,kayp,kaym,kazp,kazm,dsdxp) &
     !$acc private(dsdxm,dsdyp,dsdym,dsdzp,dsdzm) async(1)
     !$omp target teams loop collapse(3) &
@@ -216,7 +216,7 @@ module mod_scal
     dxi = dli(1); dyi = dli(2)
     lx = l(1); ly = l(2); lz = l(3)
     flux_x = 0._rp
-    !$acc        data copy(flux_x) async(1)
+    !$acc        data copy(      flux_x) async(1)
     !$omp target data map(tofrom:flux_x)
     if(is_bound(0,1)) then
       i = 0
@@ -249,7 +249,7 @@ module mod_scal
     !$omp end target data
     !$acc end        data
     flux_y = 0._rp
-    !$acc        data copy(flux_y) async(1)
+    !$acc        data copy(      flux_y) async(1)
     !$omp target data map(tofrom:flux_y)
     if(is_bound(0,2)) then
       j = 0
@@ -282,7 +282,7 @@ module mod_scal
     !$omp end target data
     !$acc end        data
     flux_z = 0._rp
-    !$acc        data copy(flux_z) async(1)
+    !$acc        data copy(      flux_z) async(1)
     !$omp target data map(tofrom:flux_z)
     if(is_bound(0,3)) then
       k = 0
@@ -338,7 +338,7 @@ module mod_scal
     !
     rhocp = rhocp12(2); drhocp = rhocp12(1)-rhocp12(2)
     tot_s = 0._rp; tot = 0._rp
-    !$acc        data copy(tot_s,tot) async(1)
+    !$acc        data copy(      tot_s,tot) async(1)
     !$omp target data map(tofrom:tot_s,tot)
     !$acc parallel     loop collapse(3) default(present) private(rhocp_c) reduction(+:tot_s,tot) async(1)
     !$omp target teams loop collapse(3)                  private(rhocp_c) reduction(+:tot_s,tot)

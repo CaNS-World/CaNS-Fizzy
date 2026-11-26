@@ -99,7 +99,7 @@ module mod_rk
     !
     if(.not.allocated(dudtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dudtrk(n(1),n(2),n(3)),dvdtrk(n(1),n(2),n(3)),dwdtrk(n(1),n(2),n(3)))
-      !$acc        enter data create(dudtrk,dvdtrk,dwdtrk) async(1)
+      !$acc        enter data create(   dudtrk,dvdtrk,dwdtrk) async(1)
       !$omp target enter data map(alloc:dudtrk,dvdtrk,dwdtrk)
     end if
     !
@@ -324,7 +324,7 @@ module mod_rk
     factor12 = factor1 + factor2
     if(.not.allocated(dsdtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dsdtrk(n(1),n(2),n(3)))
-      !$acc        enter data create(dsdtrk) async(1)
+      !$acc        enter data create(   dsdtrk) async(1)
       !$omp target enter data map(alloc:dsdtrk)
       !$acc wait(1)
     end if
@@ -467,7 +467,7 @@ module mod_rk
     factor12 = factor1 + factor2 ! unused but left here in case a source term is needed in the future
     if(.not.allocated(dpsidtrk)) then ! leverage save attribute to allocate these arrays on the device only once
       allocate(dpsidtrk(n(1),n(2),n(3)))
-      !$acc        enter data create(dpsidtrk) async(1)
+      !$acc        enter data create(   dpsidtrk) async(1)
       !$omp target enter data map(alloc:dpsidtrk)
     end if
     if(is_ifc_acdi) then

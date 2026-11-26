@@ -145,7 +145,7 @@ module mod_vof_split
     ncc = merge(1,0,is_sweep)
     allocate(ilist((n(1)+2+ncc)*(n(2)+2+ncc)*(n(3)+2+ncc)))
     nlist(:) = 0
-    !$acc        enter data create(cc,fl,kap,ilist) copyin(nlist)
+    !$acc        enter data create(   cc,fl,kap,ilist) copyin(nlist)
     !$omp target enter data map(alloc:cc,fl,kap,ilist) map(to:nlist)
     if(is_hf_normals) then
       !
@@ -156,7 +156,7 @@ module mod_vof_split
                                           &height-function normals.'
       allocate(mxs(0:n(1)+1+ncc,0:n(2)+1+ncc,0:n(3)+1+ncc))
       allocate(mys,mzs,mold=mxs)
-      !$acc        enter data create(mxs,mys,mzs)
+      !$acc        enter data create(   mxs,mys,mzs)
       !$omp target enter data map(alloc:mxs,mys,mzs)
     end if
     if(is_sweep) then
@@ -173,7 +173,7 @@ module mod_vof_split
       else
         allocate(sb(1,1,1,1),as(1,1,1,1)) ! (not used)
       end if
-      !$acc        enter data create(f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
+      !$acc        enter data create(   f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
       !$omp target enter data map(alloc:f_prev,bflag,band,ub,vb,wb,sb,qflx,au,av,aw,as)
       !
       ! (the outer halo layers are not updated at physical boundaries, and must be finite)
@@ -205,7 +205,7 @@ module mod_vof_split
       is_ca_any   = any(is_ca(:,:))
       if(is_ca_any) then
         allocate(ca_pl(0:3,1-nh_psi:maxval(n(:))+nh_psi,1-nh_psi:maxval(n(:))+nh_psi))
-        !$acc        enter data create(ca_pl)
+        !$acc        enter data create(   ca_pl)
         !$omp target enter data map(alloc:ca_pl)
       end if
     end if
@@ -279,11 +279,11 @@ module mod_vof_split
     if(present(psi_m)) nm = size(psi_m)
     if(nm > 0 .and. .not.allocated(ccm)) then
       allocate(ccm(0:n(1)+1,0:n(2)+1,0:n(3)+1,nm))
-      !$acc        enter data create(ccm)
+      !$acc        enter data create(   ccm)
       !$omp target enter data map(alloc:ccm)
       if(is_sweep) then
         allocate(flt,mold=fl)
-        !$acc        enter data create(flt)
+        !$acc        enter data create(   flt)
         !$omp target enter data map(alloc:flt)
       end if
     end if
@@ -800,8 +800,8 @@ module mod_vof_split
     nj = jhi-jlo+1
     nlist(1) = 0
     !$acc        update device(nlist) async(1)
-    !$omp target update to(nlist)
-    !$acc parallel     loop collapse(3) default(present) private(il,ii,vp,vm,is_own_p,is_own_m,fc) async(1)
+    !$omp target update to(    nlist)
+    !$acc parallel                       loop collapse(3) default(present) private(il,ii,vp,vm,is_own_p,is_own_m,fc) async(1)
     !$omp target teams distribute parallel do collapse(3)                  private(il,ii,vp,vm,is_own_p,is_own_m,fc)
     do k=klo,khi
       do j=jlo,jhi
@@ -839,7 +839,7 @@ module mod_vof_split
     ! (the number of listed cells is read from the device copy of nlist, without a host synchronization;
     ! with OpenMP, where the bounds of a loop are those of the host, it is copied to the host above)
     !
-    !$acc parallel loop default(present) &
+    !$acc parallel                       loop default(present) &
     !$acc private(c,dz3,act,lin,i,j,k,ii,h,vp,vm,is_own_p,is_own_m,fc,cfl_p,cfl_m,mx,my,mz,frac_p,frac_m) async(1)
     !$omp target teams distribute parallel do &
     !$omp private(c,dz3,act,lin,i,j,k,ii,h,vp,vm,is_own_p,is_own_m,fc,cfl_p,cfl_m,mx,my,mz,frac_p,frac_m)
@@ -1065,7 +1065,7 @@ module mod_vof_split
     ! fluxes of q (per unit area, over the sweep) through the lower faces of the control volumes 1:n+1 along
     ! idir: mass flux times transported value, from the upwind control volume; each face is computed once
     !
-    !$acc parallel loop collapse(3) default(present) &
+    !$acc parallel     loop collapse(3) default(present) &
     !$acc private(iq,qi,qj,qk,is_stag,c2,dc,w1,w2,w1d,ext_d,mf,mass,qm,q0,qp,qa,off,id,jd,kd,dd,is_zero,is_lim) &
     !$acc async(1)
     !$omp target teams loop collapse(3) &
@@ -1130,7 +1130,7 @@ module mod_vof_split
     !
     ! update of the control volumes: new momentum (with the dilatation terms of the two cells), and new mass
     !
-    !$acc parallel loop collapse(3) default(present) &
+    !$acc parallel     loop collapse(3) default(present) &
     !$acc private(iq,qi,qj,qk,is_stag,is_keep,c2,dc,w1,w2,rext,dil1,dil1m,dil1s,dil2,rh1,rh2,rho_o,rho_n,qn) async(1)
     !$omp target teams loop collapse(3) &
     !$omp private(iq,qi,qj,qk,is_stag,is_keep,c2,dc,w1,w2,rext,dil1,dil1m,dil1s,dil2,rh1,rh2,rho_o,rho_n,qn)
@@ -1303,8 +1303,8 @@ module mod_vof_split
         !
         ! planes of the wall cells with an interface
         !
-        !$acc parallel     loop gang vector collapse(2) default(present) private(c3,dz3,m,act,i,j,k,fw,dz,n1,n2,n3,tn) async(1)
-        !$omp target teams distribute parallel do collapse(2)                  private(c3,dz3,m,act,i,j,k,fw,dz,n1,n2,n3,tn)
+        !$acc parallel                       loop gang vector collapse(2) default(present) private(c3,dz3,m,act,i,j,k,fw,dz,n1,n2,n3,tn) async(1)
+        !$omp target teams distribute parallel do             collapse(2)                  private(c3,dz3,m,act,i,j,k,fw,dz,n1,n2,n3,tn)
         do ib=2-nh_psi,nb_+nh_psi-1
           do ia=2-nh_psi,na+nh_psi-1
             i = merge(iw,ia,id == 1)
@@ -1346,7 +1346,7 @@ module mod_vof_split
         !
         ! ghost cells: volume fraction of the plane of the nearest wall cell with an interface
         !
-        !$acc parallel loop gang vector collapse(3) default(present) &
+        !$acc parallel                       loop gang vector collapse(3) default(present) &
         !$acc private(ipb,iqb,d2b,d2,ig,gi,gj,gk,pi,pj,pk,o3,s3) async(1)
         !$omp target teams distribute parallel do collapse(3) &
         !$omp private(ipb,iqb,d2b,d2,ig,gi,gj,gk,pi,pj,pk,o3,s3)
@@ -1501,7 +1501,7 @@ module mod_vof_split
       !
       nlist(1) = 0
       !$acc        update device(nlist) async(1)
-      !$omp target update to(nlist)
+      !$omp target update to(    nlist)
       !$acc parallel     loop collapse(3) default(present) private(il,fc) async(1)
       !$omp target teams loop collapse(3)                  private(il,fc)
       do k=1,n(3)
@@ -1644,7 +1644,7 @@ module mod_vof_split
     is_act1 = is_active(1)
     is_act2 = is_active(2)
     is_act3 = is_active(3)
-    !$acc parallel loop default(present) &
+    !$acc parallel                       loop default(present) &
     !$acc private(m,act,c3,dz3,hgt,dm,dp,h,nrm,lin,i,j,k,kap_c,is_valid,d1,d2,d3,itmp,d,ia,ib,lo,hi,f0,f1,sgn,vol,fq,dqq) &
     !$acc private(na,nb,nq,s) async(1)
     !$omp target teams distribute parallel do &
